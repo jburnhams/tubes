@@ -1,11 +1,11 @@
-
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as fs from 'fs';
 import * as path from 'path';
 import App from '@/src/App';
 import { vi, Mock } from 'vitest';
 import * as AuthContext from '@/src/context/AuthContext';
+import { YouTubeService } from '@/src/services/youtube';
 
 // Mock the AuthContext
 vi.mock('@/src/context/AuthContext', () => ({
@@ -13,11 +13,31 @@ vi.mock('@/src/context/AuthContext', () => ({
   AuthProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
+// Mock YouTubeService
+vi.mock('@/src/services/youtube', () => ({
+  YouTubeService: {
+    getChannels: vi.fn(),
+  },
+}));
+
 describe('Browser Integration Tests', () => {
   // Default mock implementation
   const mockUseAuth = AuthContext.useAuth as Mock;
+  const mockChannels = [
+    {
+      youtube_id: '1',
+      title: 'Test Channel 1',
+      description: 'Desc 1',
+      custom_url: '@channel1',
+      thumbnail_url: 'url1',
+      best_thumbnail_url: null,
+      published_at: '2023-01-01',
+      country: 'US',
+    },
+  ];
 
   beforeEach(() => {
+    vi.resetAllMocks();
     mockUseAuth.mockReturnValue({
       user: null,
       loading: false,
@@ -25,6 +45,8 @@ describe('Browser Integration Tests', () => {
       login: vi.fn(),
       logout: vi.fn(),
     });
+
+    (YouTubeService.getChannels as any).mockResolvedValue({ channels: mockChannels });
   });
 
   describe('index.html structure', () => {
@@ -80,7 +102,7 @@ describe('Browser Integration Tests', () => {
   });
 
   describe('App component integration', () => {
-    it('renders the app with all required elements', () => {
+    it('renders the app with all required elements', async () => {
       render(<App />);
 
       // Check main heading - fix for multiple 'Tubes' text (Logo + H1)
@@ -89,119 +111,38 @@ describe('Browser Integration Tests', () => {
 
       // Check description
       expect(
-        screen.getByText(/A minimal React \+ TypeScript app/i)
+        screen.getByText(/Discover your favorite YouTube channels/i)
       ).toBeInTheDocument();
 
-      // Check counter is displayed
-      expect(screen.getByText(/Counter:/i)).toBeInTheDocument();
-
-      // Check all buttons are present
-      expect(screen.getByText('Increment')).toBeInTheDocument();
-      expect(screen.getByText('Decrement')).toBeInTheDocument();
-      expect(screen.getByText('Reset')).toBeInTheDocument();
+      // Check grid loads
+      await waitFor(() => {
+        expect(screen.getByText('Test Channel 1')).toBeInTheDocument();
+      });
     });
 
-    it('counter starts at 0', () => {
-      render(<App />);
-      expect(screen.getByText('Counter: 0')).toBeInTheDocument();
-    });
-
-    it('increments counter when increment button is clicked', async () => {
+    it('renders channel modal when card is clicked', async () => {
       const user = userEvent.setup();
       render(<App />);
 
-      const incrementButton = screen.getByText('Increment');
-      await user.click(incrementButton);
+      await waitFor(() => {
+        expect(screen.getByText('Test Channel 1')).toBeInTheDocument();
+      });
 
-      expect(screen.getByText('Counter: 1')).toBeInTheDocument();
+      await user.click(screen.getByText('Test Channel 1'));
+
+      expect(screen.getByTestId('channel-modal-content')).toBeInTheDocument();
     });
 
-    it('decrements counter when decrement button is clicked', async () => {
-      const user = userEvent.setup();
-      render(<App />);
-
-      const decrementButton = screen.getByText('Decrement');
-      await user.click(decrementButton);
-
-      expect(screen.getByText('Counter: -1')).toBeInTheDocument();
-    });
-
-    it('resets counter when reset button is clicked', async () => {
-      const user = userEvent.setup();
-      render(<App />);
-
-      // Increment a few times
-      const incrementButton = screen.getByText('Increment');
-      await user.click(incrementButton);
-      await user.click(incrementButton);
-      await user.click(incrementButton);
-
-      expect(screen.getByText('Counter: 3')).toBeInTheDocument();
-
-      // Reset
-      const resetButton = screen.getByText('Reset');
-      await user.click(resetButton);
-
-      expect(screen.getByText('Counter: 0')).toBeInTheDocument();
-    });
-
-    it('handles multiple interactions correctly', async () => {
-      const user = userEvent.setup();
-      render(<App />);
-
-      const incrementButton = screen.getByText('Increment');
-      const decrementButton = screen.getByText('Decrement');
-      const resetButton = screen.getByText('Reset');
-
-      // Complex sequence of operations
-      await user.click(incrementButton);
-      await user.click(incrementButton);
-      expect(screen.getByText('Counter: 2')).toBeInTheDocument();
-
-      await user.click(decrementButton);
-      expect(screen.getByText('Counter: 1')).toBeInTheDocument();
-
-      await user.click(incrementButton);
-      await user.click(incrementButton);
-      await user.click(incrementButton);
-      expect(screen.getByText('Counter: 4')).toBeInTheDocument();
-
-      await user.click(resetButton);
-      expect(screen.getByText('Counter: 0')).toBeInTheDocument();
-
-      await user.click(decrementButton);
-      await user.click(decrementButton);
-      expect(screen.getByText('Counter: -2')).toBeInTheDocument();
-    });
-
-    it('renders correct CSS classes for app structure', () => {
+    it('renders correct CSS classes for app structure', async () => {
       const { container } = render(<App />);
 
       const appDiv = container.querySelector('.app');
       expect(appDiv).toBeInTheDocument();
 
-      const counterDemo = container.querySelector('.counter-demo');
-      expect(counterDemo).toBeInTheDocument();
-
-      const buttonGroup = container.querySelector('.button-group');
-      expect(buttonGroup).toBeInTheDocument();
-    });
-
-    it('has correct button variants', () => {
-      render(<App />);
-
-      // Now we have 4 buttons including the Login button
-      const buttons = screen.getAllByRole('button');
-      expect(buttons.length).toBeGreaterThanOrEqual(3);
-
-      // Check that buttons have the appropriate classes
-      const incrementButton = screen.getByText('Increment').closest('button');
-      const decrementButton = screen.getByText('Decrement').closest('button');
-      const resetButton = screen.getByText('Reset').closest('button');
-
-      expect(incrementButton).toHaveClass('button-primary');
-      expect(decrementButton).toHaveClass('button-secondary');
-      expect(resetButton).toHaveClass('button-secondary');
+      // Wait for grid to render
+      await waitFor(() => {
+        expect(container.querySelector('.grid')).toBeInTheDocument();
+      });
     });
   });
 
@@ -259,20 +200,21 @@ describe('Browser Integration Tests', () => {
       // Verify initial state
       const tubesElements = screen.getAllByText('Tubes');
       expect(tubesElements.length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText('Counter: 0')).toBeInTheDocument();
 
       // Simulate user workflow
-      await user.click(screen.getByText('Increment'));
-      await user.click(screen.getByText('Increment'));
-      await user.click(screen.getByText('Increment'));
+      await waitFor(() => {
+        expect(screen.getByText('Test Channel 1')).toBeInTheDocument();
+      });
 
-      expect(screen.getByText('Counter: 3')).toBeInTheDocument();
+      await user.click(screen.getByText('Test Channel 1'));
+      expect(screen.getByTestId('channel-modal-content')).toBeInTheDocument();
 
-      await user.click(screen.getByText('Decrement'));
-      expect(screen.getByText('Counter: 2')).toBeInTheDocument();
+      const closeButton = screen.getByLabelText('Close modal');
+      await user.click(closeButton);
 
-      await user.click(screen.getByText('Reset'));
-      expect(screen.getByText('Counter: 0')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.queryByTestId('channel-modal-content')).not.toBeInTheDocument();
+      });
     });
   });
 });
