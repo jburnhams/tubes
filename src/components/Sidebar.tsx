@@ -1,0 +1,111 @@
+import React, { useEffect, useState } from 'react';
+import { YouTubeService } from '../services/youtube';
+import { Channel } from '../types/youtube';
+
+export const Sidebar: React.FC = () => {
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubscriptionsExpanded, setIsSubscriptionsExpanded] = useState<boolean>(true);
+
+  useEffect(() => {
+    const fetchChannels = async () => {
+      try {
+        setLoading(true);
+        const data = await YouTubeService.getChannels();
+        setChannels(data.channels);
+        setError(null);
+      } catch (err) {
+        console.error('Failed to fetch channels', err);
+        setError('Failed to load channels.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchChannels();
+  }, []);
+
+  const toggleSubscriptions = () => {
+    setIsSubscriptionsExpanded(!isSubscriptionsExpanded);
+  };
+
+  return (
+    <nav className="fixed left-0 bottom-0 top-14 bg-white z-[200] pt-1 w-[72px] md:w-52 border-r border-gray-200 overflow-y-auto pb-10">
+      <div className="flex flex-col">
+        <div className="flex flex-col md:flex-row items-center md:items-start px-0 md:px-6 py-2 md:py-3 cursor-pointer hover:bg-gray-100 justify-center md:justify-start">
+          <img src="/icons/home.svg" className="h-6 mb-1 md:mb-0 md:mr-4" alt="Home" />
+          <div className="text-[10px] md:text-sm">Home</div>
+        </div>
+        <div className="flex flex-col md:flex-row items-center md:items-start px-0 md:px-6 py-2 md:py-3 cursor-pointer hover:bg-gray-100 justify-center md:justify-start">
+          <img src="/icons/explore.svg" className="h-6 mb-1 md:mb-0 md:mr-4" alt="Explore" />
+          <div className="text-[10px] md:text-sm">Explore</div>
+        </div>
+        <div className="flex flex-col md:flex-row items-center md:items-start px-0 md:px-6 py-2 md:py-3 cursor-pointer hover:bg-gray-100 justify-center md:justify-start">
+          <img src="/icons/subscriptions.svg" className="h-6 mb-1 md:mb-0 md:mr-4" alt="Subscriptions" />
+          <div className="text-[10px] md:text-sm">Subscriptions</div>
+        </div>
+        <div className="flex flex-col md:flex-row items-center md:items-start px-0 md:px-6 py-2 md:py-3 cursor-pointer hover:bg-gray-100 justify-center md:justify-start">
+          <img src="/icons/originals.svg" className="h-6 mb-1 md:mb-0 md:mr-4" alt="Originals" />
+          <div className="text-[10px] md:text-sm">Originals</div>
+        </div>
+        <div className="flex flex-col md:flex-row items-center md:items-start px-0 md:px-6 py-2 md:py-3 cursor-pointer hover:bg-gray-100 justify-center md:justify-start">
+          <img src="/icons/youtube-music.svg" className="h-6 mb-1 md:mb-0 md:mr-4" alt="YouTube Music" />
+          <div className="text-[10px] md:text-sm whitespace-nowrap overflow-hidden text-ellipsis">Music</div>
+        </div>
+        <div className="flex flex-col md:flex-row items-center md:items-start px-0 md:px-6 py-2 md:py-3 cursor-pointer hover:bg-gray-100 justify-center md:justify-start">
+          <img src="/icons/library.svg" className="h-6 mb-1 md:mb-0 md:mr-4" alt="Library" />
+          <div className="text-[10px] md:text-sm">Library</div>
+        </div>
+
+        {/* Separator for desktop */}
+        <div className="hidden md:block border-t border-gray-200 my-2 mx-0"></div>
+
+        {/* Subscriptions Section (Desktop Only mostly, or could be adapted) */}
+        <div className="hidden md:block">
+            <div
+                className="flex items-center px-6 py-2 cursor-pointer hover:bg-gray-100 justify-between group"
+                onClick={toggleSubscriptions}
+            >
+                <div className="text-sm font-medium text-gray-600 uppercase tracking-wide">
+                    Subscriptions
+                </div>
+                 <div className="transform transition-transform duration-200">
+                    {isSubscriptionsExpanded ? (
+                        <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
+                    ) : (
+                         <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                         </svg>
+                    )}
+                 </div>
+            </div>
+
+            {isSubscriptionsExpanded && (
+                <div className="mt-1">
+                    {error && (
+                        <div className="px-6 py-2 text-xs text-red-500">{error}</div>
+                    )}
+                    {!error && channels.map((channel) => (
+                        <div key={channel.youtube_id} className="flex items-center px-6 py-2 cursor-pointer hover:bg-gray-100" title={channel.title}>
+                            <img
+                                src={channel.thumbnail_url || '/icons/channel-placeholder.png'}
+                                className="h-6 w-6 rounded-full mr-3 object-cover"
+                                alt={channel.title}
+                                onError={(e) => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(channel.title)}` }}
+                            />
+                            <div className="text-sm text-gray-700 truncate">{channel.title}</div>
+                        </div>
+                    ))}
+                    {!error && channels.length === 0 && !loading && (
+                        <div className="px-6 py-2 text-xs text-gray-500">No channels found</div>
+                    )}
+                </div>
+            )}
+        </div>
+      </div>
+    </nav>
+  );
+};
