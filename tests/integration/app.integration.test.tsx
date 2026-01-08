@@ -83,8 +83,9 @@ describe('Browser Integration Tests', () => {
     it('renders the app with all required elements', () => {
       render(<App />);
 
-      // Check main heading
-      expect(screen.getByText('Tubes')).toBeInTheDocument();
+      // Check main heading - fix for multiple 'Tubes' text (Logo + H1)
+      const tubesElements = screen.getAllByText('Tubes');
+      expect(tubesElements.length).toBeGreaterThanOrEqual(1);
 
       // Check description
       expect(
@@ -230,7 +231,8 @@ describe('Browser Integration Tests', () => {
 
       render(<App />);
 
-      expect(screen.getByText('Welcome, Test User')).toBeInTheDocument();
+      // "Welcome, " was removed in the new Toolbar design, just showing name
+      expect(screen.getByText('Test User')).toBeInTheDocument();
       expect(screen.getByText('Logout')).toBeInTheDocument();
       expect(screen.queryByText('Login with Google')).not.toBeInTheDocument();
 
@@ -255,7 +257,8 @@ describe('Browser Integration Tests', () => {
       render(<App />);
 
       // Verify initial state
-      expect(screen.getByText('Tubes')).toBeInTheDocument();
+      const tubesElements = screen.getAllByText('Tubes');
+      expect(tubesElements.length).toBeGreaterThanOrEqual(1);
       expect(screen.getByText('Counter: 0')).toBeInTheDocument();
 
       // Simulate user workflow
