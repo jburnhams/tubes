@@ -11,45 +11,92 @@ export const Toolbar: React.FC = () => {
   };
 
   // Fallback image (using a generic placeholder or initial)
-  const fallbackImage = 'https://ui-avatars.com/api/?name=' + (user?.name || 'User');
+  const fallbackImage = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(user?.name || 'User');
 
   return (
-    <div className="toolbar" style={{
-      display: 'flex',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      padding: '1rem',
-      backgroundColor: '#f8f9fa',
-      borderBottom: '1px solid #dee2e6',
-      marginBottom: '2rem'
-    }}>
-      <div className="logo" style={{ fontWeight: 'bold', fontSize: '1.2rem' }}>
-        Tubes
+    <header className="fixed top-0 left-0 right-0 h-14 bg-white flex justify-between items-center px-4 md:px-6 z-[300] border-b border-gray-200 font-roboto">
+      <div className="flex items-center">
+        <div className="hover:bg-gray-100 p-2 rounded-full cursor-pointer mr-1 md:mr-4 hidden md:block">
+           <img className="h-6" src="/icons/hamburger-menu.svg" alt="Menu" />
+        </div>
+        <a href="/" className="flex items-center" title="YouTube Home">
+            <img className="h-5 md:h-6 cursor-pointer" src="/icons/youtube-logo.svg" alt="YouTube Logo" />
+        </a>
       </div>
 
-      <div className="auth-section" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        {user ? (
-          <>
-            <div className="user-info" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <img
-                src={!imageError && user.picture ? user.picture : fallbackImage}
-                alt={user.name}
-                onError={handleImageError}
-                style={{
-                  width: '40px',
-                  height: '40px',
-                  borderRadius: '50%',
-                  objectFit: 'cover'
-                }}
-              />
-              <span>{user.name}</span>
-            </div>
-            <Button label="Logout" onClick={logout} variant="secondary" />
-          </>
-        ) : (
-          <Button label="Login" onClick={login} variant="primary" />
-        )}
+      <div className="flex-1 max-w-[600px] ml-10 md:ml-16 mr-4 md:mr-9 hidden sm:flex items-center">
+        <input
+          className="flex-1 h-9 md:h-10 px-3 text-base border border-gray-300 rounded-l-[2px] shadow-inner focus:outline-none focus:border-blue-500 placeholder-gray-500"
+          type="text"
+          placeholder="Search"
+        />
+        <button
+          className="h-9 md:h-10 w-16 bg-gray-50 border border-l-0 border-gray-300 rounded-r-[2px] cursor-pointer hover:bg-gray-100 flex justify-center items-center relative group"
+        >
+          <img className="h-6 mt-1" src="/icons/search.svg" alt="Search" />
+          <div className="absolute bg-gray-600 text-white text-xs py-1 px-2 rounded bottom-[-35px] opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none whitespace-nowrap z-[400]">
+            Search
+          </div>
+        </button>
+        <button
+          className="h-10 w-10 ml-2 rounded-full bg-gray-50 cursor-pointer hover:bg-gray-200 flex justify-center items-center relative group border-none"
+        >
+          <img className="h-6" src="/icons/voice-search-icon.svg" alt="Voice Search" />
+          <div className="absolute bg-gray-600 text-white text-xs py-1 px-2 rounded bottom-[-35px] opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none whitespace-nowrap z-[400]">
+            Search with your voice
+          </div>
+        </button>
       </div>
-    </div>
+
+      <div className="flex items-center shrink-0 w-[180px] justify-between">
+          <div className="relative group cursor-pointer hidden sm:block">
+            <img className="h-6" src="/icons/upload.svg" alt="Create" />
+             <div className="absolute bg-gray-600 text-white text-xs py-1 px-2 rounded bottom-[-35px] left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none whitespace-nowrap z-[400]">
+                Create
+             </div>
+          </div>
+          <div className="relative group cursor-pointer hidden sm:block">
+            <img className="h-6" src="/icons/youtube-apps.svg" alt="Apps" />
+            <div className="absolute bg-gray-600 text-white text-xs py-1 px-2 rounded bottom-[-35px] left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none whitespace-nowrap z-[400]">
+                YouTube apps
+             </div>
+          </div>
+          <div className="relative group cursor-pointer hidden sm:block">
+            <div className="relative">
+              <img className="h-6" src="/icons/notifications.svg" alt="Notifications" />
+              <div className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] px-1 rounded-full border-2 border-white">3</div>
+            </div>
+            <div className="absolute bg-gray-600 text-white text-xs py-1 px-2 rounded bottom-[-35px] left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none whitespace-nowrap z-[400]">
+                Notifications
+             </div>
+          </div>
+
+          <div className="ml-2">
+            {user ? (
+               <div className="relative group">
+                 <img
+                    src={!imageError && user.picture ? user.picture : fallbackImage}
+                    alt={user.name}
+                    onError={handleImageError}
+                    className="h-8 w-8 rounded-full object-cover cursor-pointer"
+                    title={`Logged in as ${user.name}`}
+                 />
+                 <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-gray-200 shadow-lg rounded-md py-1 z-[500] hidden group-hover:block">
+                    <button
+                        onClick={logout}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                        Logout
+                    </button>
+                 </div>
+               </div>
+            ) : (
+                <div onClick={login} className="text-blue-600 border border-blue-600 px-3 py-1 uppercase text-sm font-medium rounded-sm cursor-pointer hover:bg-blue-50">
+                    Sign in
+                </div>
+            )}
+          </div>
+      </div>
+    </header>
   );
 };
