@@ -30,7 +30,7 @@ describe('Toolbar Component', () => {
     render(<Toolbar />);
 
     expect(screen.getByText('Tubes')).toBeInTheDocument();
-    expect(screen.getByText('Login with Google')).toBeInTheDocument();
+    expect(screen.getByText('Login')).toBeInTheDocument();
     expect(screen.queryByText('Logout')).not.toBeInTheDocument();
   });
 
@@ -44,7 +44,7 @@ describe('Toolbar Component', () => {
 
     render(<Toolbar />);
 
-    fireEvent.click(screen.getByText('Login with Google'));
+    fireEvent.click(screen.getByText('Login'));
     expect(mockLogin).toHaveBeenCalledTimes(1);
   });
 
@@ -66,7 +66,7 @@ describe('Toolbar Component', () => {
     expect(screen.getByText('Tubes')).toBeInTheDocument();
     expect(screen.getByText('Test User')).toBeInTheDocument();
     expect(screen.getByText('Logout')).toBeInTheDocument();
-    expect(screen.queryByText('Login with Google')).not.toBeInTheDocument();
+    expect(screen.queryByText('Login')).not.toBeInTheDocument();
 
     const img = screen.getByAltText('Test User');
     expect(img).toHaveAttribute('src', 'https://example.com/pic.jpg');

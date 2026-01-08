@@ -47,7 +47,7 @@ export const Toolbar: React.FC = () => {
             <Button label="Logout" onClick={logout} variant="secondary" />
           </>
         ) : (
-          <Button label="Login with Google" onClick={login} variant="primary" />
+          <Button label="Login" onClick={login} variant="primary" />
         )}
       </div>
     </div>
