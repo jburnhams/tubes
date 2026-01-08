@@ -1,9 +1,9 @@
 {
-  "name": "js-app-template",
+  "name": "tubes",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "A template for React + TypeScript web applications with comprehensive testing setup",
+  "description": "Tubes application - A template for React + TypeScript web applications with comprehensive testing setup",
   "engines": {
     "node": ">=20.0.0"
   },
