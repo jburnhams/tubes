@@ -1,13 +1,36 @@
 import React from 'react';
 import { Button } from './components/Button';
 import { useCounter } from './hooks/useCounter';
+import { useAuth } from './context/AuthContext';
 
 function App() {
   const { count, increment, decrement, reset } = useCounter(0);
+  const { user, loading, login, logout } = useAuth();
+
+  if (loading) {
+    return <div className="app">Loading...</div>;
+  }
 
   return (
     <div className="app">
       <h1>Tubes</h1>
+
+      <div className="auth-section">
+        {user ? (
+          <div className="user-profile">
+            <img
+              src={user.picture}
+              alt={user.name}
+              style={{ width: '40px', borderRadius: '50%', marginRight: '10px' }}
+            />
+            <span>Welcome, {user.name}</span>
+            <Button label="Logout" onClick={logout} variant="secondary" />
+          </div>
+        ) : (
+          <Button label="Login with Google" onClick={login} variant="primary" />
+        )}
+      </div>
+
       <p>A minimal React + TypeScript app with comprehensive testing setup</p>
 
       <div className="counter-demo">
