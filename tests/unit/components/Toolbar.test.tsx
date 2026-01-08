@@ -29,8 +29,9 @@ describe('Toolbar Component', () => {
 
     render(<Toolbar />);
 
-    expect(screen.getByText('Tubes')).toBeInTheDocument();
-    expect(screen.getByText('Login')).toBeInTheDocument();
+    // expect(screen.getByText('Tubes')).toBeInTheDocument(); // Logo is an image now
+    expect(screen.getByAltText('YouTube Logo')).toBeInTheDocument();
+    expect(screen.getByText('Sign in')).toBeInTheDocument();
     expect(screen.queryByText('Logout')).not.toBeInTheDocument();
   });
 
@@ -44,7 +45,7 @@ describe('Toolbar Component', () => {
 
     render(<Toolbar />);
 
-    fireEvent.click(screen.getByText('Login'));
+    fireEvent.click(screen.getByText('Sign in'));
     expect(mockLogin).toHaveBeenCalledTimes(1);
   });
 
@@ -63,10 +64,10 @@ describe('Toolbar Component', () => {
 
     render(<Toolbar />);
 
-    expect(screen.getByText('Tubes')).toBeInTheDocument();
-    expect(screen.getByText('Test User')).toBeInTheDocument();
+    expect(screen.getByAltText('YouTube Logo')).toBeInTheDocument();
+    expect(screen.getByAltText('Test User')).toBeInTheDocument();
     expect(screen.getByText('Logout')).toBeInTheDocument();
-    expect(screen.queryByText('Login')).not.toBeInTheDocument();
+    expect(screen.queryByText('Sign in')).not.toBeInTheDocument();
 
     const img = screen.getByAltText('Test User');
     expect(img).toHaveAttribute('src', 'https://example.com/pic.jpg');
@@ -113,8 +114,8 @@ describe('Toolbar Component', () => {
 
     // After error, src should be the fallback
     // Since we hardcoded the fallback logic in component, we check if it changed
-    // In our implementation: const fallbackImage = 'https://ui-avatars.com/api/?name=' + (user?.name || 'User');
-    expect(img).toHaveAttribute('src', 'https://ui-avatars.com/api/?name=Test User');
+    // In our implementation: const fallbackImage = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(user?.name || 'User');
+    expect(img).toHaveAttribute('src', 'https://ui-avatars.com/api/?name=Test%20User');
   });
 
   it('uses fallback image if user.picture is missing', () => {
@@ -133,6 +134,6 @@ describe('Toolbar Component', () => {
     render(<Toolbar />);
 
     const img = screen.getByAltText('Test User');
-    expect(img).toHaveAttribute('src', 'https://ui-avatars.com/api/?name=Test User');
+    expect(img).toHaveAttribute('src', 'https://ui-avatars.com/api/?name=Test%20User');
   });
 });

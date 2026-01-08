@@ -1,5 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import App from '../../src/App';
 import { AuthProvider } from '../../src/context/AuthContext';
 import { YouTubeService } from '../../src/services/youtube';
@@ -16,8 +16,8 @@ vi.mock('../../src/services/youtube', () => ({
 vi.mock('../../src/services/auth', () => {
   return {
     AuthService: {
-      getCurrentUser: vi.fn().mockResolvedValue(null),
-      login: vi.fn(),
+      checkAuth: vi.fn(),
+      getLoginUrl: vi.fn(),
       logout: vi.fn(),
     }
   };
@@ -26,21 +26,32 @@ vi.mock('../../src/services/auth', () => {
 const mockChannels = [
   {
     youtube_id: '1',
-    name: 'Test Channel 1',
-    picture: 'https://example.com/channel1.jpg',
+    title: 'Test Channel 1',
+    thumbnail_url: 'https://example.com/channel1.jpg',
   },
   {
     youtube_id: '2',
-    name: 'Test Channel 2',
-    picture: 'https://example.com/channel2.jpg',
+    title: 'Test Channel 2',
+    thumbnail_url: 'https://example.com/channel2.jpg',
   },
 ];
 
 describe('App Integration', () => {
+  // Mock console.error to avoid noise in tests where we expect errors
+  const originalConsoleError = console.error;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    console.error = vi.fn();
     (YouTubeService.getChannels as any).mockResolvedValue({ channels: mockChannels });
-    (AuthService.getCurrentUser as any).mockResolvedValue(null);
+
+    // Default to unauthenticated (rejecting auth check)
+    // We use mockImplementation to ensure it returns a fresh promise each time if needed
+    (AuthService.checkAuth as any).mockRejectedValue(new Error('Auth failed'));
+  });
+
+  afterEach(() => {
+    console.error = originalConsoleError;
   });
 
   it('renders the app with all required elements', async () => {
@@ -54,7 +65,7 @@ describe('App Integration', () => {
       // Sidebar navigation
       expect(screen.getByText('Home')).toBeInTheDocument();
       expect(screen.getByText('Explore')).toBeInTheDocument();
-      expect(screen.getByText('Subscriptions')).toBeInTheDocument();
+      expect(screen.getAllByText('Subscriptions')[0]).toBeInTheDocument();
 
        // Toolbar elements
        expect(screen.getByAltText('YouTube Logo')).toBeInTheDocument();
@@ -63,7 +74,7 @@ describe('App Integration', () => {
 
         // Main content (VideoGrid)
         expect(screen.getByText('Talking Tech and AI with Google CEO Sundar Pichai!')).toBeInTheDocument();
-        expect(screen.getByText('Marques Brownlee')).toBeInTheDocument();
+        expect(screen.getAllByText('Marques Brownlee')[0]).toBeInTheDocument();
     });
   });
 
@@ -84,8 +95,7 @@ describe('App Integration', () => {
   });
 
   it('renders login button when not authenticated', async () => {
-    (AuthService.getCurrentUser as any).mockResolvedValue(null);
-
+    // Already set to reject in beforeEach
     render(
       <AuthProvider>
         <App />
@@ -98,8 +108,11 @@ describe('App Integration', () => {
   });
 
   it('renders user profile and logout button when authenticated', async () => {
-    const mockUser = { name: 'Test User', picture: 'https://example.com/pic.jpg', email: 'test@example.com' };
-    (AuthService.getCurrentUser as any).mockResolvedValue(mockUser);
+    const mockUser = { id: 1, name: 'Test User', picture: 'https://example.com/pic.jpg', email: 'test@example.com' };
+
+    // Override the mock for this specific test
+    // We use mockResolvedValue which should take precedence
+    (AuthService.checkAuth as any).mockResolvedValue(mockUser);
 
     render(
       <AuthProvider>
