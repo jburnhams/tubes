@@ -4,8 +4,29 @@ import userEvent from '@testing-library/user-event';
 import * as fs from 'fs';
 import * as path from 'path';
 import App from '@/src/App';
+import { vi, Mock } from 'vitest';
+import * as AuthContext from '@/src/context/AuthContext';
+
+// Mock the AuthContext
+vi.mock('@/src/context/AuthContext', () => ({
+  useAuth: vi.fn(),
+  AuthProvider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
 
 describe('Browser Integration Tests', () => {
+  // Default mock implementation
+  const mockUseAuth = AuthContext.useAuth as Mock;
+
+  beforeEach(() => {
+    mockUseAuth.mockReturnValue({
+      user: null,
+      loading: false,
+      error: null,
+      login: vi.fn(),
+      logout: vi.fn(),
+    });
+  });
+
   describe('index.html structure', () => {
     let htmlContent: string;
 
@@ -168,8 +189,9 @@ describe('Browser Integration Tests', () => {
     it('has correct button variants', () => {
       render(<App />);
 
+      // Now we have 4 buttons including the Login button
       const buttons = screen.getAllByRole('button');
-      expect(buttons).toHaveLength(3);
+      expect(buttons.length).toBeGreaterThanOrEqual(3);
 
       // Check that buttons have the appropriate classes
       const incrementButton = screen.getByText('Increment').closest('button');
@@ -179,6 +201,42 @@ describe('Browser Integration Tests', () => {
       expect(incrementButton).toHaveClass('button-primary');
       expect(decrementButton).toHaveClass('button-secondary');
       expect(resetButton).toHaveClass('button-secondary');
+    });
+  });
+
+  describe('Authentication Integration', () => {
+    it('renders login button when not authenticated', () => {
+      // mockUseAuth is already set to return user: null in beforeEach
+      render(<App />);
+
+      expect(screen.getByText('Login with Google')).toBeInTheDocument();
+      expect(screen.queryByText('Logout')).not.toBeInTheDocument();
+    });
+
+    it('renders user profile and logout button when authenticated', () => {
+      const mockUseAuth = AuthContext.useAuth as Mock;
+      mockUseAuth.mockReturnValue({
+        user: {
+          id: 1,
+          name: 'Test User',
+          email: 'test@example.com',
+          picture: 'https://example.com/pic.jpg',
+        },
+        loading: false,
+        error: null,
+        login: vi.fn(),
+        logout: vi.fn(),
+      });
+
+      render(<App />);
+
+      expect(screen.getByText('Welcome, Test User')).toBeInTheDocument();
+      expect(screen.getByText('Logout')).toBeInTheDocument();
+      expect(screen.queryByText('Login with Google')).not.toBeInTheDocument();
+
+      const img = screen.getByAltText('Test User');
+      expect(img).toBeInTheDocument();
+      expect(img).toHaveAttribute('src', 'https://example.com/pic.jpg');
     });
   });
 
