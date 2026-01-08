@@ -1,201 +1,129 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { YouTubeService } from '../services/youtube';
+import { Video } from '../types/youtube';
 
-// Hardcoded data matching youtube.html content
-const videos = [
-    {
-        id: 'n2RNcPRtAiY',
-        title: 'Talking Tech and AI with Google CEO Sundar Pichai!',
-        thumbnail: '/thumbnails/thumbnail-1.webp',
-        duration: '14:20',
-        channelName: 'Marques Brownlee',
-        channelUrl: 'https://www.youtube.com/c/mkbhd',
-        channelPicture: '/channel-pictures/channel-1.jpeg',
-        subscribers: '16.6M',
-        views: '3.4M views',
-        time: '6 months ago',
-        videoUrl: 'https://www.youtube.com/watch?v=n2RNcPRtAiY'
-    },
-    {
-        id: 'mP0RAo9SKZk',
-        title: 'Try Not to Laugh Challenge #9',
-        thumbnail: '/thumbnails/thumbnail-2.webp',
-        duration: '8:22',
-        channelName: 'Markiplier',
-        channelUrl: 'https://www.youtube.com/c/markiplier',
-        channelPicture: '/channel-pictures/channel-2.jpeg',
-        subscribers: '34.3M',
-        views: '19M views',
-        time: '4 years ago',
-        videoUrl: 'https://www.youtube.com/watch?v=mP0RAo9SKZk'
-    },
-    {
-        id: 'FgjPQQeTh1w',
-        title: 'Crazy Tik Toks Taken Moments Before DISASTER',
-        thumbnail: '/thumbnails/thumbnail-3.webp',
-        duration: '9:13',
-        channelName: 'SSSniperWolf',
-        channelUrl: 'https://www.youtube.com/user/SSSniperWolf',
-        channelPicture: '/channel-pictures/channel-3.jpeg',
-        subscribers: '33.2M',
-        views: '12M views',
-        time: '1 year ago',
-        videoUrl: 'https://www.youtube.com/watch?v=FgjPQQeTh1w'
-    },
-    {
-        id: '094y1Z2wpJg',
-        title: 'The Simplest Math Problem No One Can Solve - Collatz Conjecture',
-        thumbnail: '/thumbnails/thumbnail-4.webp',
-        duration: '22:09',
-        channelName: 'Veritasium',
-        channelUrl: 'https://www.youtube.com/c/veritasium',
-        channelPicture: '/channel-pictures/channel-4.jpeg',
-        subscribers: '13.3M',
-        views: '18M views',
-        time: '4 months ago',
-        videoUrl: 'https://www.youtube.com/watch?v=094y1Z2wpJg'
-    },
-    {
-        id: '86CQq3pKSUw',
-        title: "Kadane's Algorithm to Maximum Sum Subarray Problem",
-        thumbnail: '/thumbnails/thumbnail-5.webp',
-        duration: '11:17',
-        channelName: 'CS Dojo',
-        channelUrl: 'https://www.youtube.com/c/CSDojo',
-        channelPicture: '/channel-pictures/channel-5.jpeg',
-        subscribers: '1.89M',
-        views: '519K views',
-        time: '5 years ago',
-        videoUrl: 'https://www.youtube.com/watch?v=86CQq3pKSUw'
-    },
-    {
-        id: 'yXWw0_UfSFg',
-        title: 'Anything You Can Fit In The Circle I’ll Pay For',
-        thumbnail: '/thumbnails/thumbnail-6.webp',
-        duration: '19:59',
-        channelName: 'MrBeast',
-        channelUrl: 'https://www.youtube.com/channel/UCX6OQ3DkcsbYNE6H8uQQuVA',
-        channelPicture: '/channel-pictures/channel-6.jpeg',
-        subscribers: '129M',
-        views: '141M views',
-        time: '1 year ago',
-        videoUrl: 'https://www.youtube.com/watch?v=yXWw0_UfSFg'
-    },
-    {
-        id: 'fNVa1qMbF9Y',
-        title: "Why Planes Don't Fly Over Tibet",
-        thumbnail: '/thumbnails/thumbnail-7.webp',
-        duration: '10:13',
-        channelName: 'RealLifeLore',
-        channelUrl: 'https://www.youtube.com/channel/UCP5tjEmvPItGyLhmjdwP7Ww',
-        channelPicture: '/channel-pictures/channel-7.jpeg',
-        subscribers: '6.56M',
-        views: '6.6M views',
-        time: '1 year ago',
-        videoUrl: 'https://www.youtube.com/watch?v=fNVa1qMbF9Y'
-    },
-    {
-        id: 'lFm4EM1juls',
-        title: "Inside The World's Biggest Passenger Plane",
-        thumbnail: '/thumbnails/thumbnail-8.webp',
-        duration: '7:12',
-        channelName: 'Tech Vision',
-        channelUrl: 'https://www.youtube.com/channel/UCHAK6CyegY22Zj2GWrcaIxg',
-        channelPicture: '/channel-pictures/channel-8.jpeg',
-        subscribers: '798K',
-        views: '3.7M views',
-        time: '10 months ago',
-        videoUrl: 'https://www.youtube.com/watch?v=lFm4EM1juls'
-    },
-    {
-        id: 'ixmxOlcrlUc',
-        title: 'The SECRET to Super Human STRENGTH',
-        thumbnail: '/thumbnails/thumbnail-9.webp',
-        duration: '13:17',
-        channelName: 'ThenX',
-        channelUrl: 'https://www.youtube.com/c/OFFICIALTHENXSTUDIOS',
-        channelPicture: '/channel-pictures/channel-9.jpeg',
-        subscribers: '7.56M',
-        views: '20M views',
-        time: '3 year ago',
-        videoUrl: 'https://www.youtube.com/watch?v=ixmxOlcrlUc'
-    },
-    {
-        id: 'R2vXbFp5C9o',
-        title: "How The World's Largest Cruise Ship Makes 30,000 Meals Every Day",
-        thumbnail: '/thumbnails/thumbnail-10.webp',
-        duration: '7:53',
-        channelName: 'Business Insider',
-        channelUrl: 'https://www.youtube.com/user/businessinsider',
-        channelPicture: '/channel-pictures/channel-10.jpeg',
-        subscribers: '7.36M',
-        views: '14M views',
-        time: '1 year ago',
-        videoUrl: 'https://www.youtube.com/watch?v=R2vXbFp5C9o'
-    },
-    {
-        id: '0nZuYyXET3s',
-        title: "Dubai's Crazy Underwater Train and Other Things #Only in Dubai",
-        thumbnail: '/thumbnails/thumbnail-11.webp',
-        duration: '4:10',
-        channelName: 'Destination Tips',
-        channelUrl: 'https://www.youtube.com/c/Destinationtips',
-        channelPicture: '/channel-pictures/channel-11.jpeg',
-        subscribers: '279K',
-        views: '3M views',
-        time: '1 year ago',
-        videoUrl: 'https://www.youtube.com/watch?v=0nZuYyXET3s'
-    },
-    {
-        id: '9iMGFqMmUFs',
-        title: "What would happen if you didn’t drink water? - Mia Nacamulli",
-        thumbnail: '/thumbnails/thumbnail-12.webp',
-        duration: '4:51',
-        channelName: 'TED-Ed',
-        channelUrl: 'https://www.youtube.com/teded',
-        channelPicture: '/channel-pictures/channel-12.jpeg',
-        subscribers: '18.1M',
-        views: '12M views',
-        time: '5 years ago',
-        videoUrl: 'https://www.youtube.com/watch?v=9iMGFqMmUFs'
+const formatDuration = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    if (hours > 0) {
+        return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     }
-];
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+};
+
+const formatViews = (views: number): string => {
+    if (views >= 1000000) {
+        return `${(views / 1000000).toFixed(1)}M views`;
+    }
+    if (views >= 1000) {
+        return `${(views / 1000).toFixed(1)}K views`;
+    }
+    return `${views} views`;
+};
+
+const formatTimeAgo = (dateString: string): string => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    let interval = seconds / 31536000;
+    if (interval > 1) return Math.floor(interval) + " years ago";
+
+    interval = seconds / 2592000;
+    if (interval > 1) return Math.floor(interval) + " months ago";
+
+    interval = seconds / 86400;
+    if (interval > 1) return Math.floor(interval) + " days ago";
+
+    interval = seconds / 3600;
+    if (interval > 1) return Math.floor(interval) + " hours ago";
+
+    interval = seconds / 60;
+    if (interval > 1) return Math.floor(interval) + " minutes ago";
+
+    return Math.floor(seconds) + " seconds ago";
+};
 
 export const VideoGrid: React.FC = () => {
+    const [videos, setVideos] = useState<Video[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const fetchVideos = async () => {
+            try {
+                const fetchedVideos = await YouTubeService.getVideos();
+                setVideos(fetchedVideos);
+            } catch (err) {
+                console.error('Failed to fetch videos:', err);
+                setError('Failed to load videos. Please try again later.');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchVideos();
+    }, []);
+
+    if (loading) {
+        return (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 gap-y-10">
+                {[...Array(8)].map((_, i) => (
+                    <div key={i} className="flex flex-col animate-pulse">
+                        <div className="bg-gray-200 aspect-video rounded-xl mb-3"></div>
+                        <div className="grid grid-cols-[36px_1fr] gap-3">
+                            <div className="bg-gray-200 rounded-full w-9 h-9"></div>
+                            <div className="flex flex-col gap-2">
+                                <div className="bg-gray-200 h-4 rounded w-3/4"></div>
+                                <div className="bg-gray-200 h-3 rounded w-1/2"></div>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        );
+    }
+
+    if (error) {
+        return <div className="text-center text-red-500 py-10">{error}</div>;
+    }
+
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 gap-y-10">
             {videos.map((video) => (
                 <div key={video.id} className="flex flex-col cursor-pointer">
                     <div className="relative mb-3">
-                        <a href={video.videoUrl} target="_blank" rel="noopener noreferrer" className="block relative">
+                        <a href={`https://www.youtube.com/watch?v=${video.id}`} target="_blank" rel="noopener noreferrer" className="block relative">
                             <img className="w-full rounded-xl object-cover aspect-video hover:rounded-none transition-all duration-200" src={video.thumbnail} alt={video.title} />
                              <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs font-medium px-1.5 py-0.5 rounded">
-                                {video.duration}
+                                {formatDuration(video.duration_seconds)}
                             </div>
                         </a>
                     </div>
                     <div className="grid grid-cols-[36px_1fr] gap-3">
                         <div className="relative group">
-                            <a href={video.channelUrl} target="_blank" rel="noopener noreferrer">
-                                <img className="rounded-full w-9 h-9 object-cover" src={video.channelPicture} alt={video.channelName} />
+                            <a href={`https://www.youtube.com/channel/${video.channel_id}`} target="_blank" rel="noopener noreferrer">
+                                <img className="rounded-full w-9 h-9 object-cover" src={video.channel_thumbnail} alt={video.channel_title} />
                             </a>
-                            {/* Tooltip */}
+                            {/* Tooltip - Simplified as we don't have subscriber count */}
                             <div className="absolute top-10 left-0 bg-white border border-gray-200 shadow-lg rounded-lg p-3 w-48 z-50 hidden group-hover:flex items-center gap-3">
-                                <img className="w-10 h-10 rounded-full" src={video.channelPicture} alt={video.channelName} />
+                                <img className="w-10 h-10 rounded-full" src={video.channel_thumbnail} alt={video.channel_title} />
                                 <div>
-                                    <p className="font-bold text-sm text-gray-900 line-clamp-1">{video.channelName}</p>
-                                    <p className="text-xs text-gray-500">{video.subscribers} subscribers</p>
+                                    <p className="font-bold text-sm text-gray-900 line-clamp-1">{video.channel_title}</p>
                                 </div>
                             </div>
                         </div>
                         <div className="flex flex-col">
-                            <a href={video.videoUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-gray-900 leading-5 mb-1 line-clamp-2 hover:text-blue-600" title={video.title}>
+                            <a href={`https://www.youtube.com/watch?v=${video.id}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-gray-900 leading-5 mb-1 line-clamp-2 hover:text-blue-600" title={video.title}>
                                 {video.title}
                             </a>
-                            <a href={video.channelUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-600 hover:text-gray-900 transition-colors">
-                                {video.channelName}
+                            <a href={`https://www.youtube.com/channel/${video.channel_id}`} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-600 hover:text-gray-900 transition-colors">
+                                {video.channel_title}
                             </a>
                             <div className="text-xs text-gray-600">
-                                {video.views} &#183; {video.time}
+                                {formatViews(video.view_count)} &#183; {formatTimeAgo(video.published_at)}
                             </div>
                         </div>
                     </div>
