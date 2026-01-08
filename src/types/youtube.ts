@@ -12,3 +12,18 @@ export interface Channel {
 export interface ChannelListResponse {
   channels: Channel[];
 }
+
+export interface Video {
+  id: string;
+  title: string;
+  description: string;
+  thumbnail: string;
+  duration_seconds: number;
+  channel_id: string;
+  channel_title: string;
+  channel_thumbnail: string;
+  published_at: string;
+  view_count: number;
+}
+
+export type VideoListResponse = Video[];
