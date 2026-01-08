@@ -1,4 +1,4 @@
-# JS App Template
+# Tubes
 
 A production-ready template for building React + TypeScript web applications with comprehensive testing infrastructure, CI/CD, and modern build tools.
 
@@ -51,7 +51,7 @@ npm run test:watch
 ## Project Structure
 
 ```
-js-app-template/
+tubes/
 ├── src/
 │   ├── components/      # React components
 │   ├── services/        # Business logic and utilities

@@ -7,7 +7,7 @@ function App() {
 
   return (
     <div className="app">
-      <h1>JS App Template</h1>
+      <h1>Tubes</h1>
       <p>A minimal React + TypeScript app with comprehensive testing setup</p>
 
       <div className="counter-demo">

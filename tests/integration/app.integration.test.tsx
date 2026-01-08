@@ -63,7 +63,7 @@ describe('Browser Integration Tests', () => {
       render(<App />);
 
       // Check main heading
-      expect(screen.getByText('JS App Template')).toBeInTheDocument();
+      expect(screen.getByText('Tubes')).toBeInTheDocument();
 
       // Check description
       expect(
@@ -197,7 +197,7 @@ describe('Browser Integration Tests', () => {
       render(<App />);
 
       // Verify initial state
-      expect(screen.getByText('JS App Template')).toBeInTheDocument();
+      expect(screen.getByText('Tubes')).toBeInTheDocument();
       expect(screen.getByText('Counter: 0')).toBeInTheDocument();
 
       // Simulate user workflow
