@@ -210,7 +210,7 @@ describe('Browser Integration Tests', () => {
       // mockUseAuth is already set to return user: null in beforeEach
       render(<App />);
 
-      expect(screen.getByText('Login with Google')).toBeInTheDocument();
+      expect(screen.getByText('Login')).toBeInTheDocument();
       expect(screen.queryByText('Logout')).not.toBeInTheDocument();
     });
 
@@ -234,7 +234,7 @@ describe('Browser Integration Tests', () => {
       // "Welcome, " was removed in the new Toolbar design, just showing name
       expect(screen.getByText('Test User')).toBeInTheDocument();
       expect(screen.getByText('Logout')).toBeInTheDocument();
-      expect(screen.queryByText('Login with Google')).not.toBeInTheDocument();
+      expect(screen.queryByText('Login')).not.toBeInTheDocument();
 
       const img = screen.getByAltText('Test User');
       expect(img).toBeInTheDocument();
