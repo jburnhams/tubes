@@ -99,9 +99,12 @@ describe('AuthContext Integration', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText('Login')).toBeInTheDocument();
+      // It should redirect, so window.location.href should be updated
+      expect(window.location.href).toBe('http://login.url');
     });
-    expect(screen.queryByTestId('user-name')).not.toBeInTheDocument();
+
+    // The loading state should persist to prevent flashing
+    expect(screen.getByText('Loading...')).toBeInTheDocument();
   });
 
   it('handles unexpected error', async () => {
@@ -118,26 +121,6 @@ describe('AuthContext Integration', () => {
     });
   });
 
-  it('redirects to login url on login click', async () => {
-    const authError = { login_url: 'http://external-login.com' };
-    (AuthService.checkAuth as any).mockResolvedValue(authError);
-
-    render(
-      <AuthProvider>
-        <TestComponent />
-      </AuthProvider>
-    );
-
-    await waitFor(() => {
-      expect(screen.getByText('Login')).toBeInTheDocument();
-    });
-
-    const loginButton = screen.getByText('Login');
-    fireEvent.click(loginButton);
-
-    // Check if window.location.href changed
-    expect(window.location.href).toBe('http://external-login.com');
-  });
 
   it('calls logout and redirects', async () => {
     (AuthService.checkAuth as any).mockResolvedValue(mockUser);

@@ -26,15 +26,18 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
         if ('id' in result) {
           setUser(result as User);
+          setLoading(false);
         } else {
           // It's an AuthErrorResponse (401)
           const authError = result as AuthErrorResponse;
           setLoginUrl(authError.login_url);
+          // Automatically redirect to login
+          window.location.href = authError.login_url;
+          // Keep loading true so we don't flash unauthenticated content
         }
       } catch (err) {
         console.error('Auth check failed', err);
         setError('Failed to check authentication status');
-      } finally {
         setLoading(false);
       }
     };
