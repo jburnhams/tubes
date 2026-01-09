@@ -59,16 +59,11 @@ export const ChannelPage: React.FC = () => {
     <div className="max-w-[1700px] mx-auto px-4 pt-6">
       {/* Banner / Header */}
       <div className="w-full h-32 md:h-48 lg:h-64 bg-gray-200 rounded-xl overflow-hidden mb-6 relative">
-          {/* Since we don't have a dedicated banner URL in the current API response (it's inside raw_json maybe, but complicated),
-              we'll use a placeholder or best_thumbnail_url blurred if we wanted, but for now just a color or placeholder.
-              Actually, the user said "show the big thumbnail image".
-              Usually channel pages have a banner.
-              If the user meant the profile picture is the "big thumbnail", we show it below.
-              If they meant the banner, I don't have it easily.
-              I will assume "big thumbnail image" refers to the channel avatar which can be high res (best_thumbnail_url).
-              I'll put a default banner.
-           */}
-           <div className="w-full h-full bg-gradient-to-r from-blue-500 to-purple-600"></div>
+        <img
+          src={channel.best_thumbnail_url || channel.thumbnail_url}
+          alt={`${channel.title} banner`}
+          className="w-full h-full object-cover object-center"
+        />
       </div>
 
       {/* Channel Header Info */}

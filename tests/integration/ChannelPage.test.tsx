@@ -75,6 +75,8 @@ describe('ChannelPage', () => {
     expect(screen.getByText(/1.0M views/)).toBeInTheDocument(); // formatCount(1000000) -> 1.0M
     expect(screen.getByText('Test Description')).toBeInTheDocument();
     expect(screen.getByAltText('Test Channel')).toHaveAttribute('src', 'http://example.com/large.jpg');
+    // Verify banner
+    expect(screen.getByAltText('Test Channel banner')).toHaveAttribute('src', 'http://example.com/large.jpg');
   });
 
   it('renders error message on failure', async () => {
