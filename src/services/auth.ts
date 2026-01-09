@@ -4,7 +4,7 @@ const API_BASE_URL = 'https://storage.jonathanburnhams.com';
 
 export class AuthService {
   static async checkAuth(): Promise<User | AuthErrorResponse> {
-    const response = await fetch(`${API_BASE_URL}/api/user`, {
+    const response = await fetch(`${API_BASE_URL}/api/session`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -13,7 +13,10 @@ export class AuthService {
     });
 
     if (response.ok) {
-      return response.json();
+      const data = await response.json();
+      const user = data.user;
+      user.session_id = data.id;
+      return user;
     } else if (response.status === 401) {
       return response.json();
     } else {

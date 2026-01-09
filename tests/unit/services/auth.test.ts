@@ -15,16 +15,19 @@ describe('AuthService', () => {
 
   describe('checkAuth', () => {
     it('returns user data on successful auth', async () => {
+      const mockSessionId = 'session-123';
       const mockUser = { id: 1, name: 'Test User' };
+      const mockResponse = { id: mockSessionId, user: mockUser };
+
       mockFetch.mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve(mockUser),
+        json: () => Promise.resolve(mockResponse),
       });
 
       const result = await AuthService.checkAuth();
-      expect(result).toEqual(mockUser);
+      expect(result).toEqual({ ...mockUser, session_id: mockSessionId });
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://storage.jonathanburnhams.com/api/user',
+        'https://storage.jonathanburnhams.com/api/session',
         expect.objectContaining({
           method: 'GET',
           credentials: 'include',
