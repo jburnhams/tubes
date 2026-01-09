@@ -21,7 +21,11 @@ export class YouTubeService {
   }
 
   static async getVideos(): Promise<VideoListResponse> {
-    const response = await fetch(VIDEOS_API_URL, {
+    const url = new URL(VIDEOS_API_URL);
+    url.searchParams.append('min_duration', '300');
+    url.searchParams.append('max_duration', '3600');
+
+    const response = await fetch(url.toString(), {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
