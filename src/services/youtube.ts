@@ -1,6 +1,7 @@
-import { ChannelListResponse, VideoListResponse, VideoDetail } from '../types/youtube';
+import { ChannelListResponse, VideoListResponse, VideoDetail, ChannelDetail } from '../types/youtube';
 
 const CHANNELS_API_URL = 'https://storage.jonathanburnhams.com/api/youtube/channels';
+const CHANNEL_DETAIL_API_URL_BASE = 'https://storage.jonathanburnhams.com/api/youtube/channel';
 const VIDEOS_API_URL = 'https://storage.jonathanburnhams.com/api/youtube/videos/random';
 const VIDEO_DETAIL_API_URL_BASE = 'https://storage.jonathanburnhams.com/api/youtube/video';
 
@@ -52,6 +53,22 @@ export class YouTubeService {
 
     if (!response.ok) {
       throw new Error(`Failed to fetch video details: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  static async getChannel(id: string): Promise<ChannelDetail> {
+    const response = await fetch(`${CHANNEL_DETAIL_API_URL_BASE}/${id}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch channel details: ${response.status}`);
     }
 
     return response.json();

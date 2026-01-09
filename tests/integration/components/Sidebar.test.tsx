@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Sidebar } from '@/src/components/Sidebar';
 import { YouTubeService } from '@/src/services/youtube';
@@ -22,7 +23,11 @@ describe('Sidebar Integration', () => {
     ];
     (YouTubeService.getChannels as any).mockResolvedValue({ channels: mockChannels });
 
-    render(<Sidebar />);
+    render(
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>
+    );
 
     // Wait for channels to load and be displayed (initially expanded)
     await waitFor(() => {

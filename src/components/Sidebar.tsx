@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { YouTubeService } from '../services/youtube';
 import { Channel } from '../types/youtube';
 
@@ -70,7 +71,7 @@ export const Sidebar: React.FC = () => {
                         <div className="px-6 py-2 text-xs text-red-500">{error}</div>
                     )}
                     {!error && channels.map((channel) => (
-                        <div key={channel.youtube_id} className="flex items-center pl-14 pr-6 py-2 cursor-pointer hover:bg-gray-100" title={channel.title}>
+                        <Link to={`/channel/${channel.youtube_id}`} key={channel.youtube_id} className="flex items-center pl-14 pr-6 py-2 cursor-pointer hover:bg-gray-100" title={channel.title}>
                             <img
                                 src={channel.thumbnail_url || '/icons/channel-placeholder.png'}
                                 className="h-6 w-6 rounded-full mr-3 object-cover"
@@ -78,7 +79,7 @@ export const Sidebar: React.FC = () => {
                                 onError={(e) => { (e.target as HTMLImageElement).src = `https://ui-avatars.com/api/?name=${encodeURIComponent(channel.title)}` }}
                             />
                             <div className="text-sm text-gray-700 truncate">{channel.title}</div>
-                        </div>
+                        </Link>
                     ))}
                     {!error && channels.length === 0 && !loading && (
                         <div className="px-6 py-2 text-xs text-gray-500">No channels found</div>

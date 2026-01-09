@@ -9,6 +9,16 @@ export interface Channel {
   country: string | null;
 }
 
+export interface ChannelDetail extends Channel {
+  view_count: number;
+  subscriber_count: number;
+  video_count: number;
+  upload_playlist_id: string;
+  best_thumbnail_width: number;
+  best_thumbnail_height: number;
+  raw_json: string;
+}
+
 export interface ChannelListResponse {
   channels: Channel[];
 }
