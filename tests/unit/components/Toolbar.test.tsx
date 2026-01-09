@@ -55,7 +55,10 @@ describe('Toolbar Component', () => {
         id: 1,
         name: 'Test User',
         email: 'test@example.com',
-        picture: 'https://example.com/pic.jpg',
+        profile_picture: 'https://example.com/pic.jpg',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        last_login_at: new Date().toISOString(),
       },
       loading: false,
       login: mockLogin,
@@ -66,11 +69,17 @@ describe('Toolbar Component', () => {
 
     expect(screen.getByAltText('YouTube Logo')).toBeInTheDocument();
     expect(screen.getByAltText('Test User')).toBeInTheDocument();
-    expect(screen.getByText('Logout')).toBeInTheDocument();
+
+    // Open user menu
+    fireEvent.click(screen.getByAltText('Test User'));
+
+    expect(screen.getByText('Sign out')).toBeInTheDocument();
     expect(screen.queryByText('Sign in')).not.toBeInTheDocument();
 
-    const img = screen.getByAltText('Test User');
-    expect(img).toHaveAttribute('src', 'https://example.com/pic.jpg');
+    const imgs = screen.getAllByAltText('Test User');
+    imgs.forEach(img => {
+      expect(img).toHaveAttribute('src', 'https://example.com/pic.jpg');
+    });
   });
 
   it('calls logout function when logout button is clicked', () => {
@@ -79,7 +88,10 @@ describe('Toolbar Component', () => {
         id: 1,
         name: 'Test User',
         email: 'test@example.com',
-        picture: 'https://example.com/pic.jpg',
+        profile_picture: 'https://example.com/pic.jpg',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        last_login_at: new Date().toISOString(),
       },
       loading: false,
       login: mockLogin,
@@ -88,7 +100,10 @@ describe('Toolbar Component', () => {
 
     render(<Toolbar />);
 
-    fireEvent.click(screen.getByText('Logout'));
+    // Open user menu
+    fireEvent.click(screen.getByAltText('Test User'));
+
+    fireEvent.click(screen.getByText('Sign out'));
     expect(mockLogout).toHaveBeenCalledTimes(1);
   });
 
@@ -98,7 +113,10 @@ describe('Toolbar Component', () => {
         id: 1,
         name: 'Test User',
         email: 'test@example.com',
-        picture: 'https://invalid-url.com/pic.jpg',
+        profile_picture: 'https://invalid-url.com/pic.jpg',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        last_login_at: new Date().toISOString(),
       },
       loading: false,
       login: mockLogin,
@@ -124,7 +142,10 @@ describe('Toolbar Component', () => {
         id: 1,
         name: 'Test User',
         email: 'test@example.com',
-        picture: '',
+        profile_picture: '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        last_login_at: new Date().toISOString(),
       },
       loading: false,
       login: mockLogin,

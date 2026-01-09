@@ -142,8 +142,14 @@ describe('App Integration', () => {
         expect(screen.getByAltText('Test User')).toBeInTheDocument();
     });
 
+    // Open user menu
+    const userAvatar = screen.getByAltText('Test User');
+    await waitFor(() => {
+        userAvatar.click();
+    });
+
     // Check logout button (it might be hidden in dropdown but should exist)
-    expect(screen.getByText('Logout')).toBeInTheDocument();
+    expect(screen.getByText('Sign out')).toBeInTheDocument();
 
     expect(screen.queryByText('Sign in')).not.toBeInTheDocument();
   });
