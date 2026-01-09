@@ -10,6 +10,54 @@ describe('YouTubeService', () => {
     vi.restoreAllMocks();
   });
 
+  it('should fetch channels correctly', async () => {
+    const mockChannels = { channels: [{ youtube_id: '1', title: 'Test' }] };
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockChannels,
+    } as Response);
+
+    const result = await YouTubeService.getChannels();
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/channels'),
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(result).toEqual(mockChannels);
+  });
+
+  it('should fetch videos correctly', async () => {
+    const mockVideos = { videos: [{ id: '1', title: 'Video' }] };
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockVideos,
+    } as Response);
+
+    const result = await YouTubeService.getVideos();
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/videos/random'),
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(result).toEqual(mockVideos);
+  });
+
+  it('should fetch single video correctly', async () => {
+    const mockVideo = { youtube_id: '1', title: 'Video' };
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockVideo,
+    } as Response);
+
+    const result = await YouTubeService.getVideo('1');
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/video/1'),
+      expect.objectContaining({ method: 'GET' })
+    );
+    expect(result).toEqual(mockVideo);
+  });
+
   it('should fetch channel details correctly', async () => {
     const mockChannel = {
       youtube_id: 'UC123',

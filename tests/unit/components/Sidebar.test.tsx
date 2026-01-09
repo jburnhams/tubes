@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Sidebar } from '@/src/components/Sidebar';
 import { YouTubeService } from '@/src/services/youtube';
@@ -20,7 +21,11 @@ describe('Sidebar', () => {
     // Mock getChannels to resolve immediately
     (YouTubeService.getChannels as any).mockResolvedValue({ channels: [] });
 
-    render(<Sidebar />);
+    render(
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>
+    );
 
     expect(screen.getByText('Home')).toBeInTheDocument();
     expect(screen.getByText('Explore')).toBeInTheDocument();
@@ -39,7 +44,11 @@ describe('Sidebar', () => {
   it('calls getChannels on mount', async () => {
     (YouTubeService.getChannels as any).mockResolvedValue({ channels: [] });
 
-    render(<Sidebar />);
+    render(
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>
+    );
 
     await waitFor(() => {
       expect(YouTubeService.getChannels).toHaveBeenCalledTimes(1);
@@ -53,7 +62,11 @@ describe('Sidebar', () => {
     ];
     (YouTubeService.getChannels as any).mockResolvedValue({ channels: mockChannels });
 
-    render(<Sidebar />);
+    render(
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Test Channel 1')).toBeInTheDocument();
@@ -66,7 +79,11 @@ describe('Sidebar', () => {
     // Suppress console.error for this test
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    render(<Sidebar />);
+    render(
+      <MemoryRouter>
+        <Sidebar />
+      </MemoryRouter>
+    );
 
     await waitFor(() => {
       expect(screen.getByText('Failed to load channels.')).toBeInTheDocument();
