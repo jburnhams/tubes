@@ -2,12 +2,15 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { YouTubeService } from '../services/youtube';
 import { VideoDetail } from '../types/youtube';
+import { TubePlayerWrapper } from '../components/TubePlayerWrapper';
+import { useAuth } from '../context/AuthContext';
 
 export const VideoPage = () => {
   const { id } = useParams<{ id: string }>();
   const [video, setVideo] = useState<VideoDetail | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
 
   useEffect(() => {
     const fetchVideo = async () => {
@@ -49,11 +52,15 @@ export const VideoPage = () => {
     <div className="flex flex-col gap-4 max-w-6xl mx-auto">
       {/* Video Player Placeholder / Thumbnail */}
       <div className="w-full aspect-video bg-black rounded-xl overflow-hidden shadow-lg">
-        <img
-          src={video.best_thumbnail_url || video.thumbnail_url}
-          alt={video.title}
-          className="w-full h-full object-contain"
-        />
+        {id ? (
+          <TubePlayerWrapper videoId={id} sessionId={user?.session_id} />
+        ) : (
+          <img
+            src={video.best_thumbnail_url || video.thumbnail_url}
+            alt={video.title}
+            className="w-full h-full object-contain"
+          />
+        )}
       </div>
 
       {/* Video Metadata */}
