@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { YouTubeService } from '../services/youtube';
 import { Video } from '../types/youtube';
 
@@ -95,12 +96,12 @@ export const VideoGrid: React.FC = () => {
             {videos.map((video) => (
                 <div key={video.id} className="flex flex-col cursor-pointer">
                     <div className="relative mb-3">
-                        <a href={`https://www.youtube.com/watch?v=${video.id}`} target="_blank" rel="noopener noreferrer" className="block relative">
+                        <Link to={`/video/${video.id}`} className="block relative">
                             <img className="w-full rounded-xl object-cover aspect-video hover:rounded-none transition-all duration-200" src={video.thumbnail} alt={video.title} />
                              <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs font-medium px-1.5 py-0.5 rounded">
                                 {formatDuration(video.duration_seconds)}
                             </div>
-                        </a>
+                        </Link>
                     </div>
                     <div className="grid grid-cols-[36px_1fr] gap-3">
                         <div className="relative group">
@@ -116,9 +117,9 @@ export const VideoGrid: React.FC = () => {
                             </div>
                         </div>
                         <div className="flex flex-col">
-                            <a href={`https://www.youtube.com/watch?v=${video.id}`} target="_blank" rel="noopener noreferrer" className="text-sm font-bold text-gray-900 leading-5 mb-1 line-clamp-2 hover:text-blue-600" title={video.title}>
+                            <Link to={`/video/${video.id}`} className="text-sm font-bold text-gray-900 leading-5 mb-1 line-clamp-2 hover:text-blue-600" title={video.title}>
                                 {video.title}
-                            </a>
+                            </Link>
                             <a href={`https://www.youtube.com/channel/${video.channel_id}`} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-600 hover:text-gray-900 transition-colors">
                                 {video.channel_title}
                             </a>

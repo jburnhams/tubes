@@ -3,6 +3,7 @@ import { VideoGrid } from '../../src/components/VideoGrid';
 import { YouTubeService } from '../../src/services/youtube';
 import { vi, describe, it, expect } from 'vitest';
 import React from 'react';
+import { BrowserRouter } from 'react-router-dom';
 
 // Mock the YouTubeService
 vi.mock('../../src/services/youtube');
@@ -48,7 +49,11 @@ describe('VideoGrid', () => {
     it('renders videos after successful fetch', async () => {
         (YouTubeService.getVideos as any).mockResolvedValue({ videos: mockVideos });
 
-        render(<VideoGrid />);
+        render(
+            <BrowserRouter>
+                <VideoGrid />
+            </BrowserRouter>
+        );
 
         await waitFor(() => {
             expect(screen.getByText('Test Video 1')).toBeInTheDocument();
