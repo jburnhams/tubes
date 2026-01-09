@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { YouTubeService } from '../services/youtube';
 import { ChannelDetail } from '../types/youtube';
+import { VideoGrid } from '../components/VideoGrid';
 
 function formatCount(count: number): string {
   if (count >= 1000000) {
@@ -110,10 +111,9 @@ export const ChannelPage: React.FC = () => {
           </div>
       </div>
 
-      {/* Content Area (Placeholder for now as we don't have an endpoint to fetch channel videos specifically,
-          although we could potentially use getVideos() but it returns random ones, or requires more filtering logic not currently available) */}
-      <div className="px-4 md:px-12 py-10 text-center text-gray-500">
-          <p>Channel content would appear here.</p>
+      {/* Content Area */}
+      <div className="px-4 md:px-12 pb-10">
+        <VideoGrid channelId={id} />
       </div>
     </div>
   );

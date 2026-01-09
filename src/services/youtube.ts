@@ -22,10 +22,13 @@ export class YouTubeService {
     return response.json();
   }
 
-  static async getVideos(): Promise<VideoListResponse> {
+  static async getVideos(channelId?: string): Promise<VideoListResponse> {
     const url = new URL(VIDEOS_API_URL);
     url.searchParams.append('min_duration', '300');
     url.searchParams.append('max_duration', '3600');
+    if (channelId) {
+      url.searchParams.append('channel_id', channelId);
+    }
 
     const response = await fetch(url.toString(), {
       method: 'GET',
