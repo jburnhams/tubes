@@ -82,4 +82,16 @@ describe('VideoGrid', () => {
             expect(screen.getByText('Failed to load videos. Please try again later.')).toBeInTheDocument();
         });
     });
+
+    it('passes channelId to fetchVideos', async () => {
+        (YouTubeService.getVideos as any).mockResolvedValue({ videos: [] });
+
+        render(
+            <BrowserRouter>
+                <VideoGrid channelId="test-channel-id" />
+            </BrowserRouter>
+        );
+
+        expect(YouTubeService.getVideos).toHaveBeenCalledWith('test-channel-id');
+    });
 });

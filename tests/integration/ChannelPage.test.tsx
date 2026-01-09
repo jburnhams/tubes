@@ -10,6 +10,7 @@ import { ChannelDetail } from '../../src/types/youtube';
 vi.mock('../../src/services/youtube', () => ({
   YouTubeService: {
     getChannel: vi.fn(),
+    getVideos: vi.fn(),
   },
 }));
 
@@ -54,6 +55,7 @@ describe('ChannelPage', () => {
 
   it('renders channel details after fetch', async () => {
     vi.mocked(YouTubeService.getChannel).mockResolvedValue(mockChannel);
+    vi.mocked(YouTubeService.getVideos).mockResolvedValue({ videos: [] });
 
     render(
       <MemoryRouter initialEntries={['/channel/UC123']}>

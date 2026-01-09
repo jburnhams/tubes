@@ -47,7 +47,11 @@ const formatTimeAgo = (dateString: string): string => {
     return Math.floor(seconds) + " seconds ago";
 };
 
-export const VideoGrid: React.FC = () => {
+interface VideoGridProps {
+    channelId?: string;
+}
+
+export const VideoGrid: React.FC<VideoGridProps> = ({ channelId }) => {
     const [videos, setVideos] = useState<Video[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -55,7 +59,7 @@ export const VideoGrid: React.FC = () => {
     useEffect(() => {
         const fetchVideos = async () => {
             try {
-                const response = await YouTubeService.getVideos();
+                const response = await YouTubeService.getVideos(channelId);
                 setVideos(response.videos);
             } catch (err) {
                 console.error('Failed to fetch videos:', err);
@@ -66,7 +70,7 @@ export const VideoGrid: React.FC = () => {
         };
 
         fetchVideos();
-    }, []);
+    }, [channelId]);
 
     if (loading) {
         return (
