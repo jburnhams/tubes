@@ -49,6 +49,7 @@ describe('VideoGrid Integration', () => {
     });
 
     it('handles server errors', async () => {
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
         server.use(
             http.get('https://storage.jonathanburnhams.com/api/youtube/videos/random', () => {
                 return new HttpResponse(null, { status: 500 });
@@ -60,5 +61,6 @@ describe('VideoGrid Integration', () => {
         await waitFor(() => {
             expect(screen.getByText('Failed to load videos. Please try again later.')).toBeInTheDocument();
         });
+        consoleSpy.mockRestore();
     });
 });

@@ -143,6 +143,7 @@ describe('VideoPage', () => {
     });
 
     it('shows error when fetch fails', async () => {
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
         (YouTubeService.getVideo as any).mockRejectedValue(new Error('Failed to fetch'));
         // Mock others to resolve or reject, shouldn't matter as main fetch fails
         (YouTubeService.getVideos as any).mockResolvedValue({ videos: [] });
@@ -161,5 +162,7 @@ describe('VideoPage', () => {
         await waitFor(() => {
             expect(screen.getByText('Failed to load video details.')).toBeInTheDocument();
         });
+
+        consoleSpy.mockRestore();
     });
 });
