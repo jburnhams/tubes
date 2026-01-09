@@ -54,8 +54,8 @@ export const VideoGrid: React.FC = () => {
     useEffect(() => {
         const fetchVideos = async () => {
             try {
-                const fetchedVideos = await YouTubeService.getVideos();
-                setVideos(fetchedVideos);
+                const response = await YouTubeService.getVideos();
+                setVideos(response.videos);
             } catch (err) {
                 console.error('Failed to fetch videos:', err);
                 setError('Failed to load videos. Please try again later.');

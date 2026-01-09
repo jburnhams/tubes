@@ -26,4 +26,6 @@ export interface Video {
   view_count: number;
 }
 
-export type VideoListResponse = Video[];
+export interface VideoListResponse {
+  videos: Video[];
+}

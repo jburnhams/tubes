@@ -7,20 +7,22 @@ import React from 'react';
 
 const server = setupServer(
     http.get('https://storage.jonathanburnhams.com/api/youtube/videos/random', () => {
-        return HttpResponse.json([
-            {
-                id: '1',
-                title: 'Integration Test Video',
-                description: 'Description 1',
-                thumbnail: 'http://example.com/thumb1.jpg',
-                duration_seconds: 120,
-                channel_id: 'channel1',
-                channel_title: 'Integration Channel',
-                channel_thumbnail: 'http://example.com/channel1.jpg',
-                published_at: '2023-01-01T00:00:00Z',
-                view_count: 1000
-            }
-        ]);
+        return HttpResponse.json({
+            videos: [
+                {
+                    id: '1',
+                    title: 'Integration Test Video',
+                    description: 'Description 1',
+                    thumbnail: 'http://example.com/thumb1.jpg',
+                    duration_seconds: 120,
+                    channel_id: 'channel1',
+                    channel_title: 'Integration Channel',
+                    channel_thumbnail: 'http://example.com/channel1.jpg',
+                    published_at: '2023-01-01T00:00:00Z',
+                    view_count: 1000
+                }
+            ]
+        });
     })
 );
 

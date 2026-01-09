@@ -60,7 +60,7 @@ describe('App Integration', () => {
     vi.resetAllMocks();
     console.error = vi.fn();
     (YouTubeService.getChannels as any).mockResolvedValue({ channels: mockChannels });
-    (YouTubeService.getVideos as any).mockResolvedValue(mockVideos);
+    (YouTubeService.getVideos as any).mockResolvedValue({ videos: mockVideos });
 
     // Default to unauthenticated (rejecting auth check)
     // We use mockImplementation to ensure it returns a fresh promise each time if needed

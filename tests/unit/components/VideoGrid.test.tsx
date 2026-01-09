@@ -46,7 +46,7 @@ describe('VideoGrid', () => {
     });
 
     it('renders videos after successful fetch', async () => {
-        (YouTubeService.getVideos as any).mockResolvedValue(mockVideos);
+        (YouTubeService.getVideos as any).mockResolvedValue({ videos: mockVideos });
 
         render(<VideoGrid />);
 
