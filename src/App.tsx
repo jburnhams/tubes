@@ -4,6 +4,7 @@ import { Toolbar } from './components/Toolbar';
 import { VideoGrid } from './components/VideoGrid';
 import { Sidebar } from './components/Sidebar';
 import { VideoPage } from './pages/VideoPage';
+import { ChannelPage } from './pages/ChannelPage';
 import { useAuth } from './context/AuthContext';
 
 function App() {
@@ -26,6 +27,7 @@ function App() {
         <Routes>
           <Route path="/" element={<VideoGrid />} />
           <Route path="/video/:id" element={<VideoPage />} />
+          <Route path="/channel/:id" element={<ChannelPage />} />
         </Routes>
       </main>
     </div>

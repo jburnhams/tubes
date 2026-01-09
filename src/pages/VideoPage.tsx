@@ -126,15 +126,15 @@ export const VideoPage = () => {
         {/* Top Row: Channel Info & Actions */}
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
+            <Link to={channel ? `/channel/${channel.youtube_id}` : '#'} className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden flex-shrink-0">
                {channel ? (
                  <img src={channel.thumbnail_url} alt={channel.title} className="w-full h-full object-cover" />
                ) : (
                  <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs">?</div>
                )}
-            </div>
+            </Link>
             <div className="flex flex-col">
-               <span className="font-bold text-gray-900 text-sm">{channel?.title || 'Unknown Channel'}</span>
+               <Link to={channel ? `/channel/${channel.youtube_id}` : '#'} className="font-bold text-gray-900 text-sm hover:text-gray-700">{channel?.title || 'Unknown Channel'}</Link>
                <span className="text-xs text-gray-500">1.2M subscribers</span>
             </div>
             <button className="bg-black text-white px-4 py-2 rounded-full text-sm font-medium hover:bg-gray-800 ml-4 transition-colors">
