@@ -29,3 +29,30 @@ export interface Video {
 export interface VideoListResponse {
   videos: Video[];
 }
+
+export interface VideoDetail {
+  youtube_id: string;
+  title: string;
+  description: string;
+  published_at: string;
+  channel_id: string;
+  thumbnail_url: string;
+  duration: string;
+  raw_json: string;
+  created_at: string;
+  updated_at: string;
+  duration_seconds: number;
+  view_count: number;
+  like_count: number;
+  comment_count: number;
+  best_thumbnail_url: string;
+  best_thumbnail_width: number;
+  best_thumbnail_height: number;
+  definition: string;
+  dimension: string;
+  licensed_content: number;
+  caption: number;
+  privacy_status: string;
+  embeddable: number;
+  made_for_kids: number;
+}

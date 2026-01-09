@@ -1,7 +1,9 @@
 import React from 'react';
+import { Routes, Route } from 'react-router-dom';
 import { Toolbar } from './components/Toolbar';
 import { VideoGrid } from './components/VideoGrid';
 import { Sidebar } from './components/Sidebar';
+import { VideoPage } from './pages/VideoPage';
 import { useAuth } from './context/AuthContext';
 
 function App() {
@@ -21,7 +23,10 @@ function App() {
       <Toolbar />
       <Sidebar />
       <main className="p-6 bg-gray-50 min-h-[calc(100vh-56px)]">
-        <VideoGrid />
+        <Routes>
+          <Route path="/" element={<VideoGrid />} />
+          <Route path="/video/:id" element={<VideoPage />} />
+        </Routes>
       </main>
     </div>
   );

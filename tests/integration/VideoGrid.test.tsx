@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { describe, it, expect, beforeAll, afterEach, afterAll } from 'vitest';
 import React from 'react';
+import { BrowserRouter } from 'react-router-dom';
 
 const server = setupServer(
     http.get('https://storage.jonathanburnhams.com/api/youtube/videos/random', () => {
@@ -32,7 +33,11 @@ describe('VideoGrid Integration', () => {
     afterAll(() => server.close());
 
     it('fetches and displays videos using MSW', async () => {
-        render(<VideoGrid />);
+        render(
+            <BrowserRouter>
+                <VideoGrid />
+            </BrowserRouter>
+        );
 
         await waitFor(() => {
             expect(screen.getByText('Integration Test Video')).toBeInTheDocument();

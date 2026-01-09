@@ -4,6 +4,7 @@ import App from '../../src/App';
 import { AuthProvider } from '../../src/context/AuthContext';
 import { YouTubeService } from '../../src/services/youtube';
 import { AuthService } from '../../src/services/auth';
+import { BrowserRouter } from 'react-router-dom';
 
 // Mock YouTubeService
 vi.mock('../../src/services/youtube', () => ({
@@ -73,9 +74,11 @@ describe('App Integration', () => {
 
   it('renders the app with all required elements', async () => {
     render(
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      <BrowserRouter>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </BrowserRouter>
     );
 
     await waitFor(() => {
@@ -97,9 +100,11 @@ describe('App Integration', () => {
 
   it('renders correct CSS classes for app structure', async () => {
      render(
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      <BrowserRouter>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </BrowserRouter>
     );
 
     await waitFor(() => {
@@ -114,9 +119,11 @@ describe('App Integration', () => {
   it('renders login button when not authenticated', async () => {
     // Already set to reject in beforeEach
     render(
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      <BrowserRouter>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </BrowserRouter>
     );
 
     await waitFor(() => {
@@ -132,9 +139,11 @@ describe('App Integration', () => {
     (AuthService.checkAuth as any).mockResolvedValue(mockUser);
 
     render(
-      <AuthProvider>
-        <App />
-      </AuthProvider>
+      <BrowserRouter>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </BrowserRouter>
     );
 
     await waitFor(() => {
@@ -156,9 +165,11 @@ describe('App Integration', () => {
 
   it('fetches and displays subscriptions in the sidebar', async () => {
     render(
+      <BrowserRouter>
         <AuthProvider>
           <App />
         </AuthProvider>
+      </BrowserRouter>
       );
 
     await waitFor(() => {
