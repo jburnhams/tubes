@@ -37,15 +37,9 @@ describe('Sidebar Integration', () => {
     // The toggle has "flex items-center px-6 py-2 cursor-pointer hover:bg-gray-100 justify-between group" class
 
     // Let's find by text "Subscriptions" but specifically the one that acts as a header.
-    const subscriptionsElements = screen.getAllByText('Subscriptions');
-    // The second one is likely the header (index 1), but let's be more robust.
-    // The header is inside a div with onClick handler.
-    // We can look for the channel list container which should appear/disappear.
-
-    // Let's assume the second 'Subscriptions' is the toggle based on order in DOM.
-    // Or we can find by class if we could query selector.
-    // Let's try clicking the second 'Subscriptions'.
-    const toggleButton = subscriptionsElements[1];
+    // There is only one text "Subscriptions" in the rendered sidebar (the header).
+    // The other one is in the alt text of the image, which getByText ignores.
+    const toggleButton = screen.getByText('Subscriptions');
 
     fireEvent.click(toggleButton);
 
