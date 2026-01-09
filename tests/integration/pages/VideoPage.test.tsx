@@ -4,9 +4,20 @@ import { YouTubeService } from '../../../src/services/youtube';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import React from 'react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { AuthProvider } from '../../../src/context/AuthContext';
+import { AuthService } from '../../../src/services/auth';
 
 // Mock the YouTubeService
 vi.mock('../../../src/services/youtube');
+
+// Mock AuthService for AuthContext
+vi.mock('../../../src/services/auth', () => ({
+  AuthService: {
+    checkAuth: vi.fn(),
+    logout: vi.fn(),
+    getLoginUrl: vi.fn(),
+  },
+}));
 
 const mockVideoDetail = {
     youtube_id: 'rBYGGWgcJ4o',
@@ -38,17 +49,31 @@ const mockVideoDetail = {
 describe('VideoPage', () => {
     beforeEach(() => {
         vi.resetAllMocks();
+        // Setup default auth behavior
+        (AuthService.checkAuth as any).mockResolvedValue({
+            id: 1,
+            email: 'test@example.com',
+            name: 'Test User',
+            profile_picture: 'http://example.com/pic.jpg',
+            is_admin: false,
+            created_at: '2021-01-01',
+            updated_at: '2021-01-01',
+            last_login_at: '2021-01-01',
+            session_id: 'test-session-id'
+        });
     });
 
     it('fetches and displays video details', async () => {
         (YouTubeService.getVideo as any).mockResolvedValue(mockVideoDetail);
 
         render(
-            <MemoryRouter initialEntries={['/video/rBYGGWgcJ4o']}>
-                <Routes>
-                    <Route path="/video/:id" element={<VideoPage />} />
-                </Routes>
-            </MemoryRouter>
+            <AuthProvider>
+                <MemoryRouter initialEntries={['/video/rBYGGWgcJ4o']}>
+                    <Routes>
+                        <Route path="/video/:id" element={<VideoPage />} />
+                    </Routes>
+                </MemoryRouter>
+            </AuthProvider>
         );
 
         // Check for loading state (spinners usually have role="status" or class matching loader)
@@ -63,9 +88,17 @@ describe('VideoPage', () => {
         expect(screen.getByText(/Watch FULL EPISODES Here/)).toBeInTheDocument();
         expect(screen.getByText(/410/)).toBeInTheDocument(); // Likes
 
-        // Check thumbnail
-        const img = screen.getByAltText('Peppa Pig Full Episodes');
-        expect(img).toHaveAttribute('src', 'https://i.ytimg.com/vi/rBYGGWgcJ4o/maxresdefault.jpg');
+        // TubePlayerWrapper should be rendered instead of image if ID is present
+        // Since we are mocking TubePlayerWrapper indirectly (TubePlayer class), we check that the image is NOT present
+        // Wait, if TubePlayerWrapper is used, the image is NOT rendered.
+        // The test previously checked for the image:
+        // const img = screen.getByAltText('Peppa Pig Full Episodes');
+        // expect(img).toHaveAttribute('src', 'https://i.ytimg.com/vi/rBYGGWgcJ4o/maxresdefault.jpg');
+
+        // Now that we have the player, the image placeholder is replaced.
+        // We should verify that.
+        const img = screen.queryByAltText('Peppa Pig Full Episodes');
+        expect(img).not.toBeInTheDocument();
 
         expect(YouTubeService.getVideo).toHaveBeenCalledWith('rBYGGWgcJ4o');
     });
@@ -74,11 +107,13 @@ describe('VideoPage', () => {
         (YouTubeService.getVideo as any).mockRejectedValue(new Error('Failed to fetch'));
 
         render(
-            <MemoryRouter initialEntries={['/video/rBYGGWgcJ4o']}>
-                <Routes>
-                    <Route path="/video/:id" element={<VideoPage />} />
-                </Routes>
-            </MemoryRouter>
+            <AuthProvider>
+                <MemoryRouter initialEntries={['/video/rBYGGWgcJ4o']}>
+                    <Routes>
+                        <Route path="/video/:id" element={<VideoPage />} />
+                    </Routes>
+                </MemoryRouter>
+            </AuthProvider>
         );
 
         await waitFor(() => {

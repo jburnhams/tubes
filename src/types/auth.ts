@@ -7,6 +7,7 @@ export interface User {
   created_at: string;
   updated_at: string;
   last_login_at: string;
+  session_id?: string;
 }
 
 export interface AuthErrorResponse {
