@@ -9,6 +9,7 @@ import { AuthService } from '../../src/services/auth';
 vi.mock('../../src/services/youtube', () => ({
   YouTubeService: {
     getChannels: vi.fn(),
+    getVideos: vi.fn(),
   },
 }));
 
@@ -36,6 +37,21 @@ const mockChannels = [
   },
 ];
 
+const mockVideos = [
+    {
+        id: '1',
+        title: 'Talking Tech and AI with Google CEO Sundar Pichai!',
+        description: 'Description 1',
+        thumbnail: 'http://example.com/thumb1.jpg',
+        duration_seconds: 120,
+        channel_id: 'channel1',
+        channel_title: 'Marques Brownlee',
+        channel_thumbnail: 'http://example.com/channel1.jpg',
+        published_at: '2023-01-01T00:00:00Z',
+        view_count: 1000
+    }
+];
+
 describe('App Integration', () => {
   // Mock console.error to avoid noise in tests where we expect errors
   const originalConsoleError = console.error;
@@ -44,6 +60,7 @@ describe('App Integration', () => {
     vi.resetAllMocks();
     console.error = vi.fn();
     (YouTubeService.getChannels as any).mockResolvedValue({ channels: mockChannels });
+    (YouTubeService.getVideos as any).mockResolvedValue(mockVideos);
 
     // Default to unauthenticated (rejecting auth check)
     // We use mockImplementation to ensure it returns a fresh promise each time if needed
