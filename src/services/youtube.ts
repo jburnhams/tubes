@@ -76,48 +76,4 @@ export class YouTubeService {
 
     return response.json();
   }
-
-  static async deleteChannel(id: string): Promise<void> {
-    const response = await fetch(`${CHANNEL_DETAIL_API_URL_BASE}/${id}`, {
-      method: 'DELETE',
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to delete channel: ${response.status}`);
-    }
-  }
-
-  static async resyncChannel(id: string): Promise<void> {
-    const response = await fetch(`${CHANNEL_DETAIL_API_URL_BASE}/${id}/refresh`, {
-      method: 'POST',
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to resync channel: ${response.status}`);
-    }
-  }
-
-  static async deleteVideo(id: string): Promise<void> {
-    const response = await fetch(`${VIDEO_DETAIL_API_URL_BASE}/${id}`, {
-      method: 'DELETE',
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to delete video: ${response.status}`);
-    }
-  }
-
-  static async resyncVideo(id: string): Promise<void> {
-    const response = await fetch(`${VIDEO_DETAIL_API_URL_BASE}/${id}/refresh`, {
-      method: 'POST',
-      credentials: 'include',
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to resync video: ${response.status}`);
-    }
-  }
 }

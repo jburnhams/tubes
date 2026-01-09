@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { YouTubeService } from '../services/youtube';
 import { ChannelDetail } from '../types/youtube';
 import { VideoGrid } from '../components/VideoGrid';
@@ -16,7 +16,6 @@ function formatCount(count: number): string {
 
 export const ChannelPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const [channel, setChannel] = useState<ChannelDetail | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,50 +89,9 @@ export const ChannelPage: React.FC = () => {
             <p className="text-gray-500 text-sm max-w-2xl line-clamp-2 md:line-clamp-3 mb-4">
                 {channel.description}
             </p>
-            <div className="flex flex-wrap gap-2 justify-center md:justify-start">
-              <button className="bg-black text-white px-6 py-2 rounded-full font-medium hover:bg-gray-800 transition-colors">
-                  Subscribe
-              </button>
-              <button
-                onClick={async () => {
-                  if (!id) return;
-                  if (confirm('Are you sure you want to delete this channel and all its videos?')) {
-                    try {
-                      await YouTubeService.deleteChannel(id);
-                      navigate('/');
-                    } catch (err) {
-                      console.error('Failed to delete channel', err);
-                      alert('Failed to delete channel');
-                    }
-                  }
-                }}
-                className="bg-red-600 text-white px-6 py-2 rounded-full font-medium hover:bg-red-700 transition-colors"
-              >
-                Delete
-              </button>
-              <button
-                onClick={async () => {
-                  if (!id) return;
-                  try {
-                    setLoading(true);
-                    await YouTubeService.resyncChannel(id);
-                    const data = await YouTubeService.getChannel(id);
-                    setChannel(data);
-                  } catch (err) {
-                    console.error('Failed to resync channel', err);
-                    alert('Failed to resync channel');
-                    setLoading(false);
-                  }
-                  // We don't need finally { setLoading(false) } because the success path does it via re-render or we should ensure it does.
-                  // Actually, fetchChannel in useEffect also manages loading.
-                  // If we manually setChannel(data), we must ensure loading is false.
-                  setLoading(false);
-                }}
-                className="bg-blue-600 text-white px-6 py-2 rounded-full font-medium hover:bg-blue-700 transition-colors"
-              >
-                Resync
-              </button>
-            </div>
+            <button className="bg-black text-white px-6 py-2 rounded-full font-medium hover:bg-gray-800 transition-colors">
+                Subscribe
+            </button>
         </div>
       </div>
 
