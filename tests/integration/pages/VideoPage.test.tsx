@@ -24,6 +24,7 @@ const mockVideoDetail = {
     title: 'Peppa Pig Full Episodes',
     description: 'Watch FULL EPISODES Here',
     published_at: '2023-09-20T15:46:44Z',
+    // Matches mockChannel.youtube_id
     channel_id: 'UCAOtE1V7Ots4DjM8JLlrYgg',
     thumbnail_url: 'https://i.ytimg.com/vi/rBYGGWgcJ4o/maxresdefault.jpg',
     duration: 'PT11H54M57S',
@@ -46,6 +47,44 @@ const mockVideoDetail = {
     made_for_kids: 1
 };
 
+const mockChannel = {
+    youtube_id: 'UCAOtE1V7Ots4DjM8JLlrYgg',
+    title: 'Peppa Pig - Official Channel',
+    description: 'Welcome to the Official Peppa Pig channel!',
+    custom_url: 'peppapig',
+    thumbnail_url: 'https://example.com/channel.jpg',
+    best_thumbnail_url: 'https://example.com/channel_high.jpg',
+    published_at: '2013-10-09T00:00:00Z',
+    country: 'GB'
+};
+
+const mockVideos = [
+    {
+        id: 'rec1',
+        title: 'Recommended Video 1',
+        description: 'Desc 1',
+        thumbnail: 'https://example.com/rec1.jpg',
+        duration_seconds: 300,
+        channel_id: 'channel2',
+        channel_title: 'Other Channel',
+        channel_thumbnail: 'https://example.com/ch2.jpg',
+        published_at: '2023-10-01T00:00:00Z',
+        view_count: 5000
+    },
+    {
+        id: 'rec2',
+        title: 'Recommended Video 2',
+        description: 'Desc 2',
+        thumbnail: 'https://example.com/rec2.jpg',
+        duration_seconds: 600,
+        channel_id: 'channel3',
+        channel_title: 'Another Channel',
+        channel_thumbnail: 'https://example.com/ch3.jpg',
+        published_at: '2023-10-02T00:00:00Z',
+        view_count: 10000
+    }
+];
+
 describe('VideoPage', () => {
     beforeEach(() => {
         vi.resetAllMocks();
@@ -63,8 +102,10 @@ describe('VideoPage', () => {
         });
     });
 
-    it('fetches and displays video details', async () => {
+    it('fetches and displays video details, channel info, and recommendations', async () => {
         (YouTubeService.getVideo as any).mockResolvedValue(mockVideoDetail);
+        (YouTubeService.getVideos as any).mockResolvedValue({ videos: mockVideos });
+        (YouTubeService.getChannels as any).mockResolvedValue({ channels: [mockChannel] });
 
         render(
             <AuthProvider>
@@ -76,35 +117,37 @@ describe('VideoPage', () => {
             </AuthProvider>
         );
 
-        // Check for loading state (spinners usually have role="status" or class matching loader)
-        // In our component it's a div with animate-spin class.
-        // We can check if it disappears or just wait for content.
-
         await waitFor(() => {
             expect(screen.getByText('Peppa Pig Full Episodes')).toBeInTheDocument();
         });
 
-        expect(screen.getByText(/128,494 views/)).toBeInTheDocument();
-        expect(screen.getByText(/Watch FULL EPISODES Here/)).toBeInTheDocument();
+        // Main Video Info
+        expect(screen.getByText(/128.5K views/)).toBeInTheDocument();
         expect(screen.getByText(/410/)).toBeInTheDocument(); // Likes
 
-        // TubePlayerWrapper should be rendered instead of image if ID is present
-        // Since we are mocking TubePlayerWrapper indirectly (TubePlayer class), we check that the image is NOT present
-        // Wait, if TubePlayerWrapper is used, the image is NOT rendered.
-        // The test previously checked for the image:
-        // const img = screen.getByAltText('Peppa Pig Full Episodes');
-        // expect(img).toHaveAttribute('src', 'https://i.ytimg.com/vi/rBYGGWgcJ4o/maxresdefault.jpg');
+        // Channel Info
+        expect(screen.getByText('Peppa Pig - Official Channel')).toBeInTheDocument();
+        expect(screen.getByText('1.2M subscribers')).toBeInTheDocument();
 
-        // Now that we have the player, the image placeholder is replaced.
-        // We should verify that.
-        const img = screen.queryByAltText('Peppa Pig Full Episodes');
-        expect(img).not.toBeInTheDocument();
+        // Description
+        expect(screen.getByText(/Watch FULL EPISODES Here/)).toBeInTheDocument();
+
+        // Recommendations
+        expect(screen.getByText('Recommended Video 1')).toBeInTheDocument();
+        expect(screen.getByText('Recommended Video 2')).toBeInTheDocument();
+        expect(screen.getByText('Other Channel')).toBeInTheDocument();
 
         expect(YouTubeService.getVideo).toHaveBeenCalledWith('rBYGGWgcJ4o');
+        expect(YouTubeService.getVideos).toHaveBeenCalled();
+        expect(YouTubeService.getChannels).toHaveBeenCalled();
     });
 
     it('shows error when fetch fails', async () => {
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
         (YouTubeService.getVideo as any).mockRejectedValue(new Error('Failed to fetch'));
+        // Mock others to resolve or reject, shouldn't matter as main fetch fails
+        (YouTubeService.getVideos as any).mockResolvedValue({ videos: [] });
+        (YouTubeService.getChannels as any).mockResolvedValue({ channels: [] });
 
         render(
             <AuthProvider>
@@ -119,5 +162,7 @@ describe('VideoPage', () => {
         await waitFor(() => {
             expect(screen.getByText('Failed to load video details.')).toBeInTheDocument();
         });
+
+        consoleSpy.mockRestore();
     });
 });
