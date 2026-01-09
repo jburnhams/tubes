@@ -94,4 +94,68 @@ describe('YouTubeService', () => {
 
     await expect(YouTubeService.getChannel('UC123')).rejects.toThrow('Failed to fetch channel details: 404');
   });
+
+  it('should delete channel correctly', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+    } as Response);
+
+    await YouTubeService.deleteChannel('UC123');
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/channel/UC123'),
+      expect.objectContaining({
+        method: 'DELETE',
+        credentials: 'include',
+      })
+    );
+  });
+
+  it('should resync channel correctly', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+    } as Response);
+
+    await YouTubeService.resyncChannel('UC123');
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/channel/UC123/refresh'),
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+      })
+    );
+  });
+
+  it('should delete video correctly', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+    } as Response);
+
+    await YouTubeService.deleteVideo('V123');
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/video/V123'),
+      expect.objectContaining({
+        method: 'DELETE',
+        credentials: 'include',
+      })
+    );
+  });
+
+  it('should resync video correctly', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+    } as Response);
+
+    await YouTubeService.resyncVideo('V123');
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/video/V123/refresh'),
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+      })
+    );
+  });
 });

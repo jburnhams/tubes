@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { YouTubeService } from '../services/youtube';
 import { VideoDetail, Video, Channel } from '../types/youtube';
 import { TubePlayerWrapper } from '../components/TubePlayerWrapper';
@@ -55,6 +55,7 @@ function formatDuration(seconds: number): string {
 
 export const VideoPage = () => {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [video, setVideo] = useState<VideoDetail | null>(null);
   const [recommendations, setRecommendations] = useState<Video[]>([]);
   const [channel, setChannel] = useState<Channel | null>(null);
@@ -154,6 +155,40 @@ export const VideoPage = () => {
             </button>
             <button className="bg-gray-100 px-4 h-9 rounded-full hover:bg-gray-200 flex items-center gap-2 text-sm font-medium transition-colors">
                Download
+            </button>
+            <button
+              onClick={async () => {
+                 if (!id) return;
+                 if (confirm('Are you sure you want to delete this video?')) {
+                   try {
+                     await YouTubeService.deleteVideo(id);
+                     navigate('/');
+                   } catch (err) {
+                     console.error('Failed to delete video', err);
+                     alert('Failed to delete video');
+                   }
+                 }
+              }}
+              className="bg-red-100 text-red-700 px-4 h-9 rounded-full hover:bg-red-200 flex items-center gap-2 text-sm font-medium transition-colors"
+            >
+               Delete
+            </button>
+            <button
+              onClick={async () => {
+                if (!id) return;
+                try {
+                   setLoading(true);
+                   await YouTubeService.resyncVideo(id);
+                   window.location.reload();
+                } catch (err) {
+                   console.error('Failed to resync video', err);
+                   alert('Failed to resync video');
+                   setLoading(false);
+                }
+              }}
+              className="bg-blue-100 text-blue-700 px-4 h-9 rounded-full hover:bg-blue-200 flex items-center gap-2 text-sm font-medium transition-colors"
+            >
+               Resync
             </button>
             <button className="bg-gray-100 w-9 h-9 rounded-full hover:bg-gray-200 flex items-center justify-center transition-colors">
                ...
