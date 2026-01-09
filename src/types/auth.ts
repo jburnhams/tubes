@@ -2,9 +2,10 @@ export interface User {
   id: number;
   email: string;
   name: string;
-  picture: string;
+  profile_picture: string;
   is_admin: boolean;
   created_at: string;
+  updated_at: string;
   last_login_at: string;
 }
 

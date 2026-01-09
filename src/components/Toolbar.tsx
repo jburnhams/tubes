@@ -1,17 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { Button } from './Button';
 
 export const Toolbar: React.FC = () => {
   const { user, login, logout } = useAuth();
   const [imageError, setImageError] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const handleImageError = () => {
     setImageError(true);
   };
 
-  // Fallback image (using a generic placeholder or initial)
+  const toggleMenu = () => {
+    setIsMenuOpen(!isMenuOpen);
+  };
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMenuOpen]);
+
+  // Fallback image
   const fallbackImage = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(user?.name || 'User');
+  const profileImage = !imageError && user?.profile_picture ? user.profile_picture : fallbackImage;
 
   return (
     <header className="fixed top-0 left-0 right-0 h-14 bg-white flex justify-between items-center px-4 md:px-6 z-[300] border-b border-gray-200 font-roboto">
@@ -71,25 +95,55 @@ export const Toolbar: React.FC = () => {
              </div>
           </div>
 
-          <div className="ml-2">
+          <div className="ml-2 relative" ref={menuRef}>
             {user ? (
-               <div className="relative group">
-                 <img
-                    src={!imageError && user.picture ? user.picture : fallbackImage}
-                    alt={user.name}
-                    onError={handleImageError}
-                    className="h-8 w-8 rounded-full object-cover cursor-pointer"
-                    title={`Logged in as ${user.name}`}
-                 />
-                 <div className="absolute right-0 top-full mt-2 w-48 bg-white border border-gray-200 shadow-lg rounded-md py-1 z-[500] hidden group-hover:block">
-                    <button
-                        onClick={logout}
-                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                    >
-                        Logout
-                    </button>
-                 </div>
-               </div>
+               <>
+                 <button onClick={toggleMenu} className="focus:outline-none">
+                   <img
+                      src={profileImage}
+                      alt={user.name}
+                      onError={handleImageError}
+                      className="h-8 w-8 rounded-full object-cover cursor-pointer"
+                      title={`Logged in as ${user.name}`}
+                   />
+                 </button>
+                 {isMenuOpen && (
+                    <div className="absolute right-0 top-full mt-2 w-72 bg-white border border-gray-200 shadow-xl rounded-lg overflow-hidden z-[500]">
+                        <div className="p-4 flex items-start border-b border-gray-200 bg-gray-50">
+                            <img
+                                src={profileImage}
+                                alt={user.name}
+                                className="h-10 w-10 rounded-full object-cover mr-3 flex-shrink-0"
+                            />
+                            <div className="overflow-hidden">
+                                <p className="font-medium text-gray-900 truncate" title={user.name}>{user.name}</p>
+                                <p className="text-sm text-gray-600 truncate" title={user.email}>{user.email}</p>
+                                {user.is_admin && (
+                                    <span className="inline-block mt-1 px-2 py-0.5 text-xs text-blue-700 bg-blue-100 rounded-full">
+                                        Admin
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="py-2">
+                             <div className="px-4 py-2 text-xs text-gray-500">
+                                Last login: {new Date(user.last_login_at).toLocaleDateString()}
+                             </div>
+                             <div className="border-t border-gray-100 my-1"></div>
+                             <button
+                                 onClick={() => {
+                                     setIsMenuOpen(false);
+                                     logout();
+                                 }}
+                                 className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+                             >
+                                 <span className="mr-2">🚪</span> Sign out
+                             </button>
+                        </div>
+                    </div>
+                 )}
+               </>
             ) : (
                 <div onClick={login} className="text-blue-600 border border-blue-600 px-3 py-1 uppercase text-sm font-medium rounded-sm cursor-pointer hover:bg-blue-50">
                     Sign in
