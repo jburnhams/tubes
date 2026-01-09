@@ -20,7 +20,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@jburnhams/tube-ts": "^0.1.5",
+    "@jburnhams/tube-ts": "0.1.6",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-router-dom": "^7.12.0",
