@@ -98,7 +98,8 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ channelId }) => {
     return (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 gap-y-10">
             {videos.map((video) => (
-                <div key={video.id} className="flex flex-col cursor-pointer">
+                <div key={video.id} className="group relative flex flex-col cursor-pointer">
+                    <div className="absolute -inset-4 rounded-xl bg-blue-50 opacity-0 transition-all duration-300 ease-out transform scale-95 group-hover:scale-100 group-hover:opacity-100 -z-10" />
                     <div className="relative mb-3">
                         <Link to={`/video/${video.id}`} className="block relative">
                             <img className="w-full rounded-xl object-cover aspect-video hover:rounded-none transition-all duration-200" src={video.thumbnail} alt={video.title} />
