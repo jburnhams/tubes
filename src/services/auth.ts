@@ -1,9 +1,9 @@
 import { User, AuthErrorResponse } from '../types/auth';
 import { ConfigService } from './config';
 
-// Default to empty string to allow Vite proxy to handle requests to vps.jonathanburnhams.com
-// Set VITE_API_URL in .env if an absolute URL is required (e.g. production without proxy)
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+// In development, use relative path to allow Vite proxy to handle requests to vps.jonathanburnhams.com
+// In production, use the storage URL
+const API_BASE_URL = import.meta.env.DEV ? '' : 'https://storage.jonathanburnhams.com';
 
 const getHeaders = () => {
   const headers: Record<string, string> = {

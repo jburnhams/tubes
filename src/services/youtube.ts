@@ -1,8 +1,9 @@
 import { ChannelListResponse, VideoListResponse, VideoDetail, ChannelDetail } from '../types/youtube';
 import { ConfigService } from './config';
 
-// Default to empty string to allow Vite proxy to handle requests to vps.jonathanburnhams.com
-const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+// In development, use relative path to allow Vite proxy to handle requests to vps.jonathanburnhams.com
+// In production, use the storage URL
+const API_BASE_URL = import.meta.env.DEV ? '' : 'https://storage.jonathanburnhams.com';
 
 const CHANNELS_API_URL = `${API_BASE_URL}/api/youtube/channels`;
 const CHANNEL_DETAIL_API_URL_BASE = `${API_BASE_URL}/api/youtube/channel`;
