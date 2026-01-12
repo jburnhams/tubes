@@ -6,9 +6,24 @@ import { Sidebar } from './components/Sidebar';
 import { VideoPage } from './pages/VideoPage';
 import { ChannelPage } from './pages/ChannelPage';
 import { useAuth } from './context/AuthContext';
+import { useEffect } from 'react';
+import { CollectionService } from './services/collection';
 
 function App() {
-  const { loading } = useAuth();
+  const { loading, user } = useAuth();
+
+  useEffect(() => {
+    if (user) {
+      CollectionService.getCollection(2)
+        .then((data) => {
+          const cookie = data.contents.find((c) => c.key === 'cookie');
+          if (cookie) {
+            console.log(cookie.value);
+          }
+        })
+        .catch((err) => console.error(err));
+    }
+  }, [user]);
 
   // If loading, we show a loading indicator.
   if (loading) {
