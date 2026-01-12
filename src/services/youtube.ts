@@ -1,10 +1,13 @@
 import { ChannelListResponse, VideoListResponse, VideoDetail, ChannelDetail } from '../types/youtube';
 import { ConfigService } from './config';
 
-const CHANNELS_API_URL = '/api/youtube/channels';
-const CHANNEL_DETAIL_API_URL_BASE = '/api/youtube/channel';
-const VIDEOS_API_URL = '/api/youtube/videos/random';
-const VIDEO_DETAIL_API_URL_BASE = '/api/youtube/video';
+// Default to empty string to allow Vite proxy to handle requests to vps.jonathanburnhams.com
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
+const CHANNELS_API_URL = `${API_BASE_URL}/api/youtube/channels`;
+const CHANNEL_DETAIL_API_URL_BASE = `${API_BASE_URL}/api/youtube/channel`;
+const VIDEOS_API_URL = `${API_BASE_URL}/api/youtube/videos/random`;
+const VIDEO_DETAIL_API_URL_BASE = `${API_BASE_URL}/api/youtube/video`;
 
 const getHeaders = () => {
   const headers: Record<string, string> = {
@@ -33,7 +36,9 @@ export class YouTubeService {
   }
 
   static async getVideos(channelId?: string): Promise<VideoListResponse> {
-    const url = new URL(VIDEOS_API_URL, window.location.origin);
+    // Construct URL handling both relative (proxy) and absolute (env var) paths
+    const baseUrl = VIDEOS_API_URL.startsWith('http') ? VIDEOS_API_URL : new URL(VIDEOS_API_URL, window.location.origin).toString();
+    const url = new URL(baseUrl);
     url.searchParams.append('min_duration', '300');
     url.searchParams.append('max_duration', '3600');
     if (channelId) {

@@ -8,6 +8,9 @@ export default defineConfig({
   server: {
     port: 3000,
     host: '0.0.0.0',
+    // Proxy configuration for development
+    // Requests to /api and /auth are forwarded to the VPS
+    // This allows using relative URLs in the app (e.g. /api/session) which resolves CORS issues
     proxy: {
       '/api': {
         target: 'https://vps.jonathanburnhams.com',
