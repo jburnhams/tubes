@@ -7,7 +7,7 @@ import React from 'react';
 import { BrowserRouter } from 'react-router-dom';
 
 const server = setupServer(
-    http.get('https://storage.jonathanburnhams.com/api/youtube/videos/random', () => {
+    http.get('http://localhost:3000/api/youtube/videos/random', () => {
         return HttpResponse.json({
             videos: [
                 {
@@ -51,7 +51,7 @@ describe('VideoGrid Integration', () => {
     it('handles server errors', async () => {
         const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
         server.use(
-            http.get('https://storage.jonathanburnhams.com/api/youtube/videos/random', () => {
+            http.get('http://localhost:3000/api/youtube/videos/random', () => {
                 return new HttpResponse(null, { status: 500 });
             })
         );

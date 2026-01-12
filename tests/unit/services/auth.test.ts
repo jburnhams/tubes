@@ -27,7 +27,7 @@ describe('AuthService', () => {
       const result = await AuthService.checkAuth();
       expect(result).toEqual({ ...mockUser, session_id: mockSessionId });
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://storage.jonathanburnhams.com/api/session',
+        '/api/session',
         expect.objectContaining({
           method: 'GET',
           credentials: 'include',
@@ -64,7 +64,7 @@ describe('AuthService', () => {
 
       await AuthService.logout();
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://storage.jonathanburnhams.com/auth/logout',
+        '/auth/logout',
         expect.objectContaining({
           method: 'POST',
           credentials: 'include',
@@ -78,7 +78,7 @@ describe('AuthService', () => {
       const redirect = 'http://localhost:3000/dashboard';
       const url = AuthService.getLoginUrl(redirect);
       expect(url).toBe(
-        'https://storage.jonathanburnhams.com/auth/login?redirect=http%3A%2F%2Flocalhost%3A3000%2Fdashboard'
+        '/auth/login?redirect=http%3A%2F%2Flocalhost%3A3000%2Fdashboard'
       );
     });
 
@@ -88,7 +88,7 @@ describe('AuthService', () => {
       // However, jsdom default url is 'http://localhost:3000/' usually.
 
       const url = AuthService.getLoginUrl();
-      expect(url).toContain('https://storage.jonathanburnhams.com/auth/login?redirect=');
+      expect(url).toContain('/auth/login?redirect=');
     });
   });
 });

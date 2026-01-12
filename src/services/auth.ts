@@ -1,14 +1,24 @@
 import { User, AuthErrorResponse } from '../types/auth';
+import { ConfigService } from './config';
 
-const API_BASE_URL = 'https://storage.jonathanburnhams.com';
+const API_BASE_URL = '';
+
+const getHeaders = () => {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  const cookie = ConfigService.getCookie();
+  if (cookie) {
+    headers['h-Cookie'] = cookie;
+  }
+  return headers;
+};
 
 export class AuthService {
   static async checkAuth(): Promise<User | AuthErrorResponse> {
     const response = await fetch(`${API_BASE_URL}/api/session`, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: getHeaders(),
       credentials: 'include',
     });
 
@@ -25,8 +35,14 @@ export class AuthService {
   }
 
   static async logout(): Promise<void> {
+    const headers: Record<string, string> = {};
+    const cookie = ConfigService.getCookie();
+    if (cookie) {
+      headers['h-Cookie'] = cookie;
+    }
     await fetch(`${API_BASE_URL}/auth/logout`, {
       method: 'POST',
+      headers,
       credentials: 'include',
     });
   }

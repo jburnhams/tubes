@@ -8,6 +8,18 @@ export default defineConfig({
   server: {
     port: 3000,
     host: '0.0.0.0',
+    proxy: {
+      '/api': {
+        target: 'https://vps.jonathanburnhams.com',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/auth': {
+        target: 'https://vps.jonathanburnhams.com',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
   },
   plugins: [react(), tailwindcss()],
   build: {
