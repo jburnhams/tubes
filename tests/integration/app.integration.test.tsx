@@ -4,6 +4,7 @@ import App from '../../src/App';
 import { AuthProvider } from '../../src/context/AuthContext';
 import { YouTubeService } from '../../src/services/youtube';
 import { AuthService } from '../../src/services/auth';
+import { CollectionService } from '../../src/services/collection';
 import { BrowserRouter } from 'react-router-dom';
 
 // Mock YouTubeService
@@ -24,6 +25,13 @@ vi.mock('../../src/services/auth', () => {
     }
   };
 });
+
+// Mock CollectionService
+vi.mock('../../src/services/collection', () => ({
+  CollectionService: {
+    getCollection: vi.fn(),
+  },
+}));
 
 const mockChannels = [
   {
@@ -54,14 +62,19 @@ const mockVideos = [
 ];
 
 describe('App Integration', () => {
-  // Mock console.error to avoid noise in tests where we expect errors
+  // Mock console.error and log to avoid noise and check logs
   const originalConsoleError = console.error;
+  const originalConsoleLog = console.log;
 
   beforeEach(() => {
     vi.resetAllMocks();
     console.error = vi.fn();
+    console.log = vi.fn();
     (YouTubeService.getChannels as any).mockResolvedValue({ channels: mockChannels });
     (YouTubeService.getVideos as any).mockResolvedValue({ videos: mockVideos });
+    (CollectionService.getCollection as any).mockResolvedValue({
+      contents: [{ key: 'cookie', value: 'test-cookie-value' }]
+    });
 
     // Default to unauthenticated (rejecting auth check)
     // We use mockImplementation to ensure it returns a fresh promise each time if needed
@@ -70,6 +83,7 @@ describe('App Integration', () => {
 
   afterEach(() => {
     console.error = originalConsoleError;
+    console.log = originalConsoleLog;
   });
 
   it('renders the app with all required elements', async () => {
@@ -180,5 +194,47 @@ describe('App Integration', () => {
         expect(screen.getByText('Test Channel 1')).toBeInTheDocument();
         expect(screen.getByText('Test Channel 2')).toBeInTheDocument();
     });
+  });
+
+  it('fetches collection and logs cookie when authenticated', async () => {
+    const mockUser = { id: 1, name: 'Test User', picture: 'https://example.com/pic.jpg', email: 'test@example.com' };
+    (AuthService.checkAuth as any).mockResolvedValue(mockUser);
+
+    render(
+      <BrowserRouter>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </BrowserRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByAltText('Test User')).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(CollectionService.getCollection).toHaveBeenCalledWith(2);
+      expect(console.log).toHaveBeenCalledWith('test-cookie-value');
+    });
+  });
+
+  it('does not fetch collection when not authenticated', async () => {
+    (AuthService.checkAuth as any).mockRejectedValue(new Error('Auth failed'));
+
+    render(
+      <BrowserRouter>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </BrowserRouter>
+    );
+
+    // Wait for the app to be ready (Sign in button visible)
+    await waitFor(() => {
+      expect(screen.getByText('Sign in')).toBeInTheDocument();
+    });
+
+    // CollectionService should NOT have been called
+    expect(CollectionService.getCollection).not.toHaveBeenCalled();
   });
 });
