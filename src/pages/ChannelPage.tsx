@@ -4,7 +4,10 @@ import { YouTubeService } from '../services/youtube';
 import { ChannelDetail } from '../types/youtube';
 import { VideoGrid } from '../components/VideoGrid';
 
-function formatCount(count: number): string {
+function formatCount(count: number | null | undefined): string {
+  if (count === null || count === undefined) {
+    return 'N/A';
+  }
   if (count >= 1000000) {
     return (count / 1000000).toFixed(1) + 'M';
   }
@@ -70,40 +73,40 @@ export const ChannelPage: React.FC = () => {
       <div className="flex flex-col md:flex-row items-center md:items-start gap-6 mb-8 px-4 md:px-12">
         {/* Avatar */}
         <div className="flex-shrink-0">
-             <img
-                src={channel.best_thumbnail_url || channel.thumbnail_url}
-                alt={channel.title}
-                className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-white shadow-lg object-cover"
-             />
+          <img
+            src={channel.best_thumbnail_url || channel.thumbnail_url}
+            alt={channel.title}
+            className="w-32 h-32 md:w-40 md:h-40 rounded-full border-4 border-white shadow-lg object-cover"
+          />
         </div>
 
         {/* Metadata */}
         <div className="flex flex-col items-center md:items-start text-center md:text-left pt-2 flex-1">
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">{channel.title}</h1>
-            <div className="text-gray-600 flex flex-wrap justify-center md:justify-start gap-x-4 gap-y-1 mb-3 text-sm md:text-base">
-                <span className="font-semibold">{channel.custom_url}</span>
-                <span>{formatCount(channel.subscriber_count)} subscribers</span>
-                <span>{formatCount(channel.video_count)} videos</span>
-                <span>{formatCount(channel.view_count)} views</span>
-            </div>
-            <p className="text-gray-500 text-sm max-w-2xl line-clamp-2 md:line-clamp-3 mb-4">
-                {channel.description}
-            </p>
-            <button className="bg-black text-white px-6 py-2 rounded-full font-medium hover:bg-gray-800 transition-colors">
-                Subscribe
-            </button>
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">{channel.title}</h1>
+          <div className="text-gray-600 flex flex-wrap justify-center md:justify-start gap-x-4 gap-y-1 mb-3 text-sm md:text-base">
+            <span className="font-semibold">{channel.custom_url}</span>
+            <span>{formatCount(channel.subscriber_count)} subscribers</span>
+            <span>{formatCount(channel.video_count)} videos</span>
+            <span>{formatCount(channel.view_count)} views</span>
+          </div>
+          <p className="text-gray-500 text-sm max-w-2xl line-clamp-2 md:line-clamp-3 mb-4">
+            {channel.description}
+          </p>
+          <button className="bg-black text-white px-6 py-2 rounded-full font-medium hover:bg-gray-800 transition-colors">
+            Subscribe
+          </button>
         </div>
       </div>
 
       {/* Tabs (Placeholder) */}
       <div className="border-b border-gray-200 mb-6">
-          <div className="flex gap-8 px-4 md:px-12 text-sm font-medium text-gray-600 overflow-x-auto">
-              <button className="pb-3 border-b-2 border-black text-black">Home</button>
-              <button className="pb-3 hover:text-black transition-colors">Videos</button>
-              <button className="pb-3 hover:text-black transition-colors">Shorts</button>
-              <button className="pb-3 hover:text-black transition-colors">Playlists</button>
-              <button className="pb-3 hover:text-black transition-colors">Community</button>
-          </div>
+        <div className="flex gap-8 px-4 md:px-12 text-sm font-medium text-gray-600 overflow-x-auto">
+          <button className="pb-3 border-b-2 border-black text-black">Home</button>
+          <button className="pb-3 hover:text-black transition-colors">Videos</button>
+          <button className="pb-3 hover:text-black transition-colors">Shorts</button>
+          <button className="pb-3 hover:text-black transition-colors">Playlists</button>
+          <button className="pb-3 hover:text-black transition-colors">Community</button>
+        </div>
       </div>
 
       {/* Content Area */}

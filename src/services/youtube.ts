@@ -74,6 +74,22 @@ export class YouTubeService {
       throw new Error(`Failed to fetch channel details: ${response.status}`);
     }
 
-    return response.json();
+    const data = await response.json();
+
+    // Robustness: Check if we have the expected stats, if not, try to parse from raw_json
+    if ((data.view_count === null || data.view_count === undefined) && data.raw_json) {
+      try {
+        const raw = JSON.parse(data.raw_json);
+        if (raw.statistics) {
+          data.view_count = raw.statistics.viewCount ? parseInt(raw.statistics.viewCount, 10) : null;
+          data.subscriber_count = raw.statistics.subscriberCount ? parseInt(raw.statistics.subscriberCount, 10) : null;
+          data.video_count = raw.statistics.videoCount ? parseInt(raw.statistics.videoCount, 10) : null;
+        }
+      } catch (e) {
+        console.warn('Failed to parse raw_json for channel fallback stats', e);
+      }
+    }
+
+    return data;
   }
 }

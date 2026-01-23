@@ -10,12 +10,12 @@ export interface Channel {
 }
 
 export interface ChannelDetail extends Channel {
-  view_count: number;
-  subscriber_count: number;
-  video_count: number;
+  view_count: number | null;
+  subscriber_count: number | null;
+  video_count: number | null;
   upload_playlist_id: string;
-  best_thumbnail_width: number;
-  best_thumbnail_height: number;
+  best_thumbnail_width: number | null;
+  best_thumbnail_height: number | null;
   raw_json: string;
 }
 

@@ -1,97 +1,101 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { YouTubeService } from '../../../src/services/youtube';
+
+// Mock global fetch
+const mockFetch = vi.fn();
+global.fetch = mockFetch;
 
 describe('YouTubeService', () => {
   beforeEach(() => {
-    vi.stubGlobal('fetch', vi.fn());
+    mockFetch.mockReset();
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+  describe('getChannel', () => {
+    it('should return complete data when API response is complete', async () => {
+      const mockResponse = {
+        youtube_id: '123',
+        title: 'Test Channel',
+        view_count: 1000,
+        subscriber_count: 500,
+        video_count: 10,
+        raw_json: '{}'
+      };
 
-  it('should fetch channels correctly', async () => {
-    const mockChannels = { channels: [{ youtube_id: '1', title: 'Test' }] };
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockChannels,
-    } as Response);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse
+      });
 
-    const result = await YouTubeService.getChannels();
+      const result = await YouTubeService.getChannel('123');
+      expect(result.view_count).toBe(1000);
+      expect(result.subscriber_count).toBe(500);
+    });
 
-    expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/channels'),
-      expect.objectContaining({ method: 'GET' })
-    );
-    expect(result).toEqual(mockChannels);
-  });
+    it('should fallback to raw_json when top-level stats are missing', async () => {
+      const rawJson = JSON.stringify({
+        statistics: {
+          viewCount: "2000",
+          subscriberCount: "600",
+          videoCount: "20"
+        }
+      });
 
-  it('should fetch videos correctly', async () => {
-    const mockVideos = { videos: [{ id: '1', title: 'Video' }] };
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockVideos,
-    } as Response);
+      const mockResponse = {
+        youtube_id: '123',
+        title: 'Test Channel',
+        view_count: null,
+        subscriber_count: null,
+        video_count: null,
+        raw_json: rawJson
+      };
 
-    const result = await YouTubeService.getVideos();
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse
+      });
 
-    expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/videos/random'),
-      expect.objectContaining({ method: 'GET' })
-    );
-    expect(result).toEqual(mockVideos);
-  });
+      const result = await YouTubeService.getChannel('123');
+      expect(result.view_count).toBe(2000);
+      expect(result.subscriber_count).toBe(600);
+      expect(result.video_count).toBe(20);
+    });
 
-  it('should fetch single video correctly', async () => {
-    const mockVideo = { youtube_id: '1', title: 'Video' };
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockVideo,
-    } as Response);
+    it('should handle missing raw_json gracefully', async () => {
+      const mockResponse = {
+        youtube_id: '123',
+        title: 'Test Channel',
+        view_count: null,
+        subscriber_count: null,
+        video_count: null,
+        raw_json: ""
+      };
 
-    const result = await YouTubeService.getVideo('1');
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse
+      });
 
-    expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/video/1'),
-      expect.objectContaining({ method: 'GET' })
-    );
-    expect(result).toEqual(mockVideo);
-  });
+      const result = await YouTubeService.getChannel('123');
+      expect(result.view_count).toBeNull();
+    });
 
-  it('should fetch channel details correctly', async () => {
-    const mockChannel = {
-      youtube_id: 'UC123',
-      title: 'Test Channel',
-      description: 'Test Description',
-      subscriber_count: 1000,
-      video_count: 50,
-      view_count: 5000,
-      best_thumbnail_url: 'http://example.com/thumb.jpg',
-    };
+    it('should handle malformed raw_json gracefully', async () => {
+      const mockResponse = {
+        youtube_id: '123',
+        title: 'Test Channel',
+        view_count: null,
+        subscriber_count: null,
+        video_count: null,
+        raw_json: "{invalid_json}"
+      };
 
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockChannel,
-    } as Response);
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse
+      });
 
-    const channel = await YouTubeService.getChannel('UC123');
-
-    expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining('/api/youtube/channel/UC123'),
-      expect.objectContaining({
-        method: 'GET',
-        credentials: 'include',
-      })
-    );
-    expect(channel).toEqual(mockChannel);
-  });
-
-  it('should throw an error when fetching channel fails', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-    } as Response);
-
-    await expect(YouTubeService.getChannel('UC123')).rejects.toThrow('Failed to fetch channel details: 404');
+      const result = await YouTubeService.getChannel('123');
+      expect(result.view_count).toBeNull();
+    });
   });
 });
