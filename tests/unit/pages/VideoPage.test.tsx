@@ -10,16 +10,16 @@ import { AuthService } from '../../../src/services/auth';
 // Mock Services
 vi.mock('../../../src/services/youtube');
 vi.mock('../../../src/services/auth', () => ({
-  AuthService: {
-    checkAuth: vi.fn(),
-    logout: vi.fn(),
-    getLoginUrl: vi.fn(),
-  },
+    AuthService: {
+        checkAuth: vi.fn(),
+        logout: vi.fn(),
+        getLoginUrl: vi.fn(),
+    },
 }));
 
 // Mock TubePlayerWrapper to avoid Shaka player issues in JSDOM
 vi.mock('../../../src/components/TubePlayerWrapper', () => ({
-  TubePlayerWrapper: () => <div data-testid="tube-player">Player Placeholder</div>
+    TubePlayerWrapper: () => <div data-testid="tube-player">Player Placeholder</div>
 }));
 
 describe('VideoPage Unit Tests', () => {
@@ -114,19 +114,19 @@ describe('VideoPage Unit Tests', () => {
     });
 
     it('formats durations correctly (minutes vs hours)', async () => {
-         // Recommendation with > 1 hour and < 1 hour
-         const recs = [
-             { id: 'r1', title: 'Long', duration_seconds: 3661, thumbnail: '', published_at: mockDate.toISOString(), view_count: 0, channel_title: 'C', channel_id: 'c' }, // 1:01:01
-             { id: 'r2', title: 'Short', duration_seconds: 65, thumbnail: '', published_at: mockDate.toISOString(), view_count: 0, channel_title: 'C', channel_id: 'c' }    // 1:05
-         ];
+        // Recommendation with > 1 hour and < 1 hour
+        const recs = [
+            { id: 'r1', title: 'Long', duration_seconds: 3661, thumbnail: '', published_at: mockDate.toISOString(), view_count: 0, channel_title: 'C', channel_id: 'c' }, // 1:01:01
+            { id: 'r2', title: 'Short', duration_seconds: 65, thumbnail: '', published_at: mockDate.toISOString(), view_count: 0, channel_title: 'C', channel_id: 'c' }    // 1:05
+        ];
 
-         const mainVideo = createVideo();
+        const mainVideo = createVideo();
 
-         (YouTubeService.getVideo as any).mockResolvedValue(mainVideo);
-         (YouTubeService.getVideos as any).mockResolvedValue({ videos: recs });
-         (YouTubeService.getChannels as any).mockResolvedValue({ channels: [] });
+        (YouTubeService.getVideo as any).mockResolvedValue(mainVideo);
+        (YouTubeService.getVideos as any).mockResolvedValue({ videos: recs });
+        (YouTubeService.getChannels as any).mockResolvedValue({ channels: [] });
 
-         render(
+        render(
             <AuthProvider>
                 <MemoryRouter initialEntries={['/video/vid1']}>
                     <Routes>
@@ -216,20 +216,22 @@ describe('VideoPage Unit Tests', () => {
             </AuthProvider>
         );
 
+        // Initially expanded, so "Show less" should be visible
         await waitFor(() => {
-            expect(screen.getByText('Show more')).toBeInTheDocument();
+            expect(screen.getByText('Show less')).toBeInTheDocument();
+            expect(screen.queryByText('Show more')).not.toBeInTheDocument();
         });
-
-        // Click to expand
-        fireEvent.click(screen.getByText('Show more').closest('div')!.parentElement!);
-
-        expect(screen.getByText('Show less')).toBeInTheDocument();
-        expect(screen.queryByText('Show more')).not.toBeInTheDocument();
 
         // Click to collapse
         fireEvent.click(screen.getByText('Show less').closest('div')!.parentElement!);
 
         expect(screen.getByText('Show more')).toBeInTheDocument();
+        expect(screen.queryByText('Show less')).not.toBeInTheDocument();
+
+        // Click to expand again
+        fireEvent.click(screen.getByText('Show more').closest('div')!.parentElement!);
+
+        expect(screen.getByText('Show less')).toBeInTheDocument();
     });
 
     it('filters current video from recommendations', async () => {

@@ -47,18 +47,18 @@ const mockChannels = [
 ];
 
 const mockVideos = [
-    {
-        id: '1',
-        title: 'Talking Tech and AI with Google CEO Sundar Pichai!',
-        description: 'Description 1',
-        thumbnail: 'http://example.com/thumb1.jpg',
-        duration_seconds: 120,
-        channel_id: 'channel1',
-        channel_title: 'Marques Brownlee',
-        channel_thumbnail: 'http://example.com/channel1.jpg',
-        published_at: '2023-01-01T00:00:00Z',
-        view_count: 1000
-    }
+  {
+    id: '1',
+    title: 'Talking Tech and AI with Google CEO Sundar Pichai!',
+    description: 'Description 1',
+    thumbnail: 'http://example.com/thumb1.jpg',
+    duration_seconds: 120,
+    channel_id: 'channel1',
+    channel_title: 'Marques Brownlee',
+    channel_thumbnail: 'http://example.com/channel1.jpg',
+    published_at: '2023-01-01T00:00:00Z',
+    view_count: 1000
+  }
 ];
 
 describe('App Integration', () => {
@@ -101,19 +101,19 @@ describe('App Integration', () => {
       expect(screen.getByText('Explore')).toBeInTheDocument();
       expect(screen.getAllByText('Subscriptions')[0]).toBeInTheDocument();
 
-       // Toolbar elements
-       expect(screen.getByAltText('YouTube Logo')).toBeInTheDocument();
-       expect(screen.getByPlaceholderText('Search')).toBeInTheDocument();
-       expect(screen.getByText('Sign in')).toBeInTheDocument();
+      // Toolbar elements
+      expect(screen.getByAltText('YouTube Logo')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Search')).toBeInTheDocument();
+      expect(screen.getByText('Sign in')).toBeInTheDocument();
 
-        // Main content (VideoGrid)
-        expect(screen.getByText('Talking Tech and AI with Google CEO Sundar Pichai!')).toBeInTheDocument();
-        expect(screen.getAllByText('Marques Brownlee')[0]).toBeInTheDocument();
+      // Main content (VideoGrid)
+      expect(screen.getByText('Talking Tech and AI with Google CEO Sundar Pichai!')).toBeInTheDocument();
+      expect(screen.getAllByText('Marques Brownlee')[0]).toBeInTheDocument();
     });
   });
 
   it('renders correct CSS classes for app structure', async () => {
-     render(
+    render(
       <BrowserRouter>
         <AuthProvider>
           <App />
@@ -122,11 +122,12 @@ describe('App Integration', () => {
     );
 
     await waitFor(() => {
-       const sidebar = screen.getByText('Home').closest('nav');
-       expect(sidebar).toHaveClass('fixed left-0 bottom-0');
+      const sidebar = screen.getByText('Home').closest('nav');
+      // Sidebar is now absolute positioned within the relative container
+      expect(sidebar).toHaveClass('absolute left-0 top-14');
 
-       const header = screen.getByAltText('YouTube Logo').closest('header');
-       expect(header).toHaveClass('fixed top-0');
+      const header = screen.getByAltText('YouTube Logo').closest('header');
+      expect(header).toHaveClass('fixed top-0');
     });
   });
 
@@ -141,7 +142,7 @@ describe('App Integration', () => {
     );
 
     await waitFor(() => {
-        expect(screen.getByText('Sign in')).toBeInTheDocument();
+      expect(screen.getByText('Sign in')).toBeInTheDocument();
     });
   });
 
@@ -161,14 +162,14 @@ describe('App Integration', () => {
     );
 
     await waitFor(() => {
-        // Wait for loading to finish and user to be set
-        expect(screen.getByAltText('Test User')).toBeInTheDocument();
+      // Wait for loading to finish and user to be set
+      expect(screen.getByAltText('Test User')).toBeInTheDocument();
     });
 
     // Open user menu
     const userAvatar = screen.getByAltText('Test User');
     await waitFor(() => {
-        userAvatar.click();
+      userAvatar.click();
     });
 
     // Check logout button (it might be hidden in dropdown but should exist)
@@ -184,15 +185,15 @@ describe('App Integration', () => {
           <App />
         </AuthProvider>
       </BrowserRouter>
-      );
+    );
 
     await waitFor(() => {
-        expect(YouTubeService.getChannels).toHaveBeenCalled();
+      expect(YouTubeService.getChannels).toHaveBeenCalled();
     });
 
     await waitFor(() => {
-        expect(screen.getByText('Test Channel 1')).toBeInTheDocument();
-        expect(screen.getByText('Test Channel 2')).toBeInTheDocument();
+      expect(screen.getByText('Test Channel 1')).toBeInTheDocument();
+      expect(screen.getByText('Test Channel 2')).toBeInTheDocument();
     });
   });
 

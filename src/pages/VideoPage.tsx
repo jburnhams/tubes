@@ -61,7 +61,7 @@ export const VideoPage = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const { user } = useAuth();
-  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(true);
 
   useEffect(() => {
     const fetchVideoData = async () => {

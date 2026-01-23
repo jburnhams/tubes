@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { render, screen, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { Toolbar } from '@/src/components/Toolbar';
 import { vi, Mock } from 'vitest';
 import * as AuthContext from '@/src/context/AuthContext';
@@ -27,7 +28,11 @@ describe('Toolbar Component', () => {
       logout: mockLogout,
     });
 
-    render(<Toolbar />);
+    render(
+      <MemoryRouter>
+        <Toolbar />
+      </MemoryRouter>
+    );
 
     // expect(screen.getByText('Tubes')).toBeInTheDocument(); // Logo is an image now
     expect(screen.getByAltText('YouTube Logo')).toBeInTheDocument();
@@ -43,7 +48,11 @@ describe('Toolbar Component', () => {
       logout: mockLogout,
     });
 
-    render(<Toolbar />);
+    render(
+      <MemoryRouter>
+        <Toolbar />
+      </MemoryRouter>
+    );
 
     fireEvent.click(screen.getByText('Sign in'));
     expect(mockLogin).toHaveBeenCalledTimes(1);
@@ -65,7 +74,11 @@ describe('Toolbar Component', () => {
       logout: mockLogout,
     });
 
-    render(<Toolbar />);
+    render(
+      <MemoryRouter>
+        <Toolbar />
+      </MemoryRouter>
+    );
 
     expect(screen.getByAltText('YouTube Logo')).toBeInTheDocument();
     expect(screen.getByAltText('Test User')).toBeInTheDocument();
@@ -98,7 +111,11 @@ describe('Toolbar Component', () => {
       logout: mockLogout,
     });
 
-    render(<Toolbar />);
+    render(
+      <MemoryRouter>
+        <Toolbar />
+      </MemoryRouter>
+    );
 
     // Open user menu
     fireEvent.click(screen.getByAltText('Test User'));
@@ -123,7 +140,11 @@ describe('Toolbar Component', () => {
       logout: mockLogout,
     });
 
-    render(<Toolbar />);
+    render(
+      <MemoryRouter>
+        <Toolbar />
+      </MemoryRouter>
+    );
 
     const img = screen.getByAltText('Test User');
 
@@ -152,7 +173,11 @@ describe('Toolbar Component', () => {
       logout: mockLogout,
     });
 
-    render(<Toolbar />);
+    render(
+      <MemoryRouter>
+        <Toolbar />
+      </MemoryRouter>
+    );
 
     const img = screen.getByAltText('Test User');
     expect(img).toHaveAttribute('src', 'https://ui-avatars.com/api/?name=Test%20User');

@@ -36,7 +36,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 font-roboto pt-14 pl-[72px] md:pl-52">
+    <div className="relative min-h-screen bg-gray-50 font-roboto pt-14 pl-[72px] md:pl-52">
       <Toolbar />
       <Sidebar />
       <main className="p-6 bg-gray-50 min-h-[calc(100vh-56px)]">

@@ -103,7 +103,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ channelId }) => {
                     <div className="relative mb-3">
                         <Link to={`/video/${video.id}`} className="block relative">
                             <img className="w-full rounded-xl object-cover aspect-video hover:rounded-none transition-all duration-200" src={video.thumbnail} alt={video.title} />
-                             <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs font-medium px-1.5 py-0.5 rounded">
+                            <div className="absolute bottom-2 right-2 bg-black/80 text-white text-xs font-medium px-1.5 py-0.5 rounded">
                                 {formatDuration(video.duration_seconds)}
                             </div>
                         </Link>
@@ -113,13 +113,6 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ channelId }) => {
                             <a href={`https://www.youtube.com/channel/${video.channel_id}`} target="_blank" rel="noopener noreferrer">
                                 <img className="rounded-full w-9 h-9 object-cover" src={video.channel_thumbnail} alt={video.channel_title} />
                             </a>
-                            {/* Tooltip - Simplified as we don't have subscriber count */}
-                            <div className="absolute top-10 left-0 bg-white border border-gray-200 shadow-lg rounded-lg p-3 w-48 z-50 hidden group-hover:flex items-center gap-3">
-                                <img className="w-10 h-10 rounded-full" src={video.channel_thumbnail} alt={video.channel_title} />
-                                <div>
-                                    <p className="font-bold text-sm text-gray-900 line-clamp-1">{video.channel_title}</p>
-                                </div>
-                            </div>
                         </div>
                         <div className="flex flex-col">
                             <Link to={`/video/${video.id}`} className="text-sm font-bold text-gray-900 leading-5 mb-1 line-clamp-2 hover:text-blue-600" title={video.title}>

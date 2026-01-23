@@ -30,7 +30,7 @@ export const Sidebar: React.FC = () => {
 
 
   return (
-    <nav className="fixed left-0 bottom-0 top-14 bg-white z-[200] pt-1 w-[72px] md:w-52 border-r border-gray-200 overflow-y-auto pb-10">
+    <nav className="absolute left-0 top-14 h-full bg-white z-[200] pt-1 w-[72px] md:w-52 border-r border-gray-200 pb-10">
       <div className="flex flex-col">
         <Link to="/" className="flex flex-col md:flex-row items-center md:items-start px-0 md:px-6 py-2 md:py-3 cursor-pointer hover:bg-gray-100 justify-center md:justify-start">
           <img src="/icons/home.svg" className="h-6 mb-1 md:mb-0 md:mr-4" alt="Home" />
