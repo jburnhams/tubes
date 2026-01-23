@@ -1,12 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from './Button';
 
 export const Toolbar: React.FC = () => {
   const { user, login, logout } = useAuth();
+  const navigate = useNavigate();
   const [imageError, setImageError] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const menuRef = useRef<HTMLDivElement>(null);
 
   const handleImageError = () => {
@@ -34,6 +36,19 @@ export const Toolbar: React.FC = () => {
     };
   }, [isMenuOpen]);
 
+  const handleSearch = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
+    }
+  };
+
+  const handleSearchKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearch();
+    }
+  };
+
   // Fallback image
   const fallbackImage = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(user?.name || 'User');
   const profileImage = !imageError && user?.profile_picture ? user.profile_picture : fallbackImage;
@@ -54,8 +69,12 @@ export const Toolbar: React.FC = () => {
           className="flex-1 h-9 md:h-10 px-3 text-base border border-gray-300 rounded-l-[2px] shadow-inner focus:outline-none focus:border-blue-500 placeholder-gray-500"
           type="text"
           placeholder="Search"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyPress={handleSearchKeyPress}
         />
         <button
+          onClick={handleSearch}
           className="h-9 md:h-10 w-16 bg-gray-50 border border-l-0 border-gray-300 rounded-r-[2px] cursor-pointer hover:bg-gray-100 flex justify-center items-center relative group"
         >
           <img className="h-6 mt-1" src="/icons/search.svg" alt="Search" />

@@ -92,4 +92,27 @@ export class YouTubeService {
 
     return data;
   }
+
+  static async searchVideos(query: string, limit: number = 20): Promise<VideoListResponse> {
+    const url = new URL('https://storage.jonathanburnhams.com/api/youtube/videos');
+    url.searchParams.append('title_contains', query);
+    url.searchParams.append('sort_by', 'published_at');
+    url.searchParams.append('sort_order', 'desc');
+    url.searchParams.append('limit', limit.toString());
+    url.searchParams.append('offset', '0');
+
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to search videos: ${response.status}`);
+    }
+
+    return response.json();
+  }
 }

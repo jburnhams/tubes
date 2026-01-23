@@ -49,14 +49,22 @@ const formatTimeAgo = (dateString: string): string => {
 
 interface VideoGridProps {
     channelId?: string;
+    videos?: Video[];
 }
 
-export const VideoGrid: React.FC<VideoGridProps> = ({ channelId }) => {
-    const [videos, setVideos] = useState<Video[]>([]);
-    const [loading, setLoading] = useState(true);
+export const VideoGrid: React.FC<VideoGridProps> = ({ channelId, videos: externalVideos }) => {
+    const [videos, setVideos] = useState<Video[]>(externalVideos || []);
+    const [loading, setLoading] = useState(!externalVideos);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        // If videos are provided externally, don't fetch
+        if (externalVideos) {
+            setVideos(externalVideos);
+            setLoading(false);
+            return;
+        }
+
         const fetchVideos = async () => {
             try {
                 const response = await YouTubeService.getVideos(channelId);
@@ -70,7 +78,7 @@ export const VideoGrid: React.FC<VideoGridProps> = ({ channelId }) => {
         };
 
         fetchVideos();
-    }, [channelId]);
+    }, [channelId, externalVideos]);
 
     if (loading) {
         return (

@@ -6,6 +6,7 @@ import { Sidebar } from './components/Sidebar';
 import { VideoPage } from './pages/VideoPage';
 import { ChannelPage } from './pages/ChannelPage';
 import { ChannelsPage } from './pages/ChannelsPage';
+import { SearchResultsPage } from './pages/SearchResultsPage';
 import { useAuth } from './context/AuthContext';
 import { useEffect } from 'react';
 import { CollectionService } from './services/collection';
@@ -43,6 +44,7 @@ function App() {
         <Routes>
           <Route path="/" element={<VideoGrid />} />
           <Route path="/video/:id" element={<VideoPage />} />
+          <Route path="/search" element={<SearchResultsPage />} />
           <Route path="/channels" element={<ChannelsPage />} />
           <Route path="/channel/:id" element={<ChannelPage />} />
         </Routes>
