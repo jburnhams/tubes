@@ -17,7 +17,7 @@ describe('Sidebar', () => {
     vi.resetAllMocks();
   });
 
-  it('renders static navigation items', async () => {
+  it('renders static navigation items with correct links', async () => {
     // Mock getChannels to resolve immediately
     (YouTubeService.getChannels as any).mockResolvedValue({ channels: [] });
 
@@ -27,17 +27,25 @@ describe('Sidebar', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText('Home')).toBeInTheDocument();
-    expect(screen.getByText('Explore')).toBeInTheDocument();
-    // 'Subscriptions' appears twice (once in main nav, once in sidebar section header)
+    // helper to check link href
+    const checkLink = (text: string, href: string) => {
+      const link = screen.getByText(text).closest('a');
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute('href', href);
+    };
+
+    checkLink('Home', '/');
+    checkLink('Explore', '/channels');
+    checkLink('Originals', '/channels');
+    checkLink('Music', '/channels');
+    checkLink('Library', '/channels');
+
+    // 'Subscriptions' header is present (not a link itself, but part of the layout)
     expect(screen.getAllByText('Subscriptions').length).toBeGreaterThan(0);
-    expect(screen.getByText('Originals')).toBeInTheDocument();
-    expect(screen.getByText('Music')).toBeInTheDocument();
-    expect(screen.getByText('Library')).toBeInTheDocument();
 
     // Wait for effect to settle to avoid act warnings
     await waitFor(() => {
-        expect(YouTubeService.getChannels).toHaveBeenCalled();
+      expect(YouTubeService.getChannels).toHaveBeenCalled();
     });
   });
 
@@ -77,7 +85,7 @@ describe('Sidebar', () => {
   it('handles fetch error', async () => {
     (YouTubeService.getChannels as any).mockRejectedValue(new Error('Failed'));
     // Suppress console.error for this test
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
 
     render(
       <MemoryRouter>

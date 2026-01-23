@@ -17,7 +17,7 @@ describe('Sidebar Integration', () => {
     vi.resetAllMocks();
   });
 
-  it('toggles subscriptions list on click', async () => {
+  it('keeps subscriptions list expanded', async () => {
     const mockChannels = [
       { youtube_id: '1', title: 'Test Channel 1', thumbnail_url: 'url1' },
     ];
@@ -34,30 +34,18 @@ describe('Sidebar Integration', () => {
       expect(screen.getByText('Test Channel 1')).toBeInTheDocument();
     });
 
-    // Find the toggle button (Subscriptions header)
-    // The clickable part is the div with text "Subscriptions" and the arrow
-    // The Sidebar component has multiple "Subscriptions" texts.
-    // One is main nav, one is the section header.
-    // The section header has "hidden md:block" container around it.
-    // The toggle has "flex items-center px-6 py-2 cursor-pointer hover:bg-gray-100 justify-between group" class
-
-    // Let's find by text "Subscriptions" but specifically the one that acts as a header.
-    // There is only one text "Subscriptions" in the rendered sidebar (the header).
-    // The other one is in the alt text of the image, which getByText ignores.
+    // Find the Subscriptions header
     const toggleButton = screen.getByText('Subscriptions');
 
     fireEvent.click(toggleButton);
 
-    // Should now be collapsed, so channel 1 should not be visible?
-    // "Test Channel 1" might still be in DOM if hidden with CSS?
-    // The code uses: {isSubscriptionsExpanded && ( ... )} so it should be removed from DOM.
+    // Should NOT be collapsed. Channels should still be visible.
     await waitFor(() => {
-      expect(screen.queryByText('Test Channel 1')).not.toBeInTheDocument();
+      expect(screen.getByText('Test Channel 1')).toBeInTheDocument();
     });
 
-    // Click again to expand
+    // Verify it remains visible (redundant but confirming "always open")
     fireEvent.click(toggleButton);
-
     await waitFor(() => {
       expect(screen.getByText('Test Channel 1')).toBeInTheDocument();
     });

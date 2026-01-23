@@ -5,9 +5,10 @@ import 'shaka-player/dist/controls.css';
 interface TubePlayerWrapperProps {
   videoId: string;
   sessionId?: string;
+  autoplay?: boolean;
 }
 
-export const TubePlayerWrapper: React.FC<TubePlayerWrapperProps> = ({ videoId, sessionId }) => {
+export const TubePlayerWrapper: React.FC<TubePlayerWrapperProps> = ({ videoId, sessionId, autoplay }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<TubePlayer | null>(null);
 
@@ -27,6 +28,10 @@ export const TubePlayerWrapper: React.FC<TubePlayerWrapperProps> = ({ videoId, s
           sessionId: sessionId,
         });
         await player.loadVideo(videoId);
+
+        if (autoplay) {
+          player.play();
+        }
       } catch (error) {
         console.error('Failed to initialize or load video in TubePlayer', error);
       }
@@ -40,7 +45,7 @@ export const TubePlayerWrapper: React.FC<TubePlayerWrapperProps> = ({ videoId, s
         playerRef.current = null;
       }
     };
-  }, [videoId, sessionId]);
+  }, [videoId, sessionId, autoplay]);
 
   return (
     <div

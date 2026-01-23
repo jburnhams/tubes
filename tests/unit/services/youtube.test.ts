@@ -94,8 +94,12 @@ describe('YouTubeService', () => {
         json: async () => mockResponse
       });
 
+      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
+
       const result = await YouTubeService.getChannel('123');
       expect(result.view_count).toBeNull();
+
+      consoleSpy.mockRestore();
     });
   });
 });
