@@ -1,5 +1,13 @@
 # Progress log
 
+## 2026-11-09: why videos start slowly on the server
+
+- Asked for: the deployed server took about 13 s from Play to the first segment, against about 2 s in the spike; check other videos and clients.
+- Measured on eight library videos with the deployed yt-dlp (2026.10.26): YouTube answered the `visionos` client with UNPLAYABLE for six of the seven that play here, and yt-dlp then falls back to `web_embedded`, which carries an ad and makes the download wait 4-10 s "as required by the site". The spike's videos happened to be ones `visionos` plays. No other client (tv, tv_simply, tv_downgraded, web, web_safari, mweb, ios, android, android_vr, default) gave 1080p without that wait: unplayable, images only, or 360p without a PO token. Skipping the wait gets a 403, and it counts from the end of extraction, so it is paid once whatever the order.
+- Time to first segment = probe (about 3.5 s) + each download extracting again (about 3.5 s) + the wait (0-10 s). The downloads now reuse the probe (`--load-info-json` with the probe saved as `probe.json` in the video's folder, deleted at the end), which removes the second extraction: measured 3-4.5 s without the wait (was 5-8 s) and 8-13 s with it (was 12-17 s). It also stops a chosen format vanishing between two extractions ("Requested format is not available").
+- About one probe in eight came back with only SABR streams (no https formats); a probe whose streams cannot be chosen is now tried once more. Twice a download got a 403 after its wait and not on retry; not handled yet.
+- `visionos` stays: fastest where it works, free where it does not (yt-dlp adds `web_embedded` itself). Going lower for the slow videos would need a PO token provider (none installed), which might open `mweb` or `web` at 1080p; a separate experiment. Fetching likely videos ahead of time (milestone 4) avoids the wait altogether.
+
 ## 2026-11-09: Tubes rebuilt as a home video server (milestone 1)
 
 - Asked for: replace the old in-browser player (a YouTube-like UI and a browser-side stream extractor through a VPS proxy, abandoned in January 2026: datacenter IPs were bot-checked, and stream URLs and tokens broke constantly) with a server that fetches with yt-dlp on the home connection. Built from python-app-template.

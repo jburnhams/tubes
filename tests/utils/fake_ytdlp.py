@@ -3,7 +3,7 @@
 
   --version                                          prints a version
   --dump-single-json --no-playlist URL               one video's info with an H.264 and an AAC format (duration $FAKE_YTDLP_SECONDS, default 6)
-  -f v264|a-aac -o - URL                             that stream as fragmented MP4 on stdout, made by ffmpeg from a test pattern or a tone
+  -f v264|a-aac --load-info-json PROBE -o -          that stream (which must be in the saved probe) as fragmented MP4 on stdout, made by ffmpeg from a test pattern or a tone
 
 Set FAKE_YTDLP_FAIL=<substring of the command line> to make a matching call fail with an ERROR line."""
 import json, os, subprocess, sys
@@ -25,6 +25,9 @@ if '--dump-single-json' in args:
     sys.exit(0)
 
 fmt = args[args.index('-f') + 1]
+with open(args[args.index('--load-info-json') + 1], encoding='utf8') as f: saved = json.load(f)       # the downloads reuse the probe, as yt-dlp does
+if fmt not in [x['format_id'] for x in saved['formats']]:
+    print('ERROR: [youtube] fake: Requested format is not available', file=sys.stderr); sys.exit(1)
 ff = os.environ.get('TUBES_FFMPEG', 'ffmpeg')
 if fmt == 'v264': src, codec = ['-f', 'lavfi', '-i', f'testsrc=size=320x180:rate=25:duration={seconds}'], ['-c:v', 'libx264', '-preset', 'ultrafast', '-g', '25', '-pix_fmt', 'yuv420p']
 else: src, codec = ['-f', 'lavfi', '-i', f'sine=frequency=440:duration={seconds}'], ['-c:a', 'aac']

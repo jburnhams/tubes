@@ -1,4 +1,4 @@
-import os, subprocess, threading
+import json, os, subprocess, threading
 import pytest
 from tubes import cache, fetcher, oslib, ytdlp
 from library import seed
@@ -16,7 +16,7 @@ def clean_jobs(monkeypatch):
 def test_commands():
     assert fetcher.hls_command(video_fd=7, audio_fd=9)[:13] == ['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-i', 'pipe:7', '-i', 'pipe:9', '-map', '0:v:0', '-map']
     assert fetcher.hls_command()[-1] == 'index.m3u8' and 'event' in fetcher.hls_command()
-    assert fetcher.stream_command('399', 'https://u')[-6:] == ['--no-part', '-f', '399', '-o', '-', 'https://u']
+    assert fetcher.stream_command('399', '/c/probe.json')[-7:] == ['--no-part', '-f', '399', '--load-info-json', '/c/probe.json', '-o', '-']
 
 
 def test_start_refusals(monkeypatch):
@@ -42,17 +42,27 @@ def test_a_fetch_in_the_background_succeeds_and_trims_the_cache(monkeypatch):
     seed()
     monkeypatch.setattr(ytdlp, 'probe', lambda url: INFO)
     seen = []; gate = threading.Event()   # holds the fetch until the first answer is checked, which would otherwise race it
-    def fake_pipeline(job, url, v, a, duration):
-        gate.wait(10); seen.append((url, v, a, duration)); write_playlist(job.video_id, 2, True); return None
+    def fake_pipeline(job, info_path, v, a, duration):
+        gate.wait(10)
+        with open(info_path, encoding='utf8') as f: seen.append((json.load(f), v, a, duration))
+        write_playlist(job.video_id, 2, True); return None
     monkeypatch.setattr(fetcher, 'pipeline', fake_pipeline)
     evicted = []; monkeypatch.setattr(cache, 'evict', lambda now: evicted.append(now))
     st = fetcher.start('aaaaaaaaaaa', 'Building a shelf', 'Workshop')
     assert st['state'] == 'fetching' and cache.entry('aaaaaaaaaaa')['title'] == 'Building a shelf'
     gate.set()
     fetcher._running.get('aaaaaaaaaaa') and fetcher._running['aaaaaaaaaaa'].thread.join(10)
-    assert seen == [('https://www.youtube.com/watch?v=aaaaaaaaaaa', '399', '140', 8)] and len(evicted) == 1
+    assert seen == [(INFO, '399', '140', 8)] and len(evicted) == 1
+    assert not os.path.exists(os.path.join(cache.folder('aaaaaaaaaaa'), fetcher.INFO))       # the saved probe goes when the fetch ends
     assert cache.status('aaaaaaaaaaa') | dict() == dict(state='ready', segments=2, seconds=8.0, complete=True, playable=True, error=None, formats='1080p AV1 + AAC')
     assert fetcher.running() == []
+
+
+def test_a_probe_without_usable_streams_is_tried_once_more(monkeypatch):
+    answers = [dict(formats=[dict(format_id='96', vcodec='avc1', acodec='mp4a', height=1080, protocol='m3u8_native')]), INFO]   # SABR-only, then a normal answer
+    monkeypatch.setattr(ytdlp, 'probe', lambda url: answers.pop(0))
+    info, video, audio = fetcher.choose('https://u')
+    assert info is INFO and (video['format_id'], audio['format_id']) == ('399', '140') and answers == []
 
 
 @pytest.mark.parametrize('probe, pipeline_result, error', [
@@ -114,7 +124,7 @@ def run_pipeline(monkeypatch, codes=(0, 0, 0), log=b'', stalled=False, cancelled
     def fake_watch(j):
         j.cancelled = cancelled; return stalled
     monkeypatch.setattr(fetcher, 'watch', fake_watch)
-    return fetcher.pipeline(job, 'https://u', '399', '140', duration), made
+    return fetcher.pipeline(job, '/c/probe.json', '399', '140', duration), made
 
 
 def test_pipeline_wires_two_downloads_into_ffmpeg(monkeypatch):
@@ -123,7 +133,7 @@ def test_pipeline_wires_two_downloads_into_ffmpeg(monkeypatch):
     ff, v, a = made
     fds = ff.kw['pass_fds']
     assert ff.cmd[7] == f'pipe:{fds[0]}' and ff.cmd[9] == f'pipe:{fds[1]}' and ff.kw['cwd'] == cache.folder('aaaaaaaaaaa')
-    assert v.cmd[-5:] == ['-f', '399', '-o', '-', 'https://u'] and a.cmd[-5:] == ['-f', '140', '-o', '-', 'https://u']
+    assert v.cmd[-6:] == ['-f', '399', '--load-info-json', '/c/probe.json', '-o', '-'] and a.cmd[-6:] == ['-f', '140', '--load-info-json', '/c/probe.json', '-o', '-']
     assert isinstance(v.kw['stdout'], int) and isinstance(a.kw['stdout'], int)
     for fd in (*fds, v.kw['stdout'], a.kw['stdout']):
         with pytest.raises(OSError): os.fstat(fd)                                          # every pipe end is closed in this process
