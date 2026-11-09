@@ -65,6 +65,7 @@ export function videoPage(url: string, list: Video[]): VideoPage {
 
 const find = (id: string) => videos.find(v => v.id === id) ?? longChannel.find(v => v.id === id)
 const stream = (id: string) => mock.streams[id] ?? streams.ready
+const shown = () => videos.filter(v => !mock.gone.includes(v.id))
 
 export const handlers = [
   http.get(at(paths.health), () => HttpResponse.json({ ok: true, version: systemStatus.version })),
@@ -110,10 +111,12 @@ export const handlers = [
     mock.channels = mock.channels.map(x => (x === c ? { ...x, videos: 0, complete: false, synced: null } : x))
     return HttpResponse.json({ channel: c.id, videos: c.videos, sync: mock.job.running ? mock.job : startSync([c.id]) })
   }),
-  http.get(at(paths.shuffle), ({ request }) => HttpResponse.json(videos.slice(0, Number(new URL(request.url).searchParams.get('count') ?? 24)))),
-  http.get(at(paths.videos), ({ request }) => HttpResponse.json(videoPage(request.url, videos))),
+  // A video in `mock.gone` is left out of the lists and says when it went, as the server does once it is hidden.
+  http.get(at(paths.shuffle), ({ request }) => HttpResponse.json(shown().slice(0, Number(new URL(request.url).searchParams.get('count') ?? 24)))),
+  http.get(at(paths.videos), ({ request }) => HttpResponse.json(videoPage(request.url, shown()))),
   http.get(at('/api/videos/:id'), ({ params }) => {
-    const v = find(String(params.id))
+    const found = find(String(params.id))
+    const v = found && mock.gone.includes(found.id) ? { ...found, gone: '2026-11-09T12:00:00+00:00' } : found
     const plays = mock.plays.filter(p => p === params.id).length
     return v ? HttpResponse.json({ ...v, plays, last_played: plays ? '2026-11-09T09:30:00+00:00' : null }) : refused(`There is no video ${params.id} in the library.`, 404)
   }),

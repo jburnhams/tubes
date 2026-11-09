@@ -76,6 +76,9 @@ function Stage({ v }: { v: VideoDetail }) {
   const s = play.status !== 'ready' ? undefined : stream.status === 'ready' ? stream.data : play.data
   const failed = s?.state === 'failed'
   useEffect(() => { if (failed) reportMissing(v.id) }, [failed, v.id])
+  // A fetch that worked tells the server the video is there after all (it clears `gone`): read the video again so this page agrees.
+  const whole = !!s?.complete
+  useEffect(() => { if (whole && v.gone) void queryClient.invalidateQueries({ queryKey: keys.video(v.id) }) }, [whole, v.gone, v.id, queryClient])
   const hidden = useHidden()
   const gone = !!v.gone || hidden.has(v.id)
 

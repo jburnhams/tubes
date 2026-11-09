@@ -29,6 +29,26 @@ describe('Missing videos', () => {
     expect(screen.getByRole('link', { name: videos[2].title })).toBeInTheDocument()  // YouTube still has it: it stays
   })
 
+  it('shows a hidden video again once the server has it back', async () => {
+    const { user } = openApp('/')
+    const [, second] = await cards()
+    mock.gone = [videos[1].id]; fireEvent.error(thumbnailOf(second)); await act(flush)
+    await waitFor(() => expect(screen.queryByRole('link', { name: videos[1].title })).not.toBeInTheDocument())
+    mock.gone = []                                                                    // a recheck, or a fetch that worked, found it again
+    await user.click(screen.getByRole('link', { name: 'Channels' }))
+    await user.click(screen.getByRole('link', { name: 'Home' }))
+    expect(await screen.findByRole('link', { name: videos[1].title })).toBeInTheDocument()
+  })
+
+  it('reads the video again when its copy turns out whole after all', async () => {
+    const id = videos[1].id
+    mock.gone = [id]; mock.streams[id] = streams.fetching
+    openApp(`/watch/${id}`)
+    expect(await screen.findByText('No longer there (removed or made private)', { selector: 'dd' })).toBeInTheDocument()
+    mock.gone = []; mock.streams[id] = streams.ready                                  // the fetch worked: the server cleared the mark
+    await waitFor(() => expect(screen.queryByText('No longer there (removed or made private)', { selector: 'dd' })).not.toBeInTheDocument())
+  })
+
   it('reports YouTube\'s grey placeholder, not a small thumbnail that was asked for', async () => {
     openApp('/')
     const [, second, third] = await cards()
@@ -52,9 +72,10 @@ describe('Missing videos', () => {
 
   it('says a failed fetch is a video YouTube no longer has', async () => {
     const id = videos[1].id
-    mock.streams[id] = streams.failed; mock.gone = [id]
+    mock.streams[id] = streams.failed
     openApp(`/watch/${id}`)
     expect(await screen.findByText('This video could not be fetched')).toBeInTheDocument()
+    mock.gone = [id]                                                                  // what YouTube will say when asked
     await waitFor(() => expect(mock.checks).toEqual([]))
     await act(flush)
     expect(mock.checks).toEqual([[id]])
