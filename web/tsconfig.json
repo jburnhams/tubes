@@ -1,0 +1,7 @@
+{
+  "compilerOptions": {
+    "target": "ES2024", "lib": ["ES2024", "DOM", "DOM.Iterable"], "module": "ESNext", "moduleResolution": "bundler",
+    "jsx": "react-jsx", "strict": true, "skipLibCheck": true, "noEmit": true, "isolatedModules": true, "allowImportingTsExtensions": true, "types": ["vite/client", "node"]
+  },
+  "include": ["src", "tests", "stories", ".storybook", "vite.config.ts", "vitest.config.ts", "vitest.gate.config.ts", "strata-visual.config.ts"]
+}
