@@ -8,6 +8,7 @@ import { Link, NavLink, Outlet, useNavigate, useSearchParams } from 'react-route
 import { useLoad } from 'strata-react'
 import { api, keys } from '../api'
 import { Avatar } from './cards'
+import { useReconcile } from './missing'
 
 export function Mark() {
   return (
@@ -77,6 +78,7 @@ const startsWide = () => typeof window.matchMedia !== 'function' || !window.matc
 
 export function Shell() {
   const [wide, setWide] = useState(startsWide)
+  useReconcile()
   return (
     <div className="min-h-screen bg-tube-page font-tube text-tube-ink">
       <header className="fixed inset-x-0 top-0 z-10 flex h-14 items-center gap-4 bg-tube-page px-4">

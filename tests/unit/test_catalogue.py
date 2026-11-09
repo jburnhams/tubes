@@ -180,3 +180,17 @@ def test_booleans_survive_both_engines(fake_youtube):
     fake_youtube.channel(A, 'Workshop'); catalogue.add(A)
     with db.connect() as con: con.execute('UPDATE channels SET complete = ? WHERE id = ?', (True, A))
     assert library.channel(A)['complete'] is True
+
+
+def test_a_report_from_the_watching_side_is_rechecked_not_trusted(fake_youtube):
+    fake_youtube.channel(A, 'Workshop', videos=3); catalogue.add(A); catalogue.sync_channel(A)
+    v0, v1, v2 = (vid(A, n) for n in range(3))
+    del fake_youtube.videos[v0]; fake_youtube.calls.clear()
+    r = catalogue.report([v0, v1, v1, 'notinlibrary'], now='2026-11-09T12:00:00+00:00')
+    assert r == dict(checked=2, gone=1, back=0, hidden=[v0]) and fake_youtube.count('videos') == 1     # one call; only the library's videos, each once
+    assert [v['id'] for v in videos_of(A)] == [v2, v1]
+    fake_youtube.calls.clear()
+    assert catalogue.report([v0, v1], now='2026-11-09T12:09:00+00:00') == dict(checked=0, gone=0, back=0, hidden=[v0]) and fake_youtube.calls == []   # just asked: not again, still hidden
+    catalogue.mark_gone(v2)                                                                                 # a failed fetch hid it; YouTube still has it
+    assert catalogue.report([v2], now='2026-11-09T12:09:00+00:00') == dict(checked=1, gone=0, back=1, hidden=[])
+    assert catalogue.report([]) == dict(checked=0, gone=0, back=0, hidden=[])

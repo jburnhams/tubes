@@ -87,6 +87,16 @@ export interface Video {
   views: number | null
   cache_state: CacheState | null
   cache_bytes: number | null
+  /** Since when YouTube has not had it (removed or made private), else null. The lists leave such a video out; its own page still opens. */
+  gone: string | null
+}
+
+/** `POST /api/videos/check`: what the recheck of these videos found (how many asked about, newly gone, back) and the ids now hidden. */
+export interface Checked {
+  checked: number
+  gone: number
+  back: number
+  hidden: string[]
 }
 
 /** `GET /api/videos/{id}`: one video with how often it has been played. */
@@ -201,6 +211,7 @@ export const paths = {
   video: (id: string) => `/api/videos/${encodeURIComponent(id)}`,
   play: (id: string) => `/api/videos/${encodeURIComponent(id)}/play`,
   stream: (id: string) => `/api/videos/${encodeURIComponent(id)}/stream`,
+  check: '/api/videos/check',
   playlist: (id: string) => `/api/media/${encodeURIComponent(id)}/index.m3u8`,
   cache: '/api/cache',
   cacheItem: (id: string) => `/api/cache/${encodeURIComponent(id)}`,
@@ -261,6 +272,8 @@ export const api = {
   videos: (filter: VideoFilter, after: string | undefined, signal?: AbortSignal) => fetchJson<VideoPage>(withBase(videosUrl(filter, after)), { signal }),
   shuffle: (count: number) => fetchJson<Video[]>(withBase(`${paths.shuffle}?count=${count}`)),
   video: (id: string) => fetchJson<VideoDetail>(withBase(paths.video(id))),
+  /** Ask the server to check these videos on YouTube (at most 50): it hides the ones YouTube no longer has. */
+  check: (ids: string[]) => callJson<Checked>(withBase(paths.check), send('POST', { ids })),
   play: (id: string) => callJson<Stream>(withBase(paths.play(id)), { method: 'POST' }),
   stream: (id: string) => fetchJson<Stream>(withBase(paths.stream(id))),
   cache: () => fetchJson<CacheReport>(withBase(paths.cache)),

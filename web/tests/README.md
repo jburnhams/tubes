@@ -38,6 +38,7 @@ Vitest 5, Testing Library, user-event, MSW, and strata-react's test helpers (`st
 | `src/watch/Shell.tsx`, `NotFoundScreen.tsx` | 100 | done | integration/App.test.tsx |
 | `src/watch/format.ts` | 100 | done | unit/logic.test.ts |
 | `src/watch/Shown.tsx`, `cards.tsx`, `useVideos.ts` | 100 | done | Home, Search and Channels tests |
+| `src/watch/missing.ts` | 100 | done | integration/Missing.test.tsx, unit/logic.test.ts |
 | `src/watch/HomeScreen.tsx`, `SearchScreen.tsx` | 100 | done | integration/HomeScreen, SearchScreen |
 | `src/watch/ChannelsScreen.tsx`, `ChannelScreen.tsx` | 100 | done | integration/ChannelsScreen.test.tsx |
 | `src/watch/WatchScreen.tsx` | 100 | done | integration/WatchScreen.test.tsx, unit/logic.test.ts |

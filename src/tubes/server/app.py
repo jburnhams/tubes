@@ -32,7 +32,7 @@ import os, platform, shutil
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from tubes import __version__, cache, catalogue, fetcher, library, oslib, settings, youtube, ytdlp
 
@@ -56,6 +56,10 @@ class AddIn(BaseModel):
 
 class SyncIn(BaseModel):
     channels: list[str] | None = None
+
+
+class CheckIn(BaseModel):
+    ids: list[str] = Field(min_length=1, max_length=50)
 
 
 def system_status():
@@ -145,6 +149,12 @@ def create_app():
 
     @app.get('/api/videos/shuffle')
     def get_shuffle(count: int = Query(24, ge=1, le=200), channel: str | None = None): return library.shuffle(count, channel)
+
+    @app.post('/api/videos/check')
+    def post_check(b: CheckIn):
+        """The watching side found these videos missing (a thumbnail or a fetch failed): ask YouTube, and hide the ones it no longer has."""
+        if not youtube.configured(): raise HTTPException(503, 'YouTube cannot be asked without YOUTUBE_API_KEY in the server’s environment.')
+        return guard(catalogue.report, b.ids)
 
     @app.get('/api/videos/{video_id}')
     def get_video(video_id: str): return dict(video_or_404(video_id), **cache.plays(video_id))

@@ -9,6 +9,8 @@
 // it says why, with Fetch again. The play is a useLoad keyed on the video with gcTime 0: a query,
 // not an effect, so React's double-mount in development does not record two plays, and leaving and
 // coming back records a new one. The stream status is polled each second until the copy is whole or failed.
+// A failed fetch reports the video as missing (missing.ts); when YouTube no longer has it, the frame
+// and the details say so rather than leaving the reason to yt-dlp's wording.
 import { useQueryClient } from '@tanstack/react-query'
 import Hls from 'hls.js'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
@@ -18,6 +20,7 @@ import { api, describeError, keys, paths, withBase, type Stream, type VideoDetai
 import { attach, type HlsClass } from '../player'
 import { Avatar, RowsSkeleton, VideoRow, useChannelsById } from './cards'
 import { runningTime, videoCount, viewsAndAge } from './format'
+import { reportMissing, useHidden } from './missing'
 import { Shown } from './Shown'
 
 /** How often the copy's progress is read while it is still arriving. */
@@ -71,6 +74,13 @@ function Stage({ v }: { v: VideoDetail }) {
     await queryClient.invalidateQueries({ queryKey: keys.stream(v.id) })
   }, { describeError })
   const s = play.status !== 'ready' ? undefined : stream.status === 'ready' ? stream.data : play.data
+  const failed = s?.state === 'failed'
+  useEffect(() => { if (failed) reportMissing(v.id) }, [failed, v.id])
+  // A fetch that worked tells the server the video is there after all (it clears `gone`): read the video again so this page agrees.
+  const whole = !!s?.complete
+  useEffect(() => { if (whole && v.gone) void queryClient.invalidateQueries({ queryKey: keys.video(v.id) }) }, [whole, v.gone, v.id, queryClient])
+  const hidden = useHidden()
+  const gone = !!v.gone || hidden.has(v.id)
 
   return (
     <div className="grid content-start gap-3">
@@ -81,8 +91,8 @@ function Stage({ v }: { v: VideoDetail }) {
       ) : s.state === 'failed' ? (
         <Frame>
           <div className="grid justify-items-center gap-3">
-            <p className="text-tube-lg font-medium">This video could not be fetched</p>
-            <p className="text-tube-sm opacity-80">{s.error ?? 'The fetch stopped without saying why.'}</p>
+            <p className="text-tube-lg font-medium">{gone ? 'This video is no longer on YouTube' : 'This video could not be fetched'}</p>
+            <p className="text-tube-sm opacity-80">{gone ? 'It was removed or made private, and there is no copy on this server.' : (s.error ?? 'The fetch stopped without saying why.')}</p>
             {/* Resetting the play puts the frame back to "Asking for the video…" at once, so the button needs no pending state. */}
             <button type="button" onClick={() => void again.run()} className="h-9 rounded-full bg-tube-on-screen px-4 text-tube-sm font-medium text-tube-screen hover:opacity-85">Fetch again</button>
           </div>
@@ -104,6 +114,7 @@ function Stage({ v }: { v: VideoDetail }) {
       <dl className="grid gap-1 rounded-tube bg-tube-chip p-3 text-tube-sm">
         <div className="font-medium"><dt className="sr-only">Views and age</dt><dd>{viewsAndAge(v)}</dd></div>
         <div className="flex gap-2"><dt className="text-tube-quiet">Length</dt><dd className="tabular-nums">{runningTime(v.duration)}</dd></div>
+        {gone && <div className="flex gap-2"><dt className="text-tube-quiet">On YouTube</dt><dd>No longer there (removed or made private)</dd></div>}
         {s && (
           <>
             <div className="flex gap-2"><dt className="text-tube-quiet">Copy</dt><dd className="tabular-nums">{savedText(s, v.duration)}</dd></div>

@@ -53,7 +53,7 @@ export function makeVideos(perChannel = 6): Video[] {
         id, channel_id: c.id, channel: c.title,
         title: topics[c.title][i % topics[c.title].length] + (i >= topics[c.title].length ? ` (part ${Math.floor(i / topics[c.title].length) + 1})` : ''),
         published: day(i * 4 + ci), duration: 240 + ((i * 97 + ci * 31) % 1500), thumbnail: tile(c.hue, String(i + 1)), views: 1000 + i * 37,
-        cache_state: null, cache_bytes: null,
+        cache_state: null, cache_bytes: null, gone: null,
       })
     }
   })
