@@ -46,6 +46,26 @@ export default defineVisualConfig({
           },
         },
       },
+      {
+        name: 'admin-library',
+        path: '/admin/library',
+        states: {
+          ready: [],
+          chosen: {
+            setup: async page => {
+              await page.getByRole('checkbox', { name: 'Select Night Sky' }).check()
+              await page.getByRole('checkbox', { name: 'Select Workshop Notes' }).check()
+              await page.getByRole('button', { name: 'Sync 2' }).waitFor()
+            },
+          },
+          invalid: {
+            setup: async page => {
+              await page.getByRole('button', { name: 'Add' }).click()
+              await page.getByText('Paste a channel or video link').waitFor()
+            },
+          },
+        },
+      },
       { name: 'admin-system', path: '/admin/system' },
       {
         name: 'admin-settings',

@@ -3,7 +3,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite'
 import { useQueryClient } from '@tanstack/react-query'
 import { keys } from '../src/api'
 import { systemStatus } from '../src/mocks/fixtures'
-import { syncFails, systemError, systemInTrouble, systemLoading } from '../src/mocks/handlers'
+import { systemError, systemInTrouble, systemLoading } from '../src/mocks/handlers'
 import { AppAt } from './app-at'
 
 const meta = {
@@ -15,12 +15,10 @@ export default meta
 type Story = StoryObj<typeof meta>
 
 export const Ready: Story = {}
-/** yt-dlp missing, the library never copied, the disk nearly full: the finding names the first. */
+/** yt-dlp missing, no YouTube key, the disk nearly full: the finding names the first. */
 export const InTrouble: Story = { beforeEach: ({ msw }) => msw.use(systemInTrouble) }
 export const Loading: Story = { beforeEach: ({ msw }) => msw.use(systemLoading) }
 export const ServerError: Story = { beforeEach: ({ msw }) => msw.use(systemError) }
-/** The sync is refused; press Sync now to see why. */
-export const SyncFails: Story = { beforeEach: ({ msw }) => msw.use(syncFails), tags: ['no-visual'] }
 export const Phone: Story = { tags: ['visual-phone'] }
 
 /** Puts readings taken at 08:50 into the cache, as an earlier poll would have. */

@@ -2,14 +2,19 @@
 
     ./tubes serve [--host 127.0.0.1] [--port 8367]
 
-The library (channels and videos) is managed elsewhere and copied here by `tubes sync` (library.py); the screens read the copy.
+The library (channels and videos) is managed here, from YouTube (catalogue.py writes it, library.py reads it).
 
 API (JSON):
   GET  /api/health                         {ok, version}
   GET  /api/system                         versions (app, Python, yt-dlp, ffmpeg), folders, disk, cache use, the library copy's state
   GET  /api/settings, PUT /api/settings    every setting (settings.py); PUT takes any subset, a null resets one
-  GET  /api/library, POST /api/library/sync   the library copy: {synced, channels, videos, configured}; sync refreshes it from D1
-  GET  /api/channels, GET /api/channels/{id}   channels with their video counts
+  GET  /api/library                       {synced, channels, videos, configured}: when every followed channel was last synced, and whether the YouTube key is set
+  POST /api/library {input}                add a channel (followed; its sync starts at once) or one video from a link, id or @handle: {kind, channel|video, sync}
+  GET  /api/library/sync                   the background sync: {running, total, done, current, added, errors, started, finished}
+  POST /api/library/sync {channels}        start one for these channel ids (default: every followed channel); 409 while one runs
+  GET  /api/channels, GET /api/channels/{id}   channels with their video counts and sync state
+  DELETE /api/channels/{id}                remove a channel and its videos
+  POST /api/channels/{id}/restart          forget a channel's videos and sync state, then sync it again from the start
   GET  /api/videos?channel=&q=&after=&limit=   a page of videos, newest first: {videos, has_more}; `after` is the last one's cursor (`published|id`)
   GET  /api/videos/shuffle?count=&channel=     videos picked at random
   GET  /api/videos/{id}                    one video, with its copy's state, plays and last play
@@ -29,7 +34,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from tubes import __version__, cache, fetcher, library, oslib, settings, ytdlp
+from tubes import __version__, cache, catalogue, fetcher, library, oslib, settings, youtube, ytdlp
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 LANDING = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'landing.html')
@@ -45,6 +50,14 @@ class EvictIn(BaseModel):
     dry_run: bool = False
 
 
+class AddIn(BaseModel):
+    input: str
+
+
+class SyncIn(BaseModel):
+    channels: list[str] | None = None
+
+
 def system_status():
     """A snapshot for the System page. Sizes are bytes; the web app formats them."""
     du = shutil.disk_usage(settings.cache_dir())
@@ -57,11 +70,14 @@ def system_status():
 def create_app():
     app = FastAPI(title='tubes', docs_url='/api/docs', openapi_url='/api/openapi.json')
     cache.recover(cache.stamp())
+    job = app.state.sync = catalogue.Job()
 
     def guard(fn, *a, **kw):
         try: return fn(*a, **kw)
-        except (settings.SettingError, fetcher.FetchError) as e: raise HTTPException(400, str(e))
-        except library.LibraryError as e: raise HTTPException(502, str(e))
+        except (settings.SettingError, fetcher.FetchError, ValueError) as e: raise HTTPException(400, str(e))
+        except catalogue.NotFound as e: raise HTTPException(404, str(e))
+        except catalogue.Job.Busy as e: raise HTTPException(409, str(e))
+        except youtube.YoutubeError as e: raise HTTPException(503 if not youtube.configured() else 502, str(e))
         except KeyError as e: raise HTTPException(400, str(e.args[0]))
 
     def stream(video_id): return dict(cache.status(video_id), **cache.plays(video_id))
@@ -87,8 +103,32 @@ def create_app():
     @app.get('/api/library')
     def get_library(): return library.status()
 
+    @app.post('/api/library')
+    def post_library(b: AddIn):
+        r = guard(catalogue.add, b.input)
+        if r['kind'] == 'channel':                                   # a new channel's videos arrive at once, as when storage's Sync was pressed after adding it
+            try: r['sync'] = job.start([r['channel']['id']])
+            except catalogue.Job.Busy: r['sync'] = job.state()      # it waits for the next sync; the page says one is running
+        return r
+
+    @app.get('/api/library/sync')
+    def get_sync(): return job.state()
+
     @app.post('/api/library/sync')
-    def post_sync(): return guard(library.sync)
+    def post_sync(b: SyncIn | None = None):
+        if not youtube.configured(): raise HTTPException(503, 'YouTube cannot be asked without YOUTUBE_API_KEY in the server’s environment.')
+        return guard(job.start, b.channels if b else None)
+
+    @app.delete('/api/channels/{channel_id}')
+    def delete_channel(channel_id: str): return guard(catalogue.remove, channel_id)
+
+    @app.post('/api/channels/{channel_id}/restart')
+    def post_restart(channel_id: str):
+        r = guard(catalogue.restart, channel_id)
+        if not youtube.configured(): return dict(r, sync=job.state())
+        try: r['sync'] = job.start([channel_id])
+        except catalogue.Job.Busy: r['sync'] = job.state()
+        return r
 
     @app.get('/api/channels')
     def get_channels(): return library.channels()

@@ -1,12 +1,11 @@
 // The one question: "Can this server fetch and play, and is the library fresh?" The finding names
-// the first thing that is wrong (a missing tool, a library never copied, a nearly full disk) or
-// says all is well. Then, in the order a person checks: the library copy and its Sync now (the
-// view's one filled button), the tools a fetch needs (Status words, never colour alone), the disk
+// the first thing that is wrong (a missing tool, no YouTube key, an empty library, a nearly full disk) or
+// says all is well. Then, in the order a person checks: the library (managed on the Library page),
+// the tools a fetch needs (Status words, never colour alone), the disk
 // the cache is on (a Meter with named thresholds), and what is being fetched now. The read is
 // polled; a poll that fails keeps the last readings and says how old they are.
-import { useQueryClient } from '@tanstack/react-query'
-import { AsyncButton, DataView, EmptyState, LinkCard, LinkCardList, Meter, PageHeader, Skeleton, StaleNotice, Status, crossedThreshold, format, useAsyncAction, useLoad, type MeterThreshold } from 'strata-react'
-import { api, describeError, keys, paths, withBase, type SystemStatus } from '../api'
+import { DataView, EmptyState, LinkCard, LinkCardList, Meter, PageHeader, Skeleton, StaleNotice, Status, crossedThreshold, format, useLoad, type MeterThreshold } from 'strata-react'
+import { api, keys, paths, withBase, type SystemStatus } from '../api'
 
 /** One set of thresholds for the cache's disk, as shares of its size. */
 export const diskThresholds: MeterThreshold[] = [
@@ -23,10 +22,11 @@ export function describeSystem(s: SystemStatus, answering = true): string {
   if (!s.can_fetch) return 'This server cannot fetch videos: fetching needs Linux or macOS. Cached copies still play.'
   if (!s.ytdlp) return 'yt-dlp is missing, so nothing new can be fetched. Install it, or set its path in Settings.'
   if (!s.ffmpeg) return 'ffmpeg is missing, so nothing new can be fetched. Install it, or set its path in Settings.'
-  if (!s.library.synced) return s.library.configured ? 'The library has never been copied here. Sync it below.' : 'The library has never been copied here, and cannot be until its D1 database is set in Settings and the Cloudflare credentials are in the server’s environment.'
+  if (!s.library.configured) return 'The library cannot be added to or synced: the server has no YouTube key. Put YOUTUBE_API_KEY in its environment and restart it.'
+  if (!s.library.channels) return 'The library is empty. Add a channel on the Library page.'
   const crossed = crossedThreshold(s.disk.used / usable(s.disk), diskThresholds)
   if (crossed?.tone === 'danger') return `The cache’s disk is nearly full, with ${format.bytes(s.disk.free)} free. Lower the cache limit or free space on it.`
-  return `Everything is ready. The library was copied on ${format.dateTime(s.library.synced)}, and the cache’s disk has ${format.bytes(s.disk.free)} free.`
+  return `Everything is ready. ${s.library.synced ? `The library was last synced on ${format.dateTime(s.library.synced)}` : 'The library has not had a full sync yet'}, and the cache’s disk has ${format.bytes(s.disk.free)} free.`
 }
 
 function SystemSkeleton() {
@@ -57,11 +57,6 @@ const tool = (version: string | null) => (version ? <span className="flex flex-w
 export function SystemScreen() {
   const load = useLoad({ queryKey: keys.system, queryFn: api.system, refetchInterval: 60_000 })
   const answering = !(load.status === 'ready' && load.stale)
-  const queryClient = useQueryClient()
-  const sync = useAsyncAction(async () => {
-    await api.sync()
-    await Promise.all([keys.system, keys.channels, keys.videos].map(queryKey => queryClient.invalidateQueries({ queryKey })))
-  }, { describeError })
 
   return (
     <>
@@ -77,16 +72,12 @@ export function SystemScreen() {
           <div className="grid gap-10">
             <section aria-labelledby="library" className="grid gap-3">
               <h2 id="library" className="type-heading">Library</h2>
-              <p className="max-w-xl type-body-sm text-muted-foreground">Channels and videos are managed in the library itself. A sync copies them here; the server runs one every few hours.</p>
+              <p className="max-w-xl type-body-sm text-muted-foreground">Channels are added on the Library page and their videos fetched from YouTube; the server syncs every followed channel every few hours.</p>
               <Facts rows={[
-                ['Copied', s.library.synced ? format.dateTime(s.library.synced) : 'Never'],
+                ['Last synced', s.library.synced ? format.dateTime(s.library.synced) : 'Never'],
                 ['Holds', <span className="tabular-nums">{format.count(s.library.videos, 'video')} from {format.count(s.library.channels, 'channel')}</span>],
-                ['Source', s.library.configured ? <Status tone="success">Set</Status> : <Status tone="warning">Not set</Status>],
+                ['YouTube key', s.library.configured ? <Status tone="success">Set</Status> : <Status tone="warning">Not set</Status>],
               ]} />
-              <div className="flex flex-wrap items-center gap-3">
-                <AsyncButton variant="default" phase={sync.phase} error={sync.error} labels={{ idle: 'Sync now', pending: 'Syncing…', done: 'Synced' }} onClick={() => void sync.run()} />
-                {sync.phase === 'error' && <p className="type-body-sm text-danger">{sync.error} The copy was not changed.</p>}
-              </div>
             </section>
 
             <section aria-labelledby="tools" className="grid gap-3">
@@ -119,8 +110,9 @@ export function SystemScreen() {
             <section aria-labelledby="next" className="grid gap-3">
               <h2 id="next" className="type-heading">Go to</h2>
               <LinkCardList label="Places to go from here">
+                <LinkCard to="/admin/library" title="Library" description="The channels followed, adding a channel or a video, and Sync." />
                 <LinkCard to="/admin/cache" title="Cache" description="What is saved, what goes first when it fills, and Trim now." />
-                <LinkCard to="/admin/settings" title="Settings" description="The cache limit and folder, quality, the library's database, the tools' paths." />
+                <LinkCard to="/admin/settings" title="Settings" description="The cache limit and folder, quality, signing in, the tools' paths." />
                 <LinkCard href={withBase('/api/docs')} title="API reference" description="Every endpoint the server answers, with a form to try each one." />
                 <LinkCard href={withBase(paths.health)} title="Health check" description="The JSON a monitor polls to see that the server is up." />
               </LinkCardList>

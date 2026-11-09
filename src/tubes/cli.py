@@ -1,8 +1,9 @@
-"""Command line. `doctor` checks the environment; `sync` refreshes the library copy and `channels` lists it; `fetch`, `cache`, `evict` the
-cache; `set` the settings; `serve` starts the web server. A timer on the server runs `tubes sync; tubes evict` every few hours (docs/deploy.md)."""
-import argparse, importlib, json, sys
+"""Command line. `doctor` checks the environment; `add`, `remove`, `sync` and `channels` manage the library from YouTube (`import-d1` carries
+it over once from the storage service's D1 database); `fetch`, `cache`, `evict` the cache; `set` the settings; `serve` starts the web server.
+A timer on the server runs `tubes sync; tubes evict` every few hours (docs/deploy.md)."""
+import argparse, importlib, json, os, sys
 
-from tubes import __version__, cache, fetcher, library, oslib, settings, ytdlp
+from tubes import __version__, cache, catalogue, d1import, fetcher, library, oslib, settings, youtube, ytdlp
 
 CHECKS = (('fastapi', 'fastapi'), ('uvicorn', 'uvicorn'), ('pydantic', 'pydantic'))
 
@@ -16,8 +17,8 @@ def doctor(args):
         if version: print(f'  ok       {label} {version}')
         else: ok = False; print(f'  MISSING  {label}: {fix}')
     if not oslib.CAN_PASS_FDS: ok = False; print('  MISSING  fetching needs Linux or macOS')
-    try: library.credentials(); print('  ok       library: D1 database and credentials set')
-    except library.LibraryError as e: ok = False; print(f'  MISSING  library: {e}')
+    if youtube.configured(): print('  ok       library: YOUTUBE_API_KEY set' + (' (sent with a Referer)' if os.environ.get('YOUTUBE_API_REFERER') else ''))
+    else: ok = False; print('  MISSING  library: YOUTUBE_API_KEY is not in the environment, so nothing can be added or synced')
     lib = library.status()
     print(f"  library    {lib['channels']} channel(s), {lib['videos']} video(s), synced {lib['synced'] or 'never'}")
     print(f'  data       {settings.data_dir()}\n  cache      {settings.cache_dir()} (limit {settings.get("cache_limit_gb"):g} GB)')
@@ -32,20 +33,46 @@ def gb(n): return f'{n / 1e9:.2f} GB'
 
 
 def cmd_sync(args):
-    try: r = library.sync()
-    except library.LibraryError as e: sys.exit(str(e))
-    return out(args, r, f"  {r['channels']} channel(s), {r['videos']} video(s), synced {r['synced']}")
+    """Sync the named channels, or every followed one; exits non-zero if any failed (the timer's log then shows it)."""
+    if not youtube.configured(): sys.exit('YOUTUBE_API_KEY is not in the environment, so the library cannot be synced.')
+    r = catalogue.sync(args.channel or None)
+    lines = [f"  {c['channel']:26} {c['added']:>6} new  {'complete' if c['complete'] else 'backfill continues next sync':30} {c['title'][:40]}" for c in r['channels']]
+    lines += [f"  {e['channel']:26} FAILED  {e['error']}" for e in r['errors']] + [f"  {len(r['channels'])} channel(s) synced, {r['added']} new video(s)"]
+    out(args, r, '\n'.join(lines))
+    return 1 if r['errors'] else 0
+
+
+def cmd_add(args):
+    try: r = catalogue.add(args.input)
+    except (ValueError, catalogue.NotFound, youtube.YoutubeError) as e: sys.exit(str(e))
+    if r['kind'] == 'video': return out(args, r, f"  added video {r['video']['id']}: {r['video']['title']}")
+    c = r['channel']; print(f"  following {c['id']}: {c['title']}") if not args.json else None
+    if args.no_sync: return out(args, r, '') if args.json else 0
+    return cmd_sync(argparse.Namespace(channel=[c['id']], json=args.json))
+
+
+def cmd_remove(args):
+    try: r = catalogue.remove(args.channel)
+    except catalogue.NotFound as e: sys.exit(str(e))
+    return out(args, r, f"  removed {r['channel']} and {r['videos']} video(s)")
+
+
+def cmd_import_d1(args):
+    try: r = d1import.run(args.database)
+    except d1import.D1Error as e: sys.exit(str(e))
+    return out(args, r, f"  imported {r['channels']} channel(s) and {r['videos']} video(s) from D1")
 
 
 def cmd_channels(args):
     items = library.channels()
-    if not items and not args.json: print('  (no channels yet: ./tubes sync)'); return 0
-    return out(args, items, '\n'.join(f"  {c['id']:26} {c['videos']:>6} videos  {c['title'][:50]}" for c in items))
+    if not items and not args.json: print('  (no channels yet: ./tubes add <channel link or @handle>)'); return 0
+    state = lambda c: 'complete' if c['complete'] else 'backfilling' if c['follow'] else 'not followed'
+    return out(args, items, '\n'.join(f"  {c['id']:26} {c['videos']:>6} videos  {state(c):12} {c['title'][:50]}" for c in items))
 
 
 def cmd_fetch(args):
     v = library.video(args.video)
-    if v is None: sys.exit(f'{args.video} is not in the library (./tubes sync first?)')
+    if v is None: sys.exit(f'{args.video} is not in the library (./tubes add {args.video} first?)')
     try: st = fetcher.start(args.video, v['title'], v['channel'], background=False)
     except fetcher.FetchError as e: sys.exit(str(e))
     if st['state'] != 'ready': sys.exit(f"{args.video}: {st['error'] or st['state']}")
@@ -81,8 +108,11 @@ def cmd_serve(args):
 def main(argv=None):
     p = argparse.ArgumentParser(prog='tubes'); sub = p.add_subparsers(dest='cmd', required=True)
     sub.add_parser('doctor', help='check the environment').set_defaults(fn=doctor)
-    y = sub.add_parser('sync', help='copy the library (channels and videos) from its D1 database'); y.add_argument('--json', action='store_true'); y.set_defaults(fn=cmd_sync)
-    h = sub.add_parser('channels', help='list the channels in the library copy'); h.add_argument('--json', action='store_true'); h.set_defaults(fn=cmd_channels)
+    y = sub.add_parser('sync', help="fetch new videos from YouTube for every followed channel (or the ones named)"); y.add_argument('channel', nargs='*'); y.add_argument('--json', action='store_true'); y.set_defaults(fn=cmd_sync)
+    a = sub.add_parser('add', help='add a channel (followed, then synced) or one video: a link, an id or an @handle'); a.add_argument('input'); a.add_argument('--no-sync', action='store_true', help='add a channel without fetching its videos yet'); a.add_argument('--json', action='store_true'); a.set_defaults(fn=cmd_add)
+    r = sub.add_parser('remove', help='remove a channel and its videos from the library'); r.add_argument('channel'); r.add_argument('--json', action='store_true'); r.set_defaults(fn=cmd_remove)
+    h = sub.add_parser('channels', help='list the channels in the library'); h.add_argument('--json', action='store_true'); h.set_defaults(fn=cmd_channels)
+    d = sub.add_parser('import-d1', help='once: carry the library over from the storage service’s D1 database (Cloudflare credentials from the environment)'); d.add_argument('--database', help='the D1 database id'); d.add_argument('--json', action='store_true'); d.set_defaults(fn=cmd_import_d1)
     f = sub.add_parser('fetch', help='fetch one video into the cache now (waits until it is done)'); f.add_argument('video'); f.add_argument('--json', action='store_true'); f.set_defaults(fn=cmd_fetch)
     c = sub.add_parser('cache', help='show the cache: use, limit and every copy with its score'); c.add_argument('--json', action='store_true'); c.set_defaults(fn=cmd_cache)
     e = sub.add_parser('evict', help='trim the cache when it is over 95%% of its limit'); e.add_argument('--dry-run', action='store_true'); e.add_argument('--json', action='store_true'); e.set_defaults(fn=cmd_evict)

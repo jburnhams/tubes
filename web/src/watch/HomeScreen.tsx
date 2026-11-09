@@ -1,6 +1,6 @@
 // The one question: "What is there to watch?" As on the old Tubes home: a row of chips (all, then
 // each channel) over a grid of the newest videos in the library, read a page at a time as the page
-// scrolls. Before the first copy of the library, it says where to make one.
+// scrolls. Before the library has any videos, it says where to add a channel.
 import { Link } from 'react-router'
 import { useLoad } from 'strata-react'
 import { api, keys } from '../api'
@@ -29,7 +29,7 @@ export function HomeScreen() {
         state={list}
         skeleton={<GridSkeleton />}
         isEmpty={vs => vs.length === 0}
-        empty={<Nothing title="No videos yet">Videos appear here once the library has been copied to this server. <Link to="/admin/system" className="text-tube-focus">Copy it from Admin</Link>.</Nothing>}
+        empty={<Nothing title="No videos yet">Videos appear here once a channel is in the library. <Link to="/admin/library" className="text-tube-focus">Add one in Admin</Link>.</Nothing>}
       >
         {vs => <><VideoGrid videos={vs} label="Newest videos" /><More list={list} skeleton={<GridSkeleton cards={4} />} /></>}
       </Shown>

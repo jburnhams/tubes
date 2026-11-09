@@ -11,11 +11,10 @@
                    and signed out with the wait when the session cannot be read. The cookies stay in the browser, which keeps them fresh.
   half_life_days   how fast a play's weight fades in the eviction score (default 30: a play counts half as much 30 days later).
   protect_days     how long a fetched video that nobody has played yet is kept from eviction (default 7).
-  d1_database      the id of the Cloudflare D1 database that holds the library (`youtube_channels`, `youtube_videos`; library.py). The
-                   credentials are the environment's CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID, never this file.
   ytdlp, ffmpeg    the commands to run (default `yt-dlp` and `ffmpeg` from PATH).
 
-The environment variables TUBES_DATA, TUBES_CACHE, TUBES_YTDLP, TUBES_FFMPEG and TUBES_D1_DATABASE override the file (handy for tests and one-off runs)."""
+The environment variables TUBES_DATA, TUBES_CACHE, TUBES_YTDLP and TUBES_FFMPEG override the file (handy for tests and one-off runs). The YouTube key
+(YOUTUBE_API_KEY) is only ever in the environment."""
 import json, os
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -31,7 +30,6 @@ SPEC = {
     'cookies_from_browser': ('', str, None),
     'half_life_days': (30.0, float, None),
     'protect_days': (7.0, float, None),
-    'd1_database': ('', str, 'TUBES_D1_DATABASE'),
     'ytdlp': ('yt-dlp', str, 'TUBES_YTDLP'),
     'ffmpeg': ('ffmpeg', str, 'TUBES_FFMPEG'),
 }

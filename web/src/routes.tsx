@@ -15,6 +15,7 @@ import { WatchScreen } from './watch/WatchScreen'
 import { NotFoundScreen } from './watch/NotFoundScreen'
 import { Layout } from './screens/Layout'
 import { CacheScreen } from './screens/CacheScreen'
+import { LibraryScreen } from './screens/LibraryScreen'
 import { SystemScreen } from './screens/SystemScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 
@@ -24,6 +25,7 @@ export const routes: RouteObject[] = [
     element: <Layout />,
     children: [
       { index: true, element: <Navigate to="/admin/system" replace /> },
+      { path: 'library', element: <LibraryScreen /> },
       { path: 'cache', element: <CacheScreen /> },
       { path: 'system', element: <SystemScreen /> },
       { path: 'settings', element: <SettingsScreen /> },

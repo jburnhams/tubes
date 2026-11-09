@@ -3,8 +3,9 @@
 // answer; the screens never call fetch themselves. Every URL is built here, through withBase, so the
 // app works at the server's root and behind a reverse proxy at /<prefix>/.
 //
-// The library (channels and videos) is managed elsewhere and copied into the server by a sync; the
-// app only reads that copy, plays from it, and looks after the cache of fetched copies.
+// The library (channels and videos) is managed here: Admin's Library page adds channels and videos
+// from YouTube and syncs them (the server's catalogue.py); the watching side reads it and plays from
+// it, and the cache keeps the fetched copies.
 import { HttpError, describeHttpError, fetchJson } from 'strata-react'
 
 export interface Settings {
@@ -16,17 +17,16 @@ export interface Settings {
   cookies_from_browser: string
   half_life_days: number
   protect_days: number
-  d1_database: string
   ytdlp: string
   ffmpeg: string
 }
 
-/** `GET /api/library`: the local copy of the library. `synced` is null before the first sync. */
+/** `GET /api/library`: what the library holds. `synced` is when every followed channel was last synced, null before the first. */
 export interface LibraryStatus {
   synced: string | null
   channels: number
   videos: number
-  /** The D1 database and its credentials are set, so a sync can run. */
+  /** The YouTube key is in the server's environment, so channels can be added and synced. */
   configured: boolean
 }
 
@@ -35,10 +35,39 @@ export interface Channel {
   title: string
   handle: string | null
   thumbnail: string | null
+  /** When this channel was last synced. */
   synced: string | null
+  /** Videos held here. */
   videos: number
   latest: string | null
+  /** YouTube's own counts (null when it hides them). */
+  total_videos?: number | null
+  subscribers?: number | null
+  /** Its uploads are synced. False for a channel only here for videos added one by one. */
+  follow?: boolean
+  /** Every page of its uploads has been read once. */
+  complete?: boolean
+  /** A first sync stopped part way and resumes from where it got to. */
+  resumable?: boolean
+  added?: string | null
 }
+
+/** `GET /api/library/sync`: the background sync, one at a time. */
+export interface SyncJob {
+  running: boolean
+  total: number
+  done: number
+  /** The channel being synced now, by title. */
+  current: string | null
+  /** New videos so far. */
+  added: number
+  errors: { channel: string | null; title: string | null; error: string }[]
+  started: string | null
+  finished: string | null
+}
+
+/** `POST /api/library`: what was added, and the sync that started for a new channel. */
+export type Added = { kind: 'channel'; channel: Channel; sync: SyncJob } | { kind: 'video'; video: Video }
 
 export type CacheState = 'fetching' | 'ready' | 'failed'
 
@@ -109,7 +138,6 @@ export interface CacheReport {
 }
 
 export interface Evicted { evicted: { video_id: string; title: string; bytes: number; score: number }[]; freed: number; dry_run: boolean }
-export interface Synced { channels: number; videos: number; synced: string }
 
 /** `GET /api/system`. Sizes are bytes. */
 export interface SystemStatus {
@@ -162,6 +190,7 @@ export const paths = {
   sync: '/api/library/sync',
   channels: '/api/channels',
   channel: (id: string) => `/api/channels/${encodeURIComponent(id)}`,
+  restart: (id: string) => `/api/channels/${encodeURIComponent(id)}/restart`,
   videos: '/api/videos',
   shuffle: '/api/videos/shuffle',
   video: (id: string) => `/api/videos/${encodeURIComponent(id)}`,
@@ -178,6 +207,8 @@ export const keys = {
   system: ['system'],
   settings: ['settings'],
   channels: ['channels'],
+  sync: ['sync'],
+  library: ['library'],
   channel: (id: string) => ['channels', id],
   videos: ['videos'],
   list: (filter: VideoFilter) => ['videos', 'list', filter.channel ?? '', filter.q?.trim() ?? ''],
@@ -213,7 +244,13 @@ export const api = {
   system: () => fetchJson<SystemStatus>(withBase(paths.system)),
   settings: () => fetchJson<Settings>(withBase(paths.settings)),
   saveSettings: (s: Partial<Settings>) => callJson<Settings>(withBase(paths.settings), send('PUT', s)),
-  sync: () => callJson<Synced>(withBase(paths.sync), { method: 'POST' }),
+  library: () => fetchJson<LibraryStatus>(withBase(paths.library)),
+  add: (input: string) => callJson<Added>(withBase(paths.library), send('POST', { input })),
+  syncJob: () => fetchJson<SyncJob>(withBase(paths.sync)),
+  /** Sync these channels, or every followed one. */
+  sync: (channels?: string[]) => callJson<SyncJob>(withBase(paths.sync), send('POST', { channels: channels ?? null })),
+  removeChannel: (id: string) => callJson<{ channel: string; videos: number }>(withBase(paths.channel(id)), { method: 'DELETE' }),
+  restartChannel: (id: string) => callJson<{ channel: string; videos: number; sync: SyncJob }>(withBase(paths.restart(id)), { method: 'POST' }),
   channels: () => fetchJson<Channel[]>(withBase(paths.channels)),
   channel: (id: string) => fetchJson<Channel>(withBase(paths.channel(id))),
   videos: (filter: VideoFilter, after: string | undefined, signal?: AbortSignal) => fetchJson<VideoPage>(withBase(videosUrl(filter, after)), { signal }),

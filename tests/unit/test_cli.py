@@ -1,6 +1,6 @@
 import importlib, json
 import pytest
-from tubes import cache, cli, fetcher, library, oslib, settings, ytdlp
+from tubes import cache, cli, fetcher, oslib, settings, ytdlp
 from library import seed
 from test_cache import write_playlist
 
@@ -12,29 +12,52 @@ def tools(monkeypatch):
 
 
 def test_doctor(capsys, monkeypatch):
-    monkeypatch.setenv('CLOUDFLARE_ACCOUNT_ID', 'a'); monkeypatch.setenv('CLOUDFLARE_API_TOKEN', 't'); monkeypatch.setenv('TUBES_D1_DATABASE', 'd')
+    monkeypatch.setenv('YOUTUBE_API_KEY', 'k'); monkeypatch.setenv('YOUTUBE_API_REFERER', 'https://site.test/')
     assert cli.main(['doctor']) == 0
     out = capsys.readouterr().out
-    assert 'ok       yt-dlp 2026.10.26' in out and 'ok       ffmpeg ffmpeg version 7.1' in out and 'limit 1000 GB' in out and 'ok       library' in out
+    assert 'ok       yt-dlp 2026.10.26' in out and 'ok       ffmpeg ffmpeg version 7.1' in out and 'limit 1000 GB' in out and 'ok       library: YOUTUBE_API_KEY set (sent with a Referer)' in out
     assert 'library    0 channel(s), 0 video(s), synced never' in out
 
     real_import = importlib.import_module
     monkeypatch.setattr(importlib, 'import_module', lambda name: (_ for _ in ()).throw(ImportError(name)) if name == 'uvicorn' else real_import(name))
     monkeypatch.setattr(ytdlp, 'version', lambda: None); monkeypatch.setattr(fetcher, 'ffmpeg_version', lambda: None); monkeypatch.setattr(oslib, 'CAN_PASS_FDS', False)
-    monkeypatch.delenv('CLOUDFLARE_API_TOKEN')
+    monkeypatch.delenv('YOUTUBE_API_KEY')
     assert cli.main(['doctor']) == 1
     out = capsys.readouterr().out
-    assert 'MISSING  uvicorn' in out and 'MISSING  yt-dlp' in out and 'MISSING  ffmpeg' in out and 'MISSING  fetching needs Linux or macOS' in out and 'MISSING  library: The library cannot be read without CLOUDFLARE_API_TOKEN.' in out
+    assert 'MISSING  uvicorn' in out and 'MISSING  yt-dlp' in out and 'MISSING  ffmpeg' in out and 'MISSING  fetching needs Linux or macOS' in out and 'MISSING  library: YOUTUBE_API_KEY is not in the environment' in out
 
 
-def test_sync_and_channels(capsys, monkeypatch):
+def test_add_sync_channels_and_remove(capsys, fake_youtube, monkeypatch):
+    A = 'UCaaaaaaaaaaaaaaaaaaaaaa'
+    fake_youtube.channel(A, 'Workshop', handle='@workshop', videos=60).channel('UCbbbbbbbbbbbbbbbbbbbbbb', 'Night sky', videos=1)
     assert cli.main(['channels']) == 0 and 'no channels yet' in capsys.readouterr().out
-    with pytest.raises(SystemExit, match='cannot be read without'): cli.main(['sync'])
-    def fake_sync(): seed(); return dict(channels=2, videos=4, synced='2026-11-09T12:00:00+00:00')
-    monkeypatch.setattr(library, 'sync', fake_sync)
-    assert cli.main(['sync']) == 0 and capsys.readouterr().out.strip() == '2 channel(s), 4 video(s), synced 2026-11-09T12:00:00+00:00'
-    assert cli.main(['channels']) == 0 and 'UCbbbbbbbbbbbbbbbbbbbbbb        2 videos  night sky' in capsys.readouterr().out
+    assert cli.main(['add', '@workshop']) == 0
+    out = capsys.readouterr().out
+    assert f'following {A}: Workshop' in out and '60 new  complete' in out and '1 channel(s) synced, 60 new video(s)' in out
+    assert cli.main(['add', 'UCbbbbbbbbbbbbbbbbbbbbbb', '--no-sync']) == 0 and 'following' in capsys.readouterr().out
+    assert cli.main(['add', 'UCbbbbbbbbbbbbbbbbbbbbbb', '--no-sync', '--json']) == 0 and json.loads(capsys.readouterr().out)['kind'] == 'channel'
+    assert cli.main(['channels']) == 0
+    out = capsys.readouterr().out
+    assert 'UCbbbbbbbbbbbbbbbbbbbbbb        0 videos  backfilling  Night sky' in out and f'{A}       60 videos  complete     Workshop' in out
+    assert cli.main(['sync', '--json']) == 0 and json.loads(capsys.readouterr().out)['added'] == 1
+    fake_youtube.uploads(A, 1, start=100)
+    assert cli.main(['add', 'aaaa0000100']) == 0 and 'added video aaaa0000100: Upload 100 of Workshop' in capsys.readouterr().out
+    with pytest.raises(SystemExit, match='YouTube has no channel @nobody'): cli.main(['add', '@nobody'])
     assert cli.main(['channels', '--json']) == 0 and len(json.loads(capsys.readouterr().out)) == 2
+
+    del fake_youtube.channels['UCbbbbbbbbbbbbbbbbbbbbbb']
+    assert cli.main(['sync']) == 1 and 'FAILED  YouTube has no channel' in capsys.readouterr().out
+    assert cli.main(['remove', 'UCbbbbbbbbbbbbbbbbbbbbbb']) == 0 and 'removed UCbbbbbbbbbbbbbbbbbbbbbb and 1 video(s)' in capsys.readouterr().out
+    with pytest.raises(SystemExit, match='no channel UCbbbbbbbbbbbbbbbbbbbbbb'): cli.main(['remove', 'UCbbbbbbbbbbbbbbbbbbbbbb'])
+    monkeypatch.delenv('YOUTUBE_API_KEY')
+    with pytest.raises(SystemExit, match='YOUTUBE_API_KEY is not in the environment'): cli.main(['sync'])
+
+
+def test_import_d1(capsys, fake_d1):
+    fake_d1.channel('UCaaaaaaaaaaaaaaaaaaaaaa', 'Workshop').video('aaaaaaaaaaa', 'UCaaaaaaaaaaaaaaaaaaaaaa', 'Building a shelf', '2026-01-03T00:00:00Z')
+    assert cli.main(['import-d1']) == 0 and 'imported 1 channel(s) and 1 video(s) from D1' in capsys.readouterr().out
+    fake_d1.token = 'rotated'
+    with pytest.raises(SystemExit, match='403'): cli.main(['import-d1', '--database', fake_d1.database])
 
 
 def test_fetch_cache_and_evict(capsys, monkeypatch):
