@@ -10,6 +10,7 @@ import { settingsProblems } from '../../src/screens/SettingsScreen'
 import { describeSystem, usable } from '../../src/screens/SystemScreen'
 import { channelState, describeAdded, describeJob, describeLibrary } from '../../src/screens/LibraryScreen'
 import { ago, videoCount, views, viewsAndAge } from '../../src/watch/format'
+import { isPlaceholder } from '../../src/watch/missing'
 import { savedText, settled, waitingText } from '../../src/watch/WatchScreen'
 
 describe('api helpers', () => {
@@ -45,6 +46,18 @@ describe('api helpers', () => {
     expect(describeError(new Refused(400, 'Bad Request', '/x', 'No room.'))).toBe('No room.')
     expect(new Refused(400, 'Bad Request', '/x', 'No room.').message).toBe('No room.')
     expect(describeError(new HttpError(503, 'Service Unavailable', '/x'))).toMatch(/503/)
+  })
+})
+
+describe('missing videos', () => {
+  it('takes a 120×90 image as YouTube\'s placeholder unless the small size was asked for', () => {
+    const img = (src: string, w = 120, h = 90) => ({ naturalWidth: w, naturalHeight: h, src })
+    expect(isPlaceholder(img('https://i.ytimg.com/vi/x/hqdefault.jpg'))).toBe(true)
+    expect(isPlaceholder(img('https://i.ytimg.com/vi/x/maxresdefault.jpg?v=1'))).toBe(true)
+    expect(isPlaceholder(img('https://i.ytimg.com/vi/x/default.jpg'))).toBe(false)
+    expect(isPlaceholder(img('https://i.ytimg.com/vi/x/default.jpg?v=2'))).toBe(false)
+    expect(isPlaceholder(img('https://i.ytimg.com/vi/x/hqdefault.jpg', 480, 360))).toBe(false)
+    expect(isPlaceholder({ ...img('a'), currentSrc: 'https://i.ytimg.com/vi/x/default.jpg' })).toBe(false)
   })
 })
 

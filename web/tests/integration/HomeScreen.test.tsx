@@ -66,7 +66,7 @@ describe('Home', () => {
   })
 
   it('draws a card without a channel picture, views or length', async () => {
-    server.use(channelsLoading, videosFrom([{ id: 'xx000000000', channel_id: 'UCunknown', channel: null, title: 'Untitled', published: '2026-01-01T00:00:00Z', duration: null, thumbnail: null, views: null, cache_state: null, cache_bytes: null }]))
+    server.use(channelsLoading, videosFrom([{ id: 'xx000000000', channel_id: 'UCunknown', channel: null, title: 'Untitled', published: '2026-01-01T00:00:00Z', duration: null, thumbnail: null, views: null, cache_state: null, cache_bytes: null, gone: null }]))
     openApp('/')
     const grid = await screen.findByRole('list', { name: 'Newest videos' })
     expect(within(grid).getByRole('link', { name: 'Channel' })).toBeInTheDocument()

@@ -162,3 +162,21 @@ def test_server_main(monkeypatch, capsys):
     monkeypatch.setattr(uvicorn, 'run', lambda app, host, port, log_level: runs.append((host, port, log_level)))
     server_app.main([])
     assert runs == [('127.0.0.1', 8367, 'warning')] and 'cache folder' in capsys.readouterr().out
+
+
+def test_the_watching_side_reports_missing_videos(client, fake_youtube, monkeypatch):
+    from fake_youtube import vid
+    from tubes import catalogue
+    A = 'UCaaaaaaaaaaaaaaaaaaaaaa'
+    fake_youtube.channel(A, 'Workshop', videos=2); catalogue.add(A); catalogue.sync_channel(A)
+    del fake_youtube.videos[vid(A, 0)]
+    r = client.post('/api/videos/check', json=dict(ids=[vid(A, 0), vid(A, 1)]))
+    assert r.status_code == 200 and r.json() == dict(checked=2, gone=1, back=0, hidden=[vid(A, 0)])
+    assert [v['id'] for v in client.get('/api/videos').json()['videos']] == [vid(A, 1)] and client.get(f'/api/videos/{vid(A, 0)}').json()['gone']
+    assert client.post('/api/videos/check', json=dict(ids=[])).status_code == 422 and client.post('/api/videos/check', json=dict(ids=['x'] * 51)).status_code == 422
+    fake_youtube.quota_left = 0; catalogue.mark_gone(vid(A, 1))
+    with catalogue.db.connect() as con: con.execute('UPDATE videos SET checked = NULL')
+    assert client.post('/api/videos/check', json=dict(ids=[vid(A, 1)])).status_code == 502
+    monkeypatch.delenv('YOUTUBE_API_KEY')
+    r = client.post('/api/videos/check', json=dict(ids=[vid(A, 1)]))
+    assert r.status_code == 503 and 'YOUTUBE_API_KEY' in r.json()['detail']

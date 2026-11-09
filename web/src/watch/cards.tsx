@@ -2,11 +2,14 @@
 // running time in its corner, then the channel's round picture beside a bold two-line title, the
 // channel's name and "views · age". A video is one link to its watch page, named by its title: the picture
 // and avatar are links too, for the mouse, but hidden from the keyboard and screen readers so each video is said once.
+// A thumbnail that fails reports its video as missing (missing.ts); a video the server then hides
+// leaves every list at once, as the server leaves it out of the next page it serves.
 import { useEffect, useRef, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { useLoad, type InfiniteLoad } from 'strata-react'
 import { api, keys, type Channel, type Video } from '../api'
 import { runningTime, viewsAndAge } from './format'
+import { isPlaceholder, reportMissing, useHidden } from './missing'
 import { Pill } from './Shown'
 
 /** The channels, by id, from the one shared read (the rail reads the same query). */
@@ -30,7 +33,7 @@ export function Picture({ v, className = '' }: { v: Video; className?: string })
   const saved = v.cache_state ? SAVED[v.cache_state] : undefined
   return (
     <span className={`relative block aspect-video overflow-hidden rounded-tube bg-tube-chip ${className}`}>
-      {v.thumbnail && <img src={v.thumbnail} alt="" className="size-full object-cover" />}
+      {v.thumbnail && <img src={v.thumbnail} alt="" className="size-full object-cover" onError={() => reportMissing(v.id)} onLoad={e => isPlaceholder(e.currentTarget) && reportMissing(v.id)} />}
       {saved && <span className="absolute top-2 left-2 rounded-tube-sm bg-tube-badge px-1.5 py-0.5 text-tube-xs font-medium text-tube-on-screen">{saved}</span>}
       {v.duration ? <span className="absolute right-2 bottom-2 rounded-tube-sm bg-tube-badge px-1 text-tube-xs font-medium text-tube-on-screen tabular-nums">{runningTime(v.duration)}</span> : null}
     </span>
@@ -39,7 +42,13 @@ export function Picture({ v, className = '' }: { v: Video; className?: string })
 
 const watchPath = (v: Video) => `/watch/${encodeURIComponent(v.id)}`
 
+/** Whether a list should leave this video out: the server hid it since the page opened. */
+export function useGone(v: Video): boolean {
+  return useHidden().has(v.id)
+}
+
 export function VideoCard({ v, channel, showChannel = true }: { v: Video; channel?: Channel; showChannel?: boolean }) {
+  if (useGone(v)) return null
   return (
     <li className="grid content-start gap-3">
       <Link to={watchPath(v)} tabIndex={-1} aria-hidden><Picture v={v} /></Link>
@@ -79,6 +88,7 @@ export function GridSkeleton({ cards = 12 }: { cards?: number }) {
 /** A video as a wide row: search results and Up next. */
 export function VideoRow({ v, channel, size = 'large' }: { v: Video; channel?: Channel; size?: 'large' | 'small' }) {
   const large = size === 'large'
+  if (useGone(v)) return null
   return (
     <li>
       {/* A large row stacks on a phone, where a picture beside the title leaves the title no room. */}

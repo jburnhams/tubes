@@ -20,6 +20,9 @@ export const mock = {
   synced: library.synced,
   channels: [...channels] as Channel[],
   job: syncJobs.idle as SyncJob,
+  /** Video ids YouTube no longer has, as POST /api/videos/check finds them; `checks` records each call's ids. */
+  gone: [] as string[],
+  checks: [] as string[][],
 }
 
 /** Back to the healthy state: call between tests and stories. */
@@ -31,6 +34,8 @@ export function resetMock() {
   mock.synced = library.synced
   mock.channels = [...channels]
   mock.job = syncJobs.idle
+  mock.gone = []
+  mock.checks = []
 }
 
 /** A sync as the server starts one: running, over these channels (every followed one by default). */
@@ -111,6 +116,12 @@ export const handlers = [
     const v = find(String(params.id))
     const plays = mock.plays.filter(p => p === params.id).length
     return v ? HttpResponse.json({ ...v, plays, last_played: plays ? '2026-11-09T09:30:00+00:00' : null }) : refused(`There is no video ${params.id} in the library.`, 404)
+  }),
+  http.post(at(paths.check), async ({ request }) => {
+    const { ids } = (await request.json()) as { ids: string[] }
+    mock.checks.push(ids)
+    const hidden = ids.filter(id => mock.gone.includes(id))
+    return HttpResponse.json({ checked: ids.length, gone: hidden.length, back: 0, hidden })
   }),
   http.post(at('/api/videos/:id/play'), ({ params }) => {
     const id = String(params.id)

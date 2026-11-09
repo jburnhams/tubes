@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll } from 'vitest'
 import { cleanup } from '@testing-library/react'
 import '@testing-library/jest-dom/vitest'
 import { installLayoutShims } from 'strata-react/testing'
+import { resetMissing } from '../../src/watch/missing'
 import { resetMock, server } from './server'
 
 // jsdom does no layout and has no ResizeObserver: Strata's shims give measuring components (tables,
@@ -10,7 +11,7 @@ installLayoutShims()
 
 // An endpoint without a handler fails the test, so a screen cannot quietly depend on a real server.
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }))
-afterEach(() => { cleanup(); server.resetHandlers(); resetMock(); document.documentElement.classList.remove('dark') })
+afterEach(() => { cleanup(); server.resetHandlers(); resetMock(); resetMissing(); document.documentElement.classList.remove('dark') })
 afterAll(() => server.close())
 
 // Node 25+ defines its own `localStorage` global, which is undefined without --localstorage-file and hides jsdom's: put a working in-memory one back so storage behaves as in a browser.
