@@ -1,0 +1,5 @@
+# Main runtime environment (Python 3.11+; tested on 3.11-3.13 across Linux, macOS and Windows).
+fastapi
+uvicorn
+pydantic
+omarchy-db @ git+https://github.com/jburnhams/database@c21e298e89a03dd37ad7a68dac5977f6a1f6c791#subdirectory=python   # the shared database tooling: SQLAlchemy, Alembic, psycopg, dbtool, pytest fixtures

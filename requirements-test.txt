@@ -1,0 +1,16 @@
+# Dependencies for the unit and integration suites. The CI workflows install exactly this.
+fastapi
+uvicorn
+pydantic
+omarchy-db @ git+https://github.com/jburnhams/database@c21e298e89a03dd37ad7a68dac5977f6a1f6c791#subdirectory=python   # the shared database tooling: SQLAlchemy, Alembic, psycopg, dbtool, pytest fixtures
+httpx
+pytest>=8
+pytest-cov>=5
+ruff
+# Test tooling
+hypothesis
+pytest-randomly
+pytest-timeout
+pytest-xdist
+diff-cover
+tzdata                         # IANA timezone database, needed on Windows for zoneinfo

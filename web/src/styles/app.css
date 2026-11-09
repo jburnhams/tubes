@@ -1,0 +1,8 @@
+/* The app's stylesheet, assembled the way every Strata app's is (strata-react CLAUDE.md, "Building an
+   app on Strata"): Tailwind, then Strata's token contract (which removes Tailwind's stock colours,
+   sizes, radii and shadows, so `bg-blue-600` and `text-sm` do not compile here), then this app's
+   generated palette, then the roles Strata names but leaves to the product. */
+@import "tailwindcss";
+@import "strata-react/strata.css";
+@import "./theme.generated.css";
+@import "./theme.css";

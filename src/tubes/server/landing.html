@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tubes</title>
+<style>
+:root{color-scheme:light dark;--bg:#fff;--fg:#1c1c1e;--mut:#6b6b70;--line:#d8d8dc}
+@media(prefers-color-scheme:dark){:root{--bg:#161618;--fg:#ececee;--mut:#9a9aa2;--line:#33333a}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.45 system-ui,sans-serif}
+main{max-width:720px;margin:0 auto;padding:32px 16px}h1{font-size:22px;margin:0 0 4px}.mut{color:var(--mut)}
+code{border:1px solid var(--line);border-radius:4px;padding:1px 4px}
+</style></head><body><main>
+<h1>Tubes</h1><p class="mut" id="dir">The server is running, but the web app has not been built.</p>
+<p>Build it with <code>cd web &amp;&amp; npm install &amp;&amp; npm run build</code>, then reload this page. The API is at <a href="api/docs">api/docs</a>.</p>
+</main><script>
+fetch('api/settings').then(r=>r.json()).then(s=>{document.getElementById('dir').textContent='Catalogue: '+s.data_dir+' · cache: '+s.cache_dir+'. The web app has not been built.'}).catch(()=>{});
+</script></body></html>

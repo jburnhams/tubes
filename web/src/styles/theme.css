@@ -1,0 +1,43 @@
+/* What Strata names but does not choose, each with its reason. A new app replaces this file and
+   theme.generated.css together: pick seeds from its own subject, regenerate, then re-solve these.
+
+   Tubes' subject is watching at home, so the palette (theme.generated.css) borrows a screen's
+   blue-green and a lamp's amber, and titles stay in the sans: the pictures carry the character. */
+
+:root {
+  /* Status: pale tint + dark ink of one hue. These are the kiln-room values from strata-react's
+     fixture theme; on this palette's grounds each ink measures at least 6.0:1 on its tint and 6.6:1
+     on the page (light), 6.0:1 and 7.3:1 (dark), checked with ux-research's color.mjs contrast(). */
+  --success-subtle: oklch(95.4% 0.035 150.6);
+  --success: oklch(45.9% 0.109 150.1);
+  --warning-subtle: oklch(95.5% 0.025 52.2);
+  --warning: oklch(47.6% 0.11 50.6);
+  --danger-subtle: oklch(95.5% 0.022 27.8);
+  --danger: oklch(48% 0.111 27);
+  --info-subtle: oklch(95.5% 0.023 246);
+  --info: oklch(46.5% 0.11 244.6);
+
+  /* Titles in the body face, a step heavier, so a page of thumbnails is not also a page of styles. */
+  --title-weight: 700;
+  --title-tracking: -0.01em;
+}
+
+.dark {
+  --success-subtle: oklch(25.9% 0.045 150.3);
+  --success: oklch(70.5% 0.09 150.1);
+  --warning-subtle: oklch(25.9% 0.045 50.1);
+  --warning: oklch(71.3% 0.09 50.9);
+  --danger-subtle: oklch(26% 0.045 27);
+  --danger: oklch(71.7% 0.089 27.3);
+  --info-subtle: oklch(26% 0.045 244.4);
+  --info: oklch(70.8% 0.09 245.3);
+}
+
+/* Every face is bundled (@fontsource-variable, imported in main.tsx and .storybook/preview.tsx) and
+   named first, so text renders the same on every machine and the visual suite can tell when a
+   glyph falls through to a system font. */
+@theme {
+  --font-sans: "Source Sans 3 Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Source Sans 3 Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
+}

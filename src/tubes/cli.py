@@ -1,0 +1,91 @@
+"""Command line. `doctor` checks the environment; `sync` refreshes the library copy and `channels` lists it; `fetch`, `cache`, `evict` the
+cache; `set` the settings; `serve` starts the web server. A timer on the server runs `tubes sync; tubes evict` every few hours (docs/deploy.md)."""
+import argparse, importlib, json, sys
+
+from tubes import __version__, cache, fetcher, library, oslib, settings, ytdlp
+
+CHECKS = (('fastapi', 'fastapi'), ('uvicorn', 'uvicorn'), ('pydantic', 'pydantic'))
+
+
+def doctor(args):
+    ok = True; print(f'tubes {__version__}, python {sys.version.split()[0]}')
+    for label, mod in CHECKS:
+        try: m = importlib.import_module(mod); print(f'  ok       {label} {getattr(m, "__version__", "")}'.rstrip())
+        except ImportError: ok = False; print(f'  MISSING  {label}: pip install -r requirements.txt')
+    for label, version, fix in (('yt-dlp', ytdlp.version(), 'install yt-dlp, or set ytdlp to its path'), ('ffmpeg', fetcher.ffmpeg_version(), 'install ffmpeg, or set ffmpeg to its path')):
+        if version: print(f'  ok       {label} {version}')
+        else: ok = False; print(f'  MISSING  {label}: {fix}')
+    if not oslib.CAN_PASS_FDS: ok = False; print('  MISSING  fetching needs Linux or macOS')
+    try: library.credentials(); print('  ok       library: D1 database and credentials set')
+    except library.LibraryError as e: ok = False; print(f'  MISSING  library: {e}')
+    lib = library.status()
+    print(f"  library    {lib['channels']} channel(s), {lib['videos']} video(s), synced {lib['synced'] or 'never'}")
+    print(f'  data       {settings.data_dir()}\n  cache      {settings.cache_dir()} (limit {settings.get("cache_limit_gb"):g} GB)')
+    return 0 if ok else 1
+
+
+def out(args, data, text):
+    print(json.dumps(data, indent=1) if args.json else text); return 0
+
+
+def gb(n): return f'{n / 1e9:.2f} GB'
+
+
+def cmd_sync(args):
+    try: r = library.sync()
+    except library.LibraryError as e: sys.exit(str(e))
+    return out(args, r, f"  {r['channels']} channel(s), {r['videos']} video(s), synced {r['synced']}")
+
+
+def cmd_channels(args):
+    items = library.channels()
+    if not items and not args.json: print('  (no channels yet: ./tubes sync)'); return 0
+    return out(args, items, '\n'.join(f"  {c['id']:26} {c['videos']:>6} videos  {c['title'][:50]}" for c in items))
+
+
+def cmd_fetch(args):
+    v = library.video(args.video)
+    if v is None: sys.exit(f'{args.video} is not in the library (./tubes sync first?)')
+    try: st = fetcher.start(args.video, v['title'], v['channel'], background=False)
+    except fetcher.FetchError as e: sys.exit(str(e))
+    if st['state'] != 'ready': sys.exit(f"{args.video}: {st['error'] or st['state']}")
+    return out(args, st, f"{args.video}: ready, {st['segments']} segments, {st['seconds']:.0f} s, {st['formats']}")
+
+
+def cmd_cache(args):
+    now = cache.utcnow(); u = cache.usage(now); items = cache.entries(now)
+    lines = [f"  {gb(u['used'])} of {gb(u['limit'])} in {u['count']} video(s); eviction runs above {gb(u['high'])}, down to {gb(u['low'])}"]
+    lines += [f"  {e['video_id']:14} {e['state']:8} {gb(e['bytes']):>9}  score {e['score']:<7g} plays {e['plays']:<4} {'pinned' if e['pinned'] else ''} {e['title'][:40]}".rstrip() for e in items]
+    return out(args, dict(u, items=items), '\n'.join(lines))
+
+
+def cmd_evict(args):
+    r = cache.evict(cache.utcnow(), dry_run=args.dry_run)
+    verb = 'would free' if args.dry_run else 'freed'
+    return out(args, r, '\n'.join([f"  {verb} {gb(r['freed'])} from {len(r['evicted'])} video(s)"] + [f"  {e['video_id']:14} {gb(e['bytes']):>9}  score {e['score']:g}  {e['title'][:40]}" for e in r['evicted']]))
+
+
+def cmd_set(args):
+    if args.key not in settings.KNOWN: sys.exit(f'unknown setting {args.key!r}; known: {", ".join(settings.KNOWN)}')
+    if args.value is not None:
+        try: settings.save({args.key: None if args.value == 'default' else args.value})
+        except settings.SettingError as e: sys.exit(str(e))
+    print(f'{args.key} = {settings.all_settings()[args.key]}'); return 0
+
+
+def cmd_serve(args):
+    from tubes.server import app as server_app
+    server_app.main(['--host', args.host, '--port', str(args.port)]); return 0
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog='tubes'); sub = p.add_subparsers(dest='cmd', required=True)
+    sub.add_parser('doctor', help='check the environment').set_defaults(fn=doctor)
+    y = sub.add_parser('sync', help='copy the library (channels and videos) from its D1 database'); y.add_argument('--json', action='store_true'); y.set_defaults(fn=cmd_sync)
+    h = sub.add_parser('channels', help='list the channels in the library copy'); h.add_argument('--json', action='store_true'); h.set_defaults(fn=cmd_channels)
+    f = sub.add_parser('fetch', help='fetch one video into the cache now (waits until it is done)'); f.add_argument('video'); f.add_argument('--json', action='store_true'); f.set_defaults(fn=cmd_fetch)
+    c = sub.add_parser('cache', help='show the cache: use, limit and every copy with its score'); c.add_argument('--json', action='store_true'); c.set_defaults(fn=cmd_cache)
+    e = sub.add_parser('evict', help='trim the cache when it is over 95%% of its limit'); e.add_argument('--dry-run', action='store_true'); e.add_argument('--json', action='store_true'); e.set_defaults(fn=cmd_evict)
+    t = sub.add_parser('set', help='show or change a setting; value "default" resets it'); t.add_argument('key'); t.add_argument('value', nargs='?'); t.set_defaults(fn=cmd_set)
+    v = sub.add_parser('serve', help='start the web server'); v.add_argument('--host', default='127.0.0.1'); v.add_argument('--port', type=int, default=8367); v.set_defaults(fn=cmd_serve)
+    args = p.parse_args(argv); return args.fn(args)

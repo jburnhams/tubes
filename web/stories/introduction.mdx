@@ -1,0 +1,28 @@
+import { Meta } from '@storybook/addon-docs/blocks'
+
+<Meta title="Introduction" />
+
+# Tubes
+
+The web app of Tubes, built on [strata-react](https://github.com/jburnhams/strata-react). Each
+story is a whole screen, opened through the app's own route tree at a URL, with the server put into
+one state by MSW (the same handlers the jsdom tests and the visual suite use). Use the toolbar to
+switch between light and dark.
+
+- **Browse**: the library copy's size and age as the finding, the search form, a shuffled handful
+  (`useLoad` → `DataView`, `Thumbnail`).
+- **Search** and **Channels**: a channel's videos and search results read a page at a time over a
+  cursor (`useInfiniteLoad` → `InfiniteList`), with the words in the URL.
+- **Watch**: opening the page is the play; the frame says what it waits for while the first
+  seconds arrive, then hls.js plays the copy as it grows.
+- **Cache**: `Meter` against the trimming line, `DataTable` with the sort in the URL, `RowAction`
+  Pin and Delete (`useUndoable` + `UndoBar`), Trim now (`AsyncButton`).
+- **System**: a polled status read with `StaleNotice`, `Status` words, a `Meter` with named
+  thresholds, Sync now, `LinkCard`s.
+- **Settings**: `Tabs` with the tab in the URL, a form started from the server's values,
+  `ColorSchemeChoice`.
+
+Every story is screenshotted in Chromium, light and dark, and compared with a committed baseline in
+CI (`npm run test:visual`). Stories tagged `no-visual` need a click to reach their state, or draw
+something that changes from run to run (a playing video); the route shots in
+`strata-visual.config.ts` cover the clicks.

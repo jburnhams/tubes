@@ -1,0 +1,64 @@
+{
+  "name": "tubes-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=26.0.0"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:coverage": "vitest run --project unit --coverage",
+    "test:coverage:all": "vitest run --coverage",
+    "test:coverage:gate": "vitest run --coverage --config vitest.gate.config.ts",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build --quiet -o storybook-static",
+    "build:visual": "vite build --mode visual --outDir dist-visual --emptyOutDir",
+    "test:visual": "npm run build:visual && npm run build-storybook && strata-visual",
+    "test:visual:update": "npm run build:visual && npm run build-storybook && strata-visual --update"
+  },
+  "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/source-sans-3": "^5.3.1",
+    "@tanstack/react-query": "^5.107.1",
+    "hls.js": "^1.7.4",
+    "lucide-react": "^0.500.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router": "^8.5.1",
+    "strata-react": "^0.1.17"
+  },
+  "devDependencies": {
+    "@storybook/addon-a11y": "^10.6.6",
+    "@storybook/addon-docs": "^10.6.6",
+    "@storybook/react-vite": "^10.6.6",
+    "@tailwindcss/vite": "^4.3.5",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "@vitest/coverage-v8": "^5.1.0",
+    "jsdom": "^31.0.0",
+    "msw": "^3.0.4",
+    "msw-storybook-addon": "^3.0.3",
+    "playwright": "1.63.0",
+    "storybook": "^10.6.6",
+    "tailwindcss": "^4.3.5",
+    "typescript": "~5.9",
+    "vite": "^8.3.6",
+    "vitest": "^5.1.0"
+  },
+  "msw": {
+    "workerDirectory": [
+      ".storybook/public"
+    ]
+  }
+}
