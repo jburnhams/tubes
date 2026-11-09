@@ -231,11 +231,12 @@ def chosen_ids(result): return (result[1]['format_id'], result[2]['format_id'], 
 
 def test_signed_out_wins_when_its_streams_have_no_ad_wait(monkeypatch):
     settings.save(dict(cookies_from_browser='chrome'))
-    calls = []
+    asked_signed_in = threading.Event()        # the losing probe runs on its own thread and may start after the winner returns
     def probe(url, signed_in=False):
-        calls.append(signed_in); return dict(INFO, epoch=100, formats=[dict(f, available_at=100) for f in INFO['formats']])
+        if signed_in: asked_signed_in.set()
+        return dict(INFO, epoch=100, formats=[dict(f, available_at=100) for f in INFO['formats']])
     monkeypatch.setattr(ytdlp, 'probe', probe)
-    assert chosen_ids(fetcher.choose('https://u')) == ('399', '140', False) and sorted(calls) == [False, True]
+    assert chosen_ids(fetcher.choose('https://u')) == ('399', '140', False) and asked_signed_in.wait(5)
 
 
 def test_signed_in_wins_over_an_ad_wait_and_signed_out_is_the_fallback(monkeypatch):
