@@ -177,3 +177,40 @@ def test_ffmpeg_version(fake_run, monkeypatch):
     def missing(*a, **k): raise FileNotFoundError('ffmpeg')
     monkeypatch.setattr(subprocess, 'run', missing)
     assert fetcher.ffmpeg_version() is None
+
+
+def test_a_copy_deleted_while_probing_starts_no_download(monkeypatch):
+    seed()
+    def probe(url):
+        fetcher._running['aaaaaaaaaaa'].stop(); return INFO                                 # the delete arrives while yt-dlp is still probing
+    monkeypatch.setattr(ytdlp, 'probe', probe)
+    monkeypatch.setattr(fetcher, 'pipeline', lambda *a: pytest.fail('no download starts after a stop'))
+    assert fetcher.start('aaaaaaaaaaa', background=False)['error'] == 'The fetch was stopped.'
+
+
+def test_a_stop_while_the_processes_start_reaches_all_of_them(monkeypatch):
+    seed(); cache.begin('aaaaaaaaaaa', cache.stamp())
+    job = fetcher.Job('aaaaaaaaaaa')
+    def popen(cmd, **kw):
+        if not job.procs: job.stop()                                                          # the stop lands after ffmpeg started, before the downloads
+        return Proc(cmd, None, **kw)
+    monkeypatch.setattr(subprocess, 'Popen', popen)
+    killed = []; monkeypatch.setattr(oslib, 'kill_tree', lambda pid: killed.append(pid))
+    assert fetcher.pipeline(job, 'u', 'v', 'a') == 'The fetch was stopped.'
+    assert len(killed) == 3
+
+
+def test_watch_ends_when_the_fetch_is_cancelled(monkeypatch):
+    job = fetcher.Job('aaaaaaaaaaa'); job.procs = [Proc(['x'], None)]; job.cancelled = True
+    killed = []; monkeypatch.setattr(oslib, 'kill_tree', lambda pid: killed.append(pid))
+    assert fetcher.watch(job, sleep=lambda s: pytest.fail('no wait after a stop')) is False and killed == [1]
+
+
+def test_a_ready_copy_whose_files_are_gone_is_fetched_again(monkeypatch, tmp_path):
+    seed()
+    cache.begin('aaaaaaaaaaa', cache.stamp()); write_playlist('aaaaaaaaaaa', 2, True); cache.finish('aaaaaaaaaaa', cache.stamp())
+    monkeypatch.setenv('TUBES_CACHE', str(tmp_path / 'moved'))                                # the cache folder changed in Settings
+    monkeypatch.setattr(ytdlp, 'probe', lambda url: INFO)
+    ran = []; monkeypatch.setattr(fetcher, 'pipeline', lambda job, *a: ran.append(job.video_id) or write_playlist(job.video_id, 2, True))
+    monkeypatch.setattr(cache, 'evict', lambda now: None)
+    assert fetcher.start('aaaaaaaaaaa', background=False)['complete'] is True and ran == ['aaaaaaaaaaa']

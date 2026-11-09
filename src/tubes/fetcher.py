@@ -60,7 +60,7 @@ def start(video_id, title=None, channel=None, background=True):
     with _lock:
         if video_id in _running: return cache.status(video_id)
         st = cache.status(video_id)
-        if st['state'] == 'ready': return st
+        if st['state'] == 'ready' and st['complete']: return st      # a ready row whose files are gone (the cache folder moved, or was cleared by hand) is fetched again
         if not oslib.CAN_PASS_FDS: raise FetchError('Fetching needs Linux or macOS.')
         if len(_running) >= MAX_RUNNING: raise FetchError(f'{MAX_RUNNING} videos are already being fetched; try again when one finishes.')
         job = _running[video_id] = Job(video_id)
@@ -85,6 +85,7 @@ def _run(job, url):
         info = ytdlp.probe(url)
         video, audio = ytdlp.choose_formats(info.get('formats') or [], settings.get('max_height'))
         cache.set_formats(job.video_id, ytdlp.describe(video, audio))
+        if job.cancelled: return                     # deleted while probing: start nothing (finally records it as stopped)
         error = pipeline(job, url, video['format_id'], audio['format_id'], info.get('duration'))
     except ytdlp.YtdlpError as e: error = str(e)
     except OSError as e: error = f'Could not start the fetch: {e}'
@@ -109,7 +110,8 @@ def pipeline(job, url, video_fmt, audio_fmt, duration=None):
             job.stop(); raise
         finally:
             for fd in (rv, wv, ra, wa): os.close(fd)        # the children hold their own copies; ours would keep the pipes open and ffmpeg would never see the end
-        stalled = watch(job)
+        if job.cancelled: job.stop()                  # a stop that came while they were starting saw only some of them
+        stalled = not job.cancelled and watch(job)
     codes = [p.wait() for p in job.procs]
     if stalled: return f'Nothing arrived for {STALL_SECONDS} s, so the fetch was stopped.'
     if job.cancelled: return 'The fetch was stopped.'
@@ -126,6 +128,7 @@ def watch(job, clock=time.monotonic, sleep=time.sleep):
     """Wait for the processes to end; stop them if the playlist stops growing for STALL_SECONDS. Returns True when it stalled."""
     last_size, last_change = -1, clock()
     while any(p.poll() is None for p in job.procs):
+        if job.cancelled: job.stop(); return False
         size = cache.folder_bytes(cache.folder(job.video_id))
         if size != last_size: last_size, last_change = size, clock()
         elif clock() - last_change > STALL_SECONDS:
