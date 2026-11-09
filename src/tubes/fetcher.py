@@ -7,9 +7,16 @@ as soon as the first segment is listed and follows the playlist as it grows. Mea
 about 2 s after the start, and downloads run at 100-250 Mbit/s, 20-50 times what 1080p playback needs. ffmpeg cannot fetch YouTube's stream URLs
 itself (403), which is why yt-dlp does the downloading.
 
+yt-dlp works out a video's stream URLs once (the probe, about 3.5 s) and the two downloads reuse them (`--load-info-json`) instead of each
+working them out again: that saves 2-4 s before the first segment, and the chosen formats cannot vanish between two extractions. Measured on
+the home server on eight library videos (2026-11-09, docs/progress.md): YouTube refuses the fast `visionos` client for most of them, yt-dlp
+falls back to `web_embedded`, and that client makes the download wait 4-10 s "as required by the site" (an ad); skipping the wait gets a 403.
+So the first segment arrives about 3-4.5 s after Play without that wait and 8-13 s with it. About one probe in eight comes back without
+usable streams (YouTube's SABR-only answer), so a probe whose streams cannot be chosen is tried once more.
+
 Fetches run in background threads of the server process, one per video, at most `MAX_RUNNING` at a time; a play of a video already being fetched
 joins it. The pipes need file descriptors passed by number, which Windows lacks, so fetching runs on Linux and macOS only (oslib.CAN_PASS_FDS)."""
-import os, subprocess, threading, time
+import json, os, subprocess, threading, time
 
 from tubes import cache, oslib, settings, ytdlp
 
@@ -17,6 +24,7 @@ MAX_RUNNING = 3
 STALL_SECONDS = 120          # a fetch whose playlist has not grown for this long is stopped
 POLL_SECONDS = 1.0
 LOG = 'fetch.log'
+INFO = 'probe.json'           # the probe yt-dlp's downloads reuse; never served (cache.FILE_NAME), deleted when the fetch ends
 
 _lock = threading.Lock()
 _running = {}                # video_id -> Job
@@ -44,8 +52,17 @@ def hls_command(out_name=cache.PLAYLIST, video_fd=3, audio_fd=4):
             '-hls_flags', 'independent_segments+temp_file', '-hls_fmp4_init_filename', 'init.mp4', '-hls_segment_filename', 'seg_%05d.m4s', out_name]
 
 
-def stream_command(fmt_id, url):
-    return ytdlp.base_command() + ['--no-part', '-f', str(fmt_id), '-o', '-', url]
+def stream_command(fmt_id, info_path):
+    return ytdlp.base_command() + ['--no-part', '-f', str(fmt_id), '--load-info-json', info_path, '-o', '-']
+
+
+def choose(url):
+    """Probe the video and choose its streams: (info, video format, audio format). A probe without usable streams is tried once more."""
+    for attempt in (1, 2):
+        info = ytdlp.probe(url)
+        try: return (info, *ytdlp.choose_formats(info.get('formats') or [], settings.get('max_height')))
+        except ytdlp.YtdlpError:
+            if attempt == 2: raise
 
 
 def running():
@@ -82,21 +99,24 @@ def _run(job, url):
     """Probe, choose the streams, run the pipeline, record the result, then trim the cache. Never raises: a failure is recorded on the video's copy."""
     error = None
     try:
-        info = ytdlp.probe(url)
-        video, audio = ytdlp.choose_formats(info.get('formats') or [], settings.get('max_height'))
+        info, video, audio = choose(url)
         cache.set_formats(job.video_id, ytdlp.describe(video, audio))
         if job.cancelled: return                     # deleted while probing: start nothing (finally records it as stopped)
-        error = pipeline(job, url, video['format_id'], audio['format_id'], info.get('duration'))
+        info_path = os.path.join(cache.folder(job.video_id), INFO)
+        with open(info_path, 'w', encoding='utf8') as f: json.dump(info, f)
+        error = pipeline(job, info_path, video['format_id'], audio['format_id'], info.get('duration'))
     except ytdlp.YtdlpError as e: error = str(e)
     except OSError as e: error = f'Could not start the fetch: {e}'
     finally:
         if job.cancelled and not error: error = 'The fetch was stopped.'
+        try: os.remove(os.path.join(cache.folder(job.video_id), INFO))     # its stream URLs expire within hours anyway
+        except OSError: pass
         cache.finish(job.video_id, cache.stamp(), error)
         with _lock: _running.pop(job.video_id, None)
     if not error: cache.evict(cache.utcnow())
 
 
-def pipeline(job, url, video_fmt, audio_fmt, duration=None):
+def pipeline(job, info_path, video_fmt, audio_fmt, duration=None):
     """Run yt-dlp x2 into ffmpeg until all three end; returns None when the playlist is complete, else the reason it is not."""
     out = cache.folder(job.video_id)
     rv, wv = os.pipe(); ra, wa = os.pipe()
@@ -104,8 +124,8 @@ def pipeline(job, url, video_fmt, audio_fmt, duration=None):
         try:
             ff = subprocess.Popen(hls_command(video_fd=rv, audio_fd=ra), cwd=out, pass_fds=(rv, ra), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=log)
             job.procs.append(ff)
-            job.procs.append(subprocess.Popen(stream_command(video_fmt, url), stdin=subprocess.DEVNULL, stdout=wv, stderr=log))
-            job.procs.append(subprocess.Popen(stream_command(audio_fmt, url), stdin=subprocess.DEVNULL, stdout=wa, stderr=log))
+            job.procs.append(subprocess.Popen(stream_command(video_fmt, info_path), stdin=subprocess.DEVNULL, stdout=wv, stderr=log))
+            job.procs.append(subprocess.Popen(stream_command(audio_fmt, info_path), stdin=subprocess.DEVNULL, stdout=wa, stderr=log))
         except OSError:
             job.stop(); raise
         finally:
