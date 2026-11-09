@@ -1,17 +1,20 @@
 """A stand-in for Cloudflare's D1 HTTP API, for the integration suite: a real HTTP server on localhost answering
 `POST /accounts/<account>/d1/database/<database>/query` by running the SQL on an in-memory SQLite database with the library's two tables
 (the columns storage's migrations give `youtube_channels` and `youtube_videos` that Tubes reads, plus the NOT NULL ones it does not).
-Use through the `fake_d1` fixture (tests/conftest.py): `fake_d1.channel(...)`, `fake_d1.video(...)`, then `tubes sync`."""
+Use through the `fake_d1` fixture (tests/conftest.py): `fake_d1.channel(...)`, `fake_d1.video(...)`, then `tubes import-d1`."""
 import json, re, sqlite3, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 SCHEMA = """
 CREATE TABLE youtube_channels (youtube_id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', custom_url TEXT, thumbnail_url TEXT NOT NULL DEFAULT '',
     best_thumbnail_url TEXT, published_at TEXT NOT NULL DEFAULT '', statistics TEXT NOT NULL DEFAULT '{}', raw_json TEXT NOT NULL DEFAULT '{}', last_sync_at TEXT,
-    created_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '');
+    created_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '', sync_start_date TEXT, sync_end_date TEXT, upload_playlist_id TEXT, last_sync_token TEXT,
+    view_count INTEGER, subscriber_count INTEGER, video_count INTEGER, country TEXT, best_thumbnail_width INTEGER, best_thumbnail_height INTEGER);
 CREATE TABLE youtube_videos (youtube_id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '', published_at TEXT NOT NULL, channel_id TEXT NOT NULL,
     thumbnail_url TEXT NOT NULL DEFAULT '', best_thumbnail_url TEXT, duration TEXT NOT NULL DEFAULT 'PT0S', duration_seconds INTEGER, view_count INTEGER,
-    statistics TEXT NOT NULL DEFAULT '{}', raw_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '');
+    statistics TEXT NOT NULL DEFAULT '{}', raw_json TEXT NOT NULL DEFAULT '{}', created_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '',
+    like_count INTEGER, comment_count INTEGER, best_thumbnail_width INTEGER, best_thumbnail_height INTEGER, definition TEXT, dimension TEXT, licensed_content INTEGER,
+    caption INTEGER, privacy_status TEXT, embeddable INTEGER, made_for_kids INTEGER);
 """
 PATH = re.compile(r'^/accounts/([^/]+)/d1/database/([^/]+)/query$')
 

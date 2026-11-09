@@ -1,96 +1,38 @@
-"""The video library: which channels and videos there are. They are not managed here. They live in a Cloudflare D1 database (`d1_database`)
-that another service fills, in two tables: `youtube_channels` and `youtube_videos` (the schema of the storage service, whose screens add
-channels and sync their videos). Tubes only reads it.
-
-Reading D1 from the server costs 0.4-0.5 s a query (measured from the home server, 2026-11-09), too slow for every page, so `sync` copies the
-columns the screens need into Tubes' own database (`channels`, `videos`; descriptions and raw JSON stay behind) and the screens read that copy.
-A sync replaces the copy in one transaction, so a channel or video removed upstream goes here too. 40,000 videos take about ten queries of
-5,000 rows each. The credentials are Cloudflare's own environment variables, `CLOUDFLARE_API_TOKEN` (with D1 read) and
-`CLOUDFLARE_ACCOUNT_ID`, as wrangler reads them; they are never stored in the settings file. `TUBES_D1_API` points the queries at another
-address (the tests' stand-in D1).
+"""The video library, read side: which channels and videos there are, for the screens. They are added and kept up to date from YouTube by
+catalogue.py (Admin's Library page, `tubes add`, `tubes sync`); until 2026-11 another service managed them in a Cloudflare D1 database and
+this module copied that, which `tubes import-d1` (d1import.py) does once to carry them over.
 
 Lists are newest first and paged by a cursor after the last item (`<published>|<id>`), never an offset, so a page does not shift when a sync
-adds videos."""
-import json, os, urllib.error, urllib.request
+adds videos.
 
-from tubes import cache, db, settings
+A video YouTube no longer has (`gone`, see catalogue.recheck) is left out of every list and count, but `video(id)` still finds it, so a link
+to it (or its cached copy) still opens."""
+from tubes import db, youtube
 
-API = 'https://api.cloudflare.com/client/v4/accounts/{account}/d1/database/{database}/query'
-TIMEOUT = 60
-PAGE = 5000
-CHANNEL_SQL = """SELECT youtube_id AS id, title, custom_url AS handle, COALESCE(best_thumbnail_url, thumbnail_url) AS thumbnail, last_sync_at AS synced
-                 FROM youtube_channels ORDER BY youtube_id"""
-VIDEO_SQL = """SELECT youtube_id AS id, channel_id, title, published_at AS published, duration_seconds AS duration,
-                      COALESCE(best_thumbnail_url, thumbnail_url) AS thumbnail, view_count AS views
-               FROM youtube_videos WHERE youtube_id > ? ORDER BY youtube_id LIMIT ?"""
 VIDEO_COLUMNS = """v.id, v.channel_id, c.title AS channel, v.title, v.published, v.duration, v.thumbnail, v.views,
-                   k.state AS cache_state, k.bytes AS cache_bytes"""
-
-
-class LibraryError(RuntimeError):
-    """The library could not be read; the message says why, in a sentence."""
-
-
-def credentials():
-    """(account, token, database), or LibraryError naming what is missing."""
-    account, token, database = os.environ.get('CLOUDFLARE_ACCOUNT_ID', ''), os.environ.get('CLOUDFLARE_API_TOKEN', ''), settings.get('d1_database')
-    missing = [name for name, v in (('the d1_database setting', database), ('CLOUDFLARE_ACCOUNT_ID', account), ('CLOUDFLARE_API_TOKEN', token)) if not v]
-    if missing: raise LibraryError(f'The library cannot be read without {" and ".join(missing)}.')
-    return account, token, database
-
-
-def query(sql, params=()):
-    """Run one read on the library's D1 database; returns its rows as dicts."""
-    account, token, database = credentials()
-    req = urllib.request.Request(os.environ.get('TUBES_D1_API', API).format(account=account, database=database), data=json.dumps(dict(sql=sql, params=list(params))).encode(), method='POST',
-                                 headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'})
-    try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r: body = json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        try: why = '; '.join(err.get('message', '') for err in json.loads(e.read()).get('errors', [])) or None
-        except ValueError: why = None
-        raise LibraryError(f'D1 refused the query ({e.code}{": " + why if why else ""}).') from None
-    except (urllib.error.URLError, OSError) as e: raise LibraryError(f'D1 could not be reached: {getattr(e, "reason", e)}.') from None
-    except ValueError: raise LibraryError('D1 did not answer with JSON.') from None
-    if not body.get('success') or not body.get('result'): raise LibraryError('D1 said the query failed: ' + ('; '.join(e.get('message', '') for e in body.get('errors') or []) or 'no reason given') + '.')
-    return body['result'][0].get('results') or []
-
-
-def fetch_all():
-    """Every channel, and every video in pages of PAGE, from D1."""
-    channels = query(CHANNEL_SQL); videos, after = [], ''
-    while True:
-        page = query(VIDEO_SQL, (after, PAGE)); videos += page
-        if len(page) < PAGE: return channels, videos
-        after = page[-1]['id']
-
-
-def sync(now=None):
-    """Replace the local copy with what D1 holds now; returns `{channels, videos, synced}`. Nothing changes if reading D1 fails part way."""
-    channels, videos = fetch_all(); now = now or cache.stamp()
-    with db.connect() as con:
-        con.execute('DELETE FROM videos'); con.execute('DELETE FROM channels')
-        con.executemany('INSERT INTO channels (id, title, handle, thumbnail, synced) VALUES (:id, :title, :handle, :thumbnail, :synced)', channels)
-        con.executemany('INSERT INTO videos (id, channel_id, title, published, duration, thumbnail, views) VALUES (:id, :channel_id, :title, :published, :duration, :thumbnail, :views)', videos)
-        con.execute("INSERT INTO meta (key, value) VALUES ('library_synced', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (now,))
-    return dict(channels=len(channels), videos=len(videos), synced=now)
+                   k.state AS cache_state, k.bytes AS cache_bytes, v.gone"""
+CHANNEL_COLUMNS = """c.id, c.title, c.handle, c.thumbnail, c.synced, c.published, c.country, c.subscribers, c.total_videos, c.views, c.complete, c.follow,
+                     c.added, c.sync_token IS NOT NULL AS resumable"""
 
 
 def status():
-    """`{synced, channels, videos, configured}`: when the copy was last refreshed (None: never) and what it holds."""
+    """`{synced, channels, videos, hidden, configured}`: when every followed channel was last synced (None: never), what the library holds
+    (videos that can be watched, and those hidden because YouTube no longer has them), and whether the YouTube key is in the environment
+    (without it nothing can be added or synced)."""
     with db.connect() as con:
         synced = con.execute("SELECT value FROM meta WHERE key = 'library_synced'").fetchone()
-        counts = con.execute('SELECT (SELECT COUNT(*) FROM channels), (SELECT COUNT(*) FROM videos)').fetchone()
-    try: credentials(); configured = True
-    except LibraryError: configured = False
-    return dict(synced=synced[0] if synced else None, channels=counts[0], videos=counts[1], configured=configured)
+        counts = con.execute('SELECT (SELECT COUNT(*) FROM channels), (SELECT COUNT(*) FROM videos WHERE gone IS NULL), (SELECT COUNT(*) FROM videos WHERE gone IS NOT NULL)').fetchone()
+    return dict(synced=synced[0] if synced else None, channels=counts[0], videos=counts[1], hidden=counts[2], configured=youtube.configured())
 
 
 def channels():
-    """Every channel with how many videos it has here, by title."""
+    """Every channel with how many videos it has here to watch, how many are hidden (gone from YouTube) and its newest one's date, by title."""
     with db.connect() as con:
-        return db.rows(con.execute("""SELECT c.*, COUNT(v.id) AS videos, MAX(v.published) AS latest FROM channels c LEFT JOIN videos v ON v.channel_id = c.id
-                                      GROUP BY c.id ORDER BY LOWER(c.title), c.id"""))
+        rows = db.rows(con.execute(f"""SELECT {CHANNEL_COLUMNS}, COUNT(v.id) - COUNT(v.gone) AS videos, COUNT(v.gone) AS hidden,
+                                       MAX(CASE WHEN v.gone IS NULL THEN v.published END) AS latest FROM channels c LEFT JOIN videos v ON v.channel_id = c.id
+                                       GROUP BY c.id ORDER BY LOWER(c.title), c.id"""))
+    for r in rows: r.update(complete=bool(r['complete']), follow=bool(r['follow']), resumable=bool(r['resumable']))   # SQLite answers 0 and 1
+    return rows
 
 
 def channel(channel_id):
@@ -104,7 +46,7 @@ def cursor(v):
 
 def videos(channel_id=None, search=None, after=None, limit=24):
     """One page of videos, newest first: `{videos, has_more}`. `search` matches words in the title, in any order; `after` is a cursor."""
-    where, args = [], []
+    where, args = ['v.gone IS NULL'], []
     if channel_id: where.append('v.channel_id = ?'); args.append(channel_id)
     for word in (search or '').split():
         where.append("LOWER(v.title) LIKE LOWER(?) ESCAPE '\\'"); args.append('%' + word.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%')
@@ -112,14 +54,14 @@ def videos(channel_id=None, search=None, after=None, limit=24):
         published, _, vid = after.rpartition('|')
         where.append('(v.published < ? OR (v.published = ? AND v.id < ?))'); args += [published, published, vid]
     sql = f"""SELECT {VIDEO_COLUMNS} FROM videos v LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = v.id
-              {'WHERE ' + ' AND '.join(where) if where else ''} ORDER BY v.published DESC, v.id DESC LIMIT ?"""
+              WHERE {' AND '.join(where)} ORDER BY v.published DESC, v.id DESC LIMIT ?"""
     with db.connect() as con: rows = db.rows(con.execute(sql, args + [limit + 1]))
     return dict(videos=rows[:limit], has_more=len(rows) > limit)
 
 
 def shuffle(count=24, channel_id=None):
     """`count` videos picked at random (from one channel, if given), for a page that offers something different on every visit."""
-    where, args = ('WHERE v.channel_id = ?', [channel_id]) if channel_id else ('', [])
+    where, args = ('WHERE v.gone IS NULL AND v.channel_id = ?', [channel_id]) if channel_id else ('WHERE v.gone IS NULL', [])
     with db.connect() as con:
         return db.rows(con.execute(f'SELECT {VIDEO_COLUMNS} FROM videos v LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = v.id {where} ORDER BY RANDOM() LIMIT ?', args + [count]))
 

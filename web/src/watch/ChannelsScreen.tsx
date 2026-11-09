@@ -1,6 +1,6 @@
 // The one question: "Which channels are in the library?" Every channel as a large round picture
-// with its name and how many videos it has, each one link to its page. Channels are added in the
-// library itself, so the empty state says so.
+// with its name and how many videos it has, each one link to its page. Channels are added on
+// Admin’s Library page, so the empty state says so.
 import { Link } from 'react-router'
 import { useLoad } from 'strata-react'
 import { api, keys } from '../api'
@@ -19,7 +19,7 @@ export function ChannelsScreen() {
         state={load}
         isEmpty={cs => cs.length === 0}
         skeleton={<div aria-hidden className={grid}>{Array.from({ length: 10 }, (_, i) => <div key={i} className="grid justify-items-center gap-3 motion-safe:animate-pulse"><div className="aspect-square w-3/4 rounded-full bg-tube-chip" /><div className="h-4 w-1/2 rounded-tube-sm bg-tube-chip" /></div>)}</div>}
-        empty={<Nothing title="No channels yet">Channels are added in the library itself. Once they are there, a sync in Admin copies them here.</Nothing>}
+        empty={<Nothing title="No channels yet">Channels are added on Admin’s Library page, by link or @handle, and their videos follow.</Nothing>}
       >
         {cs => (
           <ul aria-label="Channels" className={grid}>

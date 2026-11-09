@@ -73,12 +73,12 @@ describe('Home', () => {
     expect(within(grid).getByText(/^\d+ \w+ ago$/)).toBeInTheDocument()
   })
 
-  it('before the first sync, says where to make one', async () => {
+  it('before the library has videos, says where to add a channel', async () => {
     server.use(videosNone)
     const { user, router } = openApp('/')
     expect(await screen.findByText('No videos yet')).toBeInTheDocument()
-    await user.click(screen.getByRole('link', { name: 'Copy it from Admin' }))
-    expect(router.state.location.pathname).toBe('/admin/system')
+    await user.click(screen.getByRole('link', { name: 'Add one in Admin' }))
+    expect(router.state.location.pathname).toBe('/admin/library')
   })
 
   it('says the server could not answer, with Try again', async () => {

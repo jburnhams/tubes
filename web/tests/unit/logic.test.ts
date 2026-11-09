@@ -2,12 +2,13 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { HttpError, colorSchemeScript, format } from 'strata-react'
 import { Refused, cursorOf, describeError, folderProblem, numberProblem, runningTime, videosUrl, withBase } from '../../src/api'
-import { channels, libraryEmpty, longChannel, report, streams, systemStatus, systemTrouble, tile, videos } from '../../src/mocks/fixtures'
+import { channels, library, libraryEmpty, syncJobs, longChannel, report, streams, systemStatus, systemTrouble, tile, videos } from '../../src/mocks/fixtures'
 import { videoPage } from '../../src/mocks/handlers'
 import { attach, problemText, type HlsClass, type HlsInstance, type Media } from '../../src/player'
 import { describeCache, describeEvicted } from '../../src/screens/CacheScreen'
 import { settingsProblems } from '../../src/screens/SettingsScreen'
 import { describeSystem, usable } from '../../src/screens/SystemScreen'
+import { channelState, describeAdded, describeJob, describeLibrary } from '../../src/screens/LibraryScreen'
 import { ago, videoCount, views, viewsAndAge } from '../../src/watch/format'
 import { savedText, settled, waitingText } from '../../src/watch/WatchScreen'
 
@@ -134,9 +135,31 @@ describe('the findings', () => {
     expect(describeSystem(systemTrouble)).toMatch(/needs Linux or macOS/)
     expect(describeSystem({ ...systemStatus, ytdlp: null })).toMatch(/^yt-dlp is missing/)
     expect(describeSystem({ ...systemStatus, ffmpeg: null })).toMatch(/^ffmpeg is missing/)
-    expect(describeSystem({ ...systemStatus, library: { ...libraryEmpty, configured: true } })).toBe('The library has never been copied here. Sync it below.')
-    expect(describeSystem({ ...systemStatus, library: libraryEmpty })).toMatch(/until its D1 database is set/)
+    expect(describeSystem({ ...systemStatus, library: { ...libraryEmpty, configured: true } })).toBe('The library is empty. Add a channel on the Library page.')
+    expect(describeSystem({ ...systemStatus, library: libraryEmpty })).toMatch(/no YouTube key\. Put YOUTUBE_API_KEY/)
+    expect(describeSystem({ ...systemStatus, library: { ...systemStatus.library, synced: null } })).toMatch(/The library has not had a full sync yet, and/)
     expect(describeSystem({ ...systemStatus, disk: { total: 100, used: 98, free: 2 } })).toMatch(/nearly full/)
+  })
+
+  it('Library says what it follows, how far a sync has got and what each channel is doing', () => {
+    expect(describeLibrary(channels, library)).toMatch(/^24\svideos from 3\sfollowed channels\. 1\schannel is still being read back to the first upload\. Every channel was last synced on /)
+    expect(describeLibrary(channels.filter(c => c.complete), { ...library, synced: null })).toMatch(/^12\svideos from 2\sfollowed channels\. Not every channel has been synced yet\. 3\svideos are hidden because YouTube no longer has them\.$/)
+    expect(describeLibrary(channels, { ...library, hidden: 0 })).toMatch(/synced on [^.]+\.$/)
+    expect(describeLibrary([], library)).toMatch(/^The library follows no channels yet/)
+    expect(describeLibrary(channels, { ...library, configured: false })).toMatch(/YOUTUBE_API_KEY/)
+    expect(describeJob(syncJobs.idle)).toBeUndefined()
+    expect(describeJob(syncJobs.running)).toMatch(/^Syncing 2 of 3: Night Sky\. 42\snew videos so far\.$/)
+    expect(describeJob({ ...syncJobs.running, current: null })).toMatch(/^Starting a sync of 3\schannels\.$/)
+    expect(describeJob(syncJobs.done)).toMatch(/^The last sync, of 3\schannels, added 57\snew videos\. 2\svideos gone from YouTube are now hidden\.$/)
+    expect(describeJob({ ...syncJobs.done, gone: 1 })).toMatch(/ 1\svideo gone from YouTube is now hidden\.$/)
+    expect(describeJob({ ...syncJobs.done, gone: 0, errors: [{ channel: null, title: 'The recheck for videos gone from YouTube', error: 'YouTube could not be reached.' }] })).toMatch(/added 57\snew videos\.$/)   // a failed recheck did not stop the sync
+    expect(describeJob(syncJobs.failed)).toMatch(/added 12\snew videos\. 1\schannel failed\.$/)
+    expect(describeJob({ ...syncJobs.failed, errors: syncJobs.failed.errors.slice(1) })).toMatch(/added 12\snew videos\. It stopped part way\.$/)
+    expect(channels.map(c => channelState(c).word)).toEqual(['Kitchen Science', 'Night Sky', 'Rivers and Coasts', 'Workshop Notes'].map(t => ({ 'Kitchen Science': 'Reading back', 'Night Sky': 'Up to date', 'Rivers and Coasts': 'Not followed', 'Workshop Notes': 'Up to date' })[t]))
+    expect(channelState({ ...channels[0], complete: false, resumable: false, synced: null }).word).toBe('Not synced')
+    expect(describeAdded({ kind: 'channel', channel: channels[0], sync: syncJobs.running })).toBe('Following Kitchen Science. Its videos are being fetched.')
+    expect(describeAdded({ kind: 'video', video: videos[0] })).toBe(`Added “${videos[0].title}” from ${videos[0].channel}.`)
+    expect(describeAdded({ kind: 'video', video: { ...videos[0], channel: null } })).toBe(`Added “${videos[0].title}”.`)
   })
 
   it('Watch says what the frame is waiting for and how much is saved', () => {
@@ -155,7 +178,7 @@ describe('the findings', () => {
   })
 
   it('Settings checks every field before sending', () => {
-    const ok = { cache_dir: '/srv/c', cache_limit_gb: '1000', half_life_days: '30', protect_days: '0', max_height: '1080', d1_database: '', player_client: '', cookies_from_browser: '', ytdlp: 'yt-dlp', ffmpeg: 'ffmpeg' }
+    const ok = { cache_dir: '/srv/c', cache_limit_gb: '1000', half_life_days: '30', protect_days: '0', max_height: '1080', player_client: '', cookies_from_browser: '', ytdlp: 'yt-dlp', ffmpeg: 'ffmpeg' }
     expect(Object.values(settingsProblems(ok)).filter(Boolean)).toEqual([])
     const bad = settingsProblems({ ...ok, cache_dir: 'x', cache_limit_gb: '-1', half_life_days: '', protect_days: 'a', ytdlp: ' ', ffmpeg: '' })
     expect(bad).toEqual({

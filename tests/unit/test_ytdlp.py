@@ -67,6 +67,20 @@ def test_last_error():
     assert ytdlp.last_error('') == '' and ytdlp.last_error(None) == ''
 
 
+@pytest.mark.parametrize('message, gone', [
+    ('[youtube] Ab1-Cd2_Ef3: Video unavailable', True),
+    ('[youtube] Ab1-Cd2_Ef3: Video unavailable. This video has been removed by the uploader', True),
+    ("[youtube] Ab1-Cd2_Ef3: Private video. Sign in if you've been granted access to this video", True),
+    ('[youtube] Ab1-Cd2_Ef3: This video is no longer available because the YouTube account associated with this video has been terminated.', True),
+    ("[youtube] Ab1-Cd2_Ef3: Video unavailable. This content isn't available, try again later.", False),    # a rate limit, worded as unavailable
+    ("[youtube] Ab1-Cd2_Ef3: Sign in to confirm you're not a bot", False),
+    ('[youtube] Ab1-Cd2_Ef3: Sign in to confirm your age. This video may be inappropriate for some users.', False),
+    ('Only 4 s of 8 s arrived.', False), (None, False),
+])
+def test_says_gone(message, gone):
+    assert ytdlp.says_gone(message) is gone
+
+
 def fmt(fid, v=None, a=None, h=None, w=None, **kw):
     return dict(format_id=fid, vcodec=v or 'none', acodec=a or 'none', height=h, width=w, protocol='https') | kw
 

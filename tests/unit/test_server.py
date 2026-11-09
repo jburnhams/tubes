@@ -1,4 +1,4 @@
-import os
+import os, threading
 import pytest
 import uvicorn
 from fastapi.testclient import TestClient
@@ -48,7 +48,7 @@ def test_system_and_settings(client, monkeypatch):
     monkeypatch.setattr(ytdlp, 'version', lambda: '2026.10.26'); monkeypatch.setattr(fetcher, 'ffmpeg_version', lambda: 'ffmpeg version 7.1')
     s = client.get('/api/system').json()
     assert (s['ytdlp'], s['ffmpeg'], s['can_fetch'], s['fetching']) == ('2026.10.26', 'ffmpeg version 7.1', oslib.CAN_PASS_FDS, [])
-    assert s['disk']['total'] > 0 and s['cache']['limit'] == 10**12 and s['cache_dir'].endswith('cache') and s['library'] == dict(synced=None, channels=0, videos=0, configured=False)
+    assert s['disk']['total'] > 0 and s['cache']['limit'] == 10**12 and s['cache_dir'].endswith('cache') and s['library'] == dict(synced=None, channels=0, videos=0, hidden=0, configured=False)
     assert client.put('/api/settings', json=dict(max_height=720, player_client='')).json()['max_height'] == 720
     assert client.get('/api/settings').json()['player_client'] == ''
     assert client.put('/api/settings', json=dict(max_height=None)).json()['max_height'] == 1080
@@ -58,7 +58,7 @@ def test_system_and_settings(client, monkeypatch):
 
 def test_library_channels_and_videos(client, monkeypatch):
     seed()
-    assert client.get('/api/library').json() == dict(synced='2026-11-09T12:00:00+00:00', channels=2, videos=4, configured=False)
+    assert client.get('/api/library').json() == dict(synced='2026-11-09T12:00:00+00:00', channels=2, videos=4, hidden=0, configured=False)
     assert [c['title'] for c in client.get('/api/channels').json()] == ['night sky', 'Workshop']
     assert client.get(f"/api/channels/{CHANNELS[0]['id']}").json()['videos'] == 2 and client.get('/api/channels/nope').status_code == 404
     page = client.get('/api/videos', params=dict(limit=3)).json()
@@ -71,9 +71,50 @@ def test_library_channels_and_videos(client, monkeypatch):
     assert (v['title'], v['channel'], v['plays'], v['last_played']) == ('Stars in winter', 'night sky', 0, None)
     assert client.get('/api/videos/zzz').status_code == 404
 
-    assert client.post('/api/library/sync').json() == dict(detail='The library cannot be read without the d1_database setting and CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN.')
-    monkeypatch.setattr(library, 'sync', lambda: dict(channels=2, videos=4, synced='now'))
-    assert client.post('/api/library/sync').json() == dict(channels=2, videos=4, synced='now')
+    r = client.post('/api/library/sync')
+    assert r.status_code == 503 and 'without YOUTUBE_API_KEY' in r.json()['detail']
+    r = client.post('/api/library', json=dict(input='@workshop'))
+    assert r.status_code == 503 and 'without YOUTUBE_API_KEY' in r.json()['detail']
+
+
+def test_manage_the_library(client, fake_youtube):
+    A = 'UCaaaaaaaaaaaaaaaaaaaaaa'
+    fake_youtube.channel(A, 'Workshop', handle='@workshop', videos=55).channel('UCbbbbbbbbbbbbbbbbbbbbbb', 'Night sky', videos=2)
+    job = client.app.state.sync; fake_youtube.hold = threading.Event()
+    assert client.get('/api/library/sync').json()['running'] is False
+    r = client.post('/api/library', json=dict(input='https://www.youtube.com/@workshop')).json()
+    assert r['kind'] == 'channel' and r['channel']['title'] == 'Workshop' and r['sync']['running'] is True and r['sync']['total'] == 1
+    assert client.post('/api/library/sync', json=dict(channels=[A])).status_code == 409      # one at a time
+    r = client.post('/api/library', json=dict(input='UCbbbbbbbbbbbbbbbbbbbbbb')).json()     # added while the first runs: synced by the next one
+    assert r['sync']['running'] is True and r['sync']['total'] == 1
+    fake_youtube.hold.set(); job.wait(30)
+    s = client.get('/api/library/sync').json()
+    assert (s['running'], s['done'], s['added'], s['errors']) == (False, 1, 55, [])
+    assert client.post('/api/library/sync').json()['total'] == 2; job.wait(30)
+    assert client.get('/api/library/sync').json()['added'] == 2 and client.get('/api/library').json()['synced'] is not None
+    c = client.get(f'/api/channels/{A}').json()
+    assert (c['videos'], c['complete'], c['follow'], c['total_videos']) == (55, True, True, 55)
+    v = client.post('/api/library', json=dict(input='https://youtu.be/aaaa0000003')).json()
+    assert v['kind'] == 'video' and v['video']['channel'] == 'Workshop' and 'sync' not in v
+    assert client.post('/api/library', json=dict(input='two words')).status_code == 400
+    assert client.post('/api/library', json=dict(input='@nobody')).status_code == 404
+
+    fake_youtube.hold.clear()
+    r = client.post(f'/api/channels/{A}/restart').json()
+    assert r['videos'] == 55 and r['sync']['running'] is True
+    assert client.post(f'/api/channels/{A}/restart').json()['sync']['running'] is True       # one is running: the restart waits for the next
+    fake_youtube.hold.set(); job.wait(30)
+    assert client.get(f'/api/channels/{A}').json()['videos'] == 55
+    assert client.delete(f'/api/channels/{A}').json() == dict(channel=A, videos=55)
+    assert client.delete(f'/api/channels/{A}').status_code == 404 and client.post(f'/api/channels/{A}/restart').status_code == 404
+    fake_youtube.quota_left = 0
+    assert client.post('/api/library', json=dict(input='@workshop')).status_code == 502
+
+
+def test_restart_without_a_key_only_forgets(client):
+    seed()
+    r = client.post(f"/api/channels/{CHANNELS[0]['id']}/restart").json()
+    assert r['videos'] == 2 and r['sync']['running'] is False
 
 
 def test_play_stream_and_media(client, monkeypatch):

@@ -2,7 +2,7 @@
 // tests, every Storybook story and the visual suite's screenshots, so a screen looks the same in
 // each. Dates are fixed, so screenshots do not change from day to day. Pictures are flat SVG
 // tiles as data URLs, so nothing is fetched from outside.
-import type { CacheItem, CacheReport, Channel, LibraryStatus, Settings, Stream, SystemStatus, Video } from '../api'
+import type { CacheItem, CacheReport, Channel, LibraryStatus, Settings, Stream, SyncJob, SystemStatus, Video } from '../api'
 
 export const GB = 1e9
 
@@ -15,7 +15,6 @@ export const defaultSettings: Settings = {
   cookies_from_browser: '',
   half_life_days: 30,
   protect_days: 7,
-  d1_database: 'b1c3f037-0000-4000-8000-000000000000',
   ytdlp: 'yt-dlp',
   ffmpeg: 'ffmpeg',
 }
@@ -71,13 +70,32 @@ export const longChannel: Video[] = Array.from({ length: 60 }, (_, i) => ({
   ...videos[0], id: `lo${String(i).padStart(9, '0')}`, title: `Episode ${60 - i}`, published: day(i), thumbnail: tile(28, String(60 - i)), cache_state: null, cache_bytes: null,
 }))
 
+/** How far each sample channel's sync has got: two up to date, one still reading back, one only here for videos added one by one. */
+const syncState: Record<string, Partial<Channel>> = {
+  'Workshop Notes': { follow: true, complete: true, resumable: false, total_videos: 6, subscribers: 12_400 },
+  'Night Sky': { follow: true, complete: true, resumable: false, total_videos: 6, subscribers: 88_100 },
+  'Kitchen Science': { follow: true, complete: false, resumable: true, total_videos: 214, subscribers: 3_050, hidden: 3 },
+  'Rivers and Coasts': { follow: false, complete: false, resumable: false, total_videos: null, subscribers: null, synced: null },     // no counts: carried over from before they were kept
+}
+
 export const channels: Channel[] = names.map(c => {
   const own = videos.filter(v => v.channel_id === c.id)
-  return { id: c.id, title: c.title, handle: c.handle, thumbnail: c.handle ? tile(c.hue, c.title.slice(0, 1)) : null, synced: '2026-01-23T17:13:43Z', videos: own.length, latest: own[0]?.published ?? null }
+  return { id: c.id, title: c.title, handle: c.handle, thumbnail: c.handle ? tile(c.hue, c.title.slice(0, 1)) : null, synced: '2026-11-09T06:00:00Z', videos: own.length, latest: own[0]?.published ?? null, added: '2026-01-10T12:00:00Z', ...syncState[c.title] }
 }).sort((a, b) => a.title.localeCompare(b.title))
 
-export const library: LibraryStatus = { synced: '2026-11-09T06:00:00+00:00', channels: channels.length, videos: videos.length, configured: true }
-export const libraryEmpty: LibraryStatus = { synced: null, channels: 0, videos: 0, configured: false }
+/** The background sync in each sample state. `idle` is a server that has not synced since it started. */
+const idle: SyncJob = { running: false, total: 0, done: 0, current: null, added: 0, gone: 0, errors: [], started: null, finished: null }
+export const syncJobs = {
+  idle,
+  running: { ...idle, running: true, total: 3, done: 1, current: 'Night Sky', added: 42, started: '2026-11-09T11:58:00+00:00' } as SyncJob,
+  done: { ...idle, total: 3, done: 3, added: 57, gone: 2, started: '2026-11-09T11:58:00+00:00', finished: '2026-11-09T11:59:10+00:00' } as SyncJob,
+  failed: { ...idle, total: 3, done: 3, added: 12, started: '2026-11-09T11:58:00+00:00', finished: '2026-11-09T11:59:10+00:00', errors: [{ channel: 'UCkitchen000000000000003', title: 'Kitchen Science', error: 'YouTube refused the request (403: the key has used its quota for today (it resets at midnight Pacific time)).' }, { channel: null, title: null, error: 'The sync stopped: the database could not be reached.' }] } as SyncJob,
+}
+
+export const library: LibraryStatus = { synced: '2026-11-09T06:00:00+00:00', channels: channels.length, videos: videos.length, hidden: 3, configured: true }
+export const libraryEmpty: LibraryStatus = { synced: null, channels: 0, videos: 0, hidden: 0, configured: false }
+/** A key, but no channels yet. */
+export const libraryNew: LibraryStatus = { ...libraryEmpty, configured: true }
 
 const none: Stream = { state: 'none', segments: 0, seconds: 0, complete: false, playable: false, error: null, formats: null, plays: 0, last_played: null }
 

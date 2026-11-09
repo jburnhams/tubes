@@ -1,5 +1,4 @@
-"""Sample library data for tests: rows as the library's D1 database returns them (library.CHANNEL_SQL / VIDEO_SQL), D1 HTTP answers, and a
-helper to fill the local copy without D1."""
+"""Sample library data for tests: channel and video rows, D1 HTTP answers (for d1import), and a helper to fill the library without YouTube."""
 CHANNELS = [dict(id='UCaaaaaaaaaaaaaaaaaaaaaa', title='Workshop', handle='@workshop', thumbnail='https://img.test/ws.jpg', synced='2026-01-20T10:00:00Z'),
             dict(id='UCbbbbbbbbbbbbbbbbbbbbbb', title='night sky', handle=None, thumbnail=None, synced=None)]
 

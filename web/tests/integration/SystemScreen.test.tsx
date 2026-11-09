@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { createQueryClient } from 'strata-react'
 import { keys } from '../../src/api'
 import { systemStatus } from '../../src/mocks/fixtures'
-import { syncFails, systemError, systemInTrouble } from '../../src/mocks/handlers'
+import { systemError, systemInTrouble } from '../../src/mocks/handlers'
 import { openApp, screen } from '../utils/render'
-import { mock, server } from '../utils/server'
+import { server } from '../utils/server'
 
 describe('System', () => {
-  it('says all is ready, with the library copy, the tools and the disk', async () => {
+  it('says all is ready, with the library, the tools and the disk', async () => {
     openApp('/admin/system')
-    expect(await screen.findByText(/^Everything is ready\. The library was copied on/)).toBeInTheDocument()
+    expect(await screen.findByText(/^Everything is ready\. The library was last synced on/)).toBeInTheDocument()
     expect(screen.getByText(/^24\svideos from 4\schannels$/)).toBeInTheDocument()
     expect(screen.getByText('Set')).toBeInTheDocument()
     expect(screen.getByText('2026.10.26')).toBeInTheDocument()
@@ -33,24 +33,17 @@ describe('System', () => {
     expect(screen.getByText('Nearly full')).toBeInTheDocument()
   })
 
-  it('syncs the library now', async () => {
-    const { user } = openApp('/admin/system')
-    await user.click(await screen.findByRole('button', { name: 'Sync now' }))
-    expect(await screen.findByText('Synced', { selector: '[role=status]' })).toBeInTheDocument()
-    expect(mock.synced).toBe('2026-11-09T09:30:00+00:00')
+  it('leaves syncing to the Library page', async () => {
+    openApp('/admin/system')
+    expect(await screen.findByText(/^Everything is ready/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Sync/ })).not.toBeInTheDocument()
   })
 
-  it('says why a sync was refused, in the server’s words', async () => {
-    server.use(syncFails)
-    const { user } = openApp('/admin/system')
-    await user.click(await screen.findByRole('button', { name: 'Sync now' }))
-    expect(await screen.findByText('The library cannot be read without CLOUDFLARE_API_TOKEN. The copy was not changed.')).toBeInTheDocument()
-  })
-
-  it('links to cache and settings in the app and to the API outside it', async () => {
+  it('links to the library, cache and settings in the app and to the API outside it', async () => {
     openApp('/admin/system')
     expect(await screen.findByRole('link', { name: /^Settings/, description: /The cache limit and folder/ })).toHaveAttribute('href', '/admin/settings')
     expect(screen.getByRole('link', { name: /^Cache/, description: /Trim now/ })).toHaveAttribute('href', '/admin/cache')
+    expect(screen.getByRole('link', { name: /^Library/, description: /adding a channel/ })).toHaveAttribute('href', '/admin/library')
     expect(screen.getByRole('link', { name: /API reference/ })).toHaveAttribute('href', '/api/docs')
     expect(screen.getByRole('link', { name: /Health check/ })).toHaveAttribute('href', '/api/health')
   })

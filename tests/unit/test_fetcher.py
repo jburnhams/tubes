@@ -1,6 +1,6 @@
 import json, os, subprocess, threading
 import pytest
-from tubes import cache, fetcher, oslib, settings, ytdlp
+from tubes import cache, catalogue, fetcher, library, oslib, settings, ytdlp
 from library import seed
 from test_cache import write_playlist
 
@@ -83,6 +83,19 @@ def test_failures_are_recorded_on_the_copy(monkeypatch, probe, pipeline_result, 
     monkeypatch.setattr(cache, 'evict', lambda now: pytest.fail('nothing to trim after a failure'))
     st = fetcher.start('aaaaaaaaaaa', background=False)
     assert (st['state'], st['error']) == ('failed', error)
+
+
+def test_a_video_youtube_no_longer_has_is_hidden_until_a_fetch_finds_it(monkeypatch):
+    seed()
+    def gone(url, signed_in=False): raise ytdlp.YtdlpError('[youtube] aaaaaaaaaaa: Video unavailable. This video has been removed by the uploader')
+    monkeypatch.setattr(ytdlp, 'probe', gone)
+    assert fetcher.start('aaaaaaaaaaa', background=False)['state'] == 'failed'
+    assert library.video('aaaaaaaaaaa')['gone'] and 'aaaaaaaaaaa' not in [v['id'] for v in library.videos()['videos']]
+    catalogue.mark_gone('aaaaaaaaaaa', now='later'); assert library.video('aaaaaaaaaaa')['gone'] != 'later'     # keeps when it first went
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: INFO)
+    monkeypatch.setattr(fetcher, 'pipeline', lambda job, *a: write_playlist(job.video_id, 2, True))
+    monkeypatch.setattr(cache, 'evict', lambda now: None)
+    assert fetcher.start('aaaaaaaaaaa', background=False)['state'] == 'ready' and library.video('aaaaaaaaaaa')['gone'] is None
 
 
 def test_a_cancelled_fetch_is_recorded_as_stopped(monkeypatch):

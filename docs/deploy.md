@@ -10,7 +10,6 @@ git clone https://github.com/jburnhams/tubes && cd tubes
 dbtool new-app tubes                       # its own role and schema in the shared Postgres (omarchy_db)
 ./tubes set cache_dir /srv/tubes/cache     # on the big disk
 ./tubes set cache_limit_gb 1000
-./tubes set d1_database <library D1 id>
 ```
 
 Signed in to YouTube in a browser on the server (a Premium account has no ad waits before downloads), `./tubes set cookies_from_browser chrome+gnomekeyring` (yt-dlp's `--cookies-from-browser` value; the keyring part is needed where the desktop keyring encrypts cookies, and it must be unlocked, as with autologin).
@@ -19,13 +18,15 @@ yt-dlp and ffmpeg must be on the service's `PATH` or set with `./tubes set ytdlp
 
 ## 2. Credentials
 
-The library is read with a Cloudflare API token that can read D1. Put it in a file only the service user can read, never in the repo or the settings file:
+The library comes from the YouTube Data API v3: a key from a Google Cloud project with that API enabled (10,000 units a day by default; a sync of an up-to-date channel costs about 2). If the key is restricted to HTTP referrers, `YOUTUBE_API_REFERER` is sent as the Referer header. Put them in a file only the service user can read, never in the repo or the settings file:
 
 ```
-# ~/.config/cloudflare/env  (chmod 600)
-CLOUDFLARE_API_TOKEN=...
-CLOUDFLARE_ACCOUNT_ID=...
+# ~/.config/<somewhere>/env  (chmod 600)
+YOUTUBE_API_KEY=...
+YOUTUBE_API_REFERER=https://<an allowed site>/    # only for a referrer-restricted key
 ```
+
+Moving over from the storage service once: with `CLOUDFLARE_API_TOKEN` (D1 read) and `CLOUDFLARE_ACCOUNT_ID` also in the environment, `./tubes import-d1 --database <D1 id>` merges its `youtube_channels` and `youtube_videos` (each channel keeps how far its sync got), then `./tubes sync`. After that the Cloudflare variables are not needed.
 
 ## 3. Service and timer
 
@@ -38,7 +39,7 @@ After=network-online.target postgresql.service
 
 [Service]
 WorkingDirectory=%h/src/tubes
-EnvironmentFile=%h/.config/cloudflare/env
+EnvironmentFile=%h/.config/<somewhere>/env
 ExecStart=%h/src/tubes/tubes serve --host 127.0.0.1 --port 8367
 Restart=on-failure
 
@@ -60,4 +61,4 @@ handle_path /tubes/* {
 
 ## 5. Check
 
-`./tubes doctor` (tools, database, credentials, the copy's age), then System in the app: every line should say Found, Can fetch, Set and Answering.
+`./tubes doctor` (tools, database, the YouTube key, when the library was last synced), then System in the app: every line should say Found, Can fetch, Set and Answering.

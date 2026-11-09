@@ -1,6 +1,6 @@
 // The one question: "How is the server set up, and how do I change it?" Two tabs whose choice
 // lives in the URL (?tab=appearance). General is one form over the server's settings, grouped by
-// what they decide (the cache, what is fetched, where the library is, the tools); the fields start
+// what they decide (the cache, what is fetched, the tools); the fields start
 // from what the server holds (rendered inside DataView's ready state, so never blank while
 // loading), problems are said under their field, and saving is one AsyncButton. The server checks
 // again and says why it refused, under the button. Appearance is Strata's ColorSchemeChoice.
@@ -49,7 +49,7 @@ function FormSkeleton() {
   )
 }
 
-type Fields = Record<'cache_dir' | 'cache_limit_gb' | 'half_life_days' | 'protect_days' | 'max_height' | 'd1_database' | 'player_client' | 'cookies_from_browser' | 'ytdlp' | 'ffmpeg', string>
+type Fields = Record<'cache_dir' | 'cache_limit_gb' | 'half_life_days' | 'protect_days' | 'max_height' | 'player_client' | 'cookies_from_browser' | 'ytdlp' | 'ffmpeg', string>
 
 /** Every problem the form can see before sending, by field. */
 export function settingsProblems(f: Fields): Partial<Record<keyof Fields, string>> {
@@ -67,7 +67,7 @@ export function SettingsForm({ current }: { current: Settings }) {
   const queryClient = useQueryClient()
   const [f, setF] = useState<Fields>({
     cache_dir: current.cache_dir, cache_limit_gb: String(current.cache_limit_gb), half_life_days: String(current.half_life_days), protect_days: String(current.protect_days),
-    max_height: String(current.max_height), d1_database: current.d1_database, player_client: current.player_client, cookies_from_browser: current.cookies_from_browser, ytdlp: current.ytdlp, ffmpeg: current.ffmpeg,
+    max_height: String(current.max_height), player_client: current.player_client, cookies_from_browser: current.cookies_from_browser, ytdlp: current.ytdlp, ffmpeg: current.ffmpeg,
   })
   const [problems, setProblems] = useState<ReturnType<typeof settingsProblems>>({})
   const set = (k: keyof Fields) => (e: { target: { value: string } }) => setF(old => ({ ...old, [k]: e.target.value }))
@@ -75,7 +75,7 @@ export function SettingsForm({ current }: { current: Settings }) {
   const save = useAsyncAction(async () => {
     await api.saveSettings({
       cache_dir: f.cache_dir.trim(), cache_limit_gb: Number(f.cache_limit_gb), half_life_days: Number(f.half_life_days), protect_days: Number(f.protect_days),
-      max_height: Number(f.max_height), d1_database: f.d1_database.trim(), player_client: f.player_client.trim(), cookies_from_browser: f.cookies_from_browser.trim(), ytdlp: f.ytdlp.trim(), ffmpeg: f.ffmpeg.trim(),
+      max_height: Number(f.max_height), player_client: f.player_client.trim(), cookies_from_browser: f.cookies_from_browser.trim(), ytdlp: f.ytdlp.trim(), ffmpeg: f.ffmpeg.trim(),
     })
     await Promise.all([keys.settings, keys.system, keys.cache].map(queryKey => queryClient.invalidateQueries({ queryKey })))
   }, { describeError })
@@ -123,13 +123,6 @@ export function SettingsForm({ current }: { current: Settings }) {
         </Field>
         <Field label="ffmpeg" hint="The command, or its full path." error={problems.ffmpeg}>
           <Input value={f.ffmpeg} onChange={set('ffmpeg')} autoComplete="off" spellCheck={false} />
-        </Field>
-      </fieldset>
-
-      <fieldset className="grid gap-5">
-        <legend className="mb-4 type-heading">Library</legend>
-        <Field label="D1 database id" hint="The Cloudflare D1 database the library lives in. Its credentials come from the server's environment, never from here.">
-          <Input value={f.d1_database} onChange={set('d1_database')} autoComplete="off" spellCheck={false} />
         </Field>
       </fieldset>
 
