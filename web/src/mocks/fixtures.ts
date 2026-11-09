@@ -74,7 +74,7 @@ export const longChannel: Video[] = Array.from({ length: 60 }, (_, i) => ({
 const syncState: Record<string, Partial<Channel>> = {
   'Workshop Notes': { follow: true, complete: true, resumable: false, total_videos: 6, subscribers: 12_400 },
   'Night Sky': { follow: true, complete: true, resumable: false, total_videos: 6, subscribers: 88_100 },
-  'Kitchen Science': { follow: true, complete: false, resumable: true, total_videos: 214, subscribers: 3_050 },
+  'Kitchen Science': { follow: true, complete: false, resumable: true, total_videos: 214, subscribers: 3_050, hidden: 3 },
   'Rivers and Coasts': { follow: false, complete: false, resumable: false, total_videos: null, subscribers: null, synced: null },     // no counts: carried over from before they were kept
 }
 
@@ -84,16 +84,16 @@ export const channels: Channel[] = names.map(c => {
 }).sort((a, b) => a.title.localeCompare(b.title))
 
 /** The background sync in each sample state. `idle` is a server that has not synced since it started. */
-const idle: SyncJob = { running: false, total: 0, done: 0, current: null, added: 0, errors: [], started: null, finished: null }
+const idle: SyncJob = { running: false, total: 0, done: 0, current: null, added: 0, gone: 0, errors: [], started: null, finished: null }
 export const syncJobs = {
   idle,
   running: { ...idle, running: true, total: 3, done: 1, current: 'Night Sky', added: 42, started: '2026-11-09T11:58:00+00:00' } as SyncJob,
-  done: { ...idle, total: 3, done: 3, added: 57, started: '2026-11-09T11:58:00+00:00', finished: '2026-11-09T11:59:10+00:00' } as SyncJob,
+  done: { ...idle, total: 3, done: 3, added: 57, gone: 2, started: '2026-11-09T11:58:00+00:00', finished: '2026-11-09T11:59:10+00:00' } as SyncJob,
   failed: { ...idle, total: 3, done: 3, added: 12, started: '2026-11-09T11:58:00+00:00', finished: '2026-11-09T11:59:10+00:00', errors: [{ channel: 'UCkitchen000000000000003', title: 'Kitchen Science', error: 'YouTube refused the request (403: the key has used its quota for today (it resets at midnight Pacific time)).' }, { channel: null, title: null, error: 'The sync stopped: the database could not be reached.' }] } as SyncJob,
 }
 
-export const library: LibraryStatus = { synced: '2026-11-09T06:00:00+00:00', channels: channels.length, videos: videos.length, configured: true }
-export const libraryEmpty: LibraryStatus = { synced: null, channels: 0, videos: 0, configured: false }
+export const library: LibraryStatus = { synced: '2026-11-09T06:00:00+00:00', channels: channels.length, videos: videos.length, hidden: 3, configured: true }
+export const libraryEmpty: LibraryStatus = { synced: null, channels: 0, videos: 0, hidden: 0, configured: false }
 /** A key, but no channels yet. */
 export const libraryNew: LibraryStatus = { ...libraryEmpty, configured: true }
 

@@ -58,6 +58,8 @@ class Video(Base):
     comments: Mapped[int | None] = mapped_column(BigInteger, default=None)
     definition: Mapped[str | None] = mapped_column(String(8), default=None)     # hd or sd
     added: Mapped[str | None] = mapped_column(String(40), default=None)
+    gone: Mapped[str | None] = mapped_column(String(40), default=None)          # when YouTube was first found not to have it (catalogue.recheck); hidden while set
+    checked: Mapped[str | None] = mapped_column(String(40), default=None)       # when the recheck last asked YouTube about it
 
 
 class Meta(Base):

@@ -1,9 +1,9 @@
 from library import CHANNELS, VIDEOS, seed
-from tubes import cache, library
+from tubes import cache, db, library
 
 
 def test_status_before_any_sync(monkeypatch):
-    assert library.status() == dict(synced=None, channels=0, videos=0, configured=False)
+    assert library.status() == dict(synced=None, channels=0, videos=0, hidden=0, configured=False)
     monkeypatch.setenv('YOUTUBE_API_KEY', 'k')
     assert library.status()['configured'] is True
 
@@ -43,3 +43,12 @@ def test_shuffle_and_one_video_with_its_copy():
     cache.begin('ccccccccccc', cache.stamp())
     v = library.video('ccccccccccc')
     assert (v['title'], v['channel'], v['cache_state'], v['cache_bytes']) == ('Stars in winter', 'night sky', 'fetching', 0)
+
+
+def test_videos_gone_from_youtube_are_hidden_but_still_open():
+    seed()
+    with db.connect() as con: con.execute("UPDATE videos SET gone = 'then' WHERE id IN ('aaaaaaaaaaa', 'ccccccccccc')")
+    assert [v['id'] for v in library.videos()['videos']] == ['bbbbbbbbbbb', 'ddddddddddd']
+    assert [v['id'] for v in library.videos(search='shelf')['videos']] == ['bbbbbbbbbbb'] and len(library.shuffle(10)) == 2
+    assert [(c['videos'], c['hidden'], c['latest']) for c in library.channels()] == [(1, 1, '2026-01-01T00:00:00Z'), (1, 1, '2026-01-02T00:00:00Z')]
+    assert (library.status()['videos'], library.status()['hidden']) == (2, 2) and library.video('aaaaaaaaaaa')['gone'] == 'then'

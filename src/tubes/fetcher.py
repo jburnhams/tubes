@@ -19,7 +19,7 @@ joins it. The pipes need file descriptors passed by number, which Windows lacks,
 import json, os, subprocess, threading, time
 from concurrent.futures import ThreadPoolExecutor
 
-from tubes import cache, oslib, settings, ytdlp
+from tubes import cache, catalogue, oslib, settings, ytdlp
 
 MAX_RUNNING = 3
 STALL_SECONDS = 120          # a fetch whose playlist has not grown for this long is stopped
@@ -137,7 +137,8 @@ def _run(job, url):
         except OSError: pass
         cache.finish(job.video_id, cache.stamp(), error)
         with _lock: _running.pop(job.video_id, None)
-    if not error: cache.evict(cache.utcnow())
+    if ytdlp.says_gone(error): catalogue.mark_gone(job.video_id)     # hidden from the lists until a recheck or a later fetch finds it
+    if not error: catalogue.mark_found(job.video_id); cache.evict(cache.utcnow())
 
 
 def pipeline(job, info_path, video_fmt, audio_fmt, duration=None, signed_in=False):

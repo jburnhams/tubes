@@ -16,6 +16,8 @@ describe('Library', () => {
     await table()
     expect(within(row('Kitchen Science')).getByText('Reading back')).toBeInTheDocument()
     expect(within(row('Kitchen Science')).getByText('214')).toBeInTheDocument()
+    expect(within(row('Kitchen Science')).getByText('3 hidden')).toBeInTheDocument()                // gone from YouTube, left out of the lists
+    expect(within(row('Night Sky')).queryByText(/hidden/)).not.toBeInTheDocument()
     expect(within(row('Night Sky')).getByText('Up to date')).toBeInTheDocument()
     expect(within(row('Rivers and Coasts')).getByText('Not followed')).toBeInTheDocument()
     expect(within(row('Rivers and Coasts')).getByText('Never')).toBeInTheDocument()
@@ -78,7 +80,7 @@ describe('Library', () => {
     expect(await screen.findByText(/^Syncing 1 of 3: Kitchen Science\./)).toBeInTheDocument()
     expect(mock.job.total).toBe(3)
     mock.job = syncJobs.done                                                             // the server finishes; the page polls every 2 s
-    expect(await screen.findByText(/^The last sync, of 3\schannels, added 57\snew videos\.$/, {}, { timeout: 4000 })).toBeInTheDocument()
+    expect(await screen.findByText(/^The last sync, of 3\schannels, added 57\snew videos\. 2\svideos gone from YouTube are now hidden\.$/, {}, { timeout: 4000 })).toBeInTheDocument()
     expect(screen.getByText('Finished')).toBeInTheDocument()
     await waitFor(() => expect(screen.getByRole('button', { name: 'Sync all' })).toBeEnabled(), { timeout: 3000 })
   })

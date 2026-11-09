@@ -25,7 +25,9 @@ export interface Settings {
 export interface LibraryStatus {
   synced: string | null
   channels: number
+  /** Videos that can be watched; `hidden` are those YouTube no longer has (deleted or made private), left out of every list. */
   videos: number
+  hidden: number
   /** The YouTube key is in the server's environment, so channels can be added and synced. */
   configured: boolean
 }
@@ -37,8 +39,9 @@ export interface Channel {
   thumbnail: string | null
   /** When this channel was last synced. */
   synced: string | null
-  /** Videos held here. */
+  /** Videos held here that can be watched, and those hidden because YouTube no longer has them. */
   videos: number
+  hidden?: number
   latest: string | null
   /** YouTube's own counts (null when it hides them). */
   total_videos?: number | null
@@ -61,6 +64,8 @@ export interface SyncJob {
   current: string | null
   /** New videos so far. */
   added: number
+  /** Videos the recheck after a sync of every channel found gone from YouTube, and hid. */
+  gone: number
   errors: { channel: string | null; title: string | null; error: string; added?: number }[]
   started: string | null
   finished: string | null

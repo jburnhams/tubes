@@ -30,7 +30,8 @@ export function describeLibrary(channels: Channel[], status: LibraryStatus): str
   const head = `${format.count(videos, 'video')} from ${format.count(followed.length, 'followed channel')}.`
   const back = behind ? ` ${format.count(behind, 'channel is', 'channels are')} still being read back to the first upload.` : ''
   const when = status.synced ? ` Every channel was last synced on ${format.dateTime(status.synced)}.` : ' Not every channel has been synced yet.'
-  return head + back + when
+  const hidden = status.hidden ? ` ${format.count(status.hidden, 'video is', 'videos are')} hidden because YouTube no longer has them.` : ''
+  return head + back + when + hidden
 }
 
 /** How far the sync has got, or how the last one went. Undefined before any sync since the server started. */
@@ -38,9 +39,11 @@ export function describeJob(job: SyncJob): string | undefined {
   const added = format.count(job.added, 'new video')
   if (job.running) return job.current ? `Syncing ${format.integer(Math.min(job.done + 1, job.total))} of ${format.integer(job.total)}: ${job.current}. ${added} so far.` : `Starting a sync of ${format.count(job.total, 'channel')}.`
   if (!job.finished) return undefined
-  const channels = job.errors.filter(e => e.channel).length      // an error without a channel stopped the whole sync
-  const failed = channels ? ` ${format.count(channels, 'channel')} failed.` : job.errors.length ? ' It stopped part way.' : ''
-  return `The last sync, of ${format.count(job.total, 'channel')}, added ${added}.${failed}`
+  const channels = job.errors.filter(e => e.channel).length
+  const stopped = job.errors.some(e => !e.channel && !e.title)     // an error naming nothing stopped the whole sync
+  const failed = channels ? ` ${format.count(channels, 'channel')} failed.` : stopped ? ' It stopped part way.' : ''
+  const gone = job.gone ? ` ${format.count(job.gone, 'video')} gone from YouTube ${job.gone === 1 ? 'is' : 'are'} now hidden.` : ''
+  return `The last sync, of ${format.count(job.total, 'channel')}, added ${added}.${gone}${failed}`
 }
 
 /** A channel's state, in a word. */
@@ -104,7 +107,12 @@ export function LibraryScreen() {
         </span>
       ),
     },
-    { key: 'videos', header: 'Here', numeric: true, cell: c => format.integer(c.videos), sort: (a, b) => a.videos - b.videos },
+    { key: 'videos', header: 'Here', numeric: true, cell: c => (
+      <span className="grid">
+        {format.integer(c.videos)}
+        {!!c.hidden && <span className="type-caption text-muted-foreground">{format.integer(c.hidden)} hidden</span>}
+      </span>
+    ), sort: (a, b) => a.videos - b.videos },
     { key: 'total', header: 'On YouTube', numeric: true, cell: c => (c.total_videos == null ? '–' : format.integer(c.total_videos)), sort: (a, b) => totalOf(a) - totalOf(b) },
     { key: 'state', header: 'State', cell: c => { const s = channelState(c); return <Status tone={s.tone}>{s.word}</Status> } },
     { key: 'synced', header: 'Last synced', cell: c => (c.synced ? format.dateTime(c.synced) : 'Never'), sort: (a, b) => syncedAt(a).localeCompare(syncedAt(b)), className: 'whitespace-nowrap' },

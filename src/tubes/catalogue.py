@@ -10,12 +10,19 @@ differs from storage, which re-read the whole playlist on every sync; the result
 A video added on its own whose channel is not in the library brings its channel in unfollowed (`follow` false): the channel is named on the
 watching side, but a sync leaves it alone. Adding the channel itself follows it.
 
+Videos YouTube no longer has (deleted, made private, their account closed) are hidden, never deleted: `recheck` asks YouTube about a rolling
+slice of the library after each sync of every followed channel (RECHECK videos, one unit per 50, oldest checked first, so the whole library
+comes round every few days) and marks the missing ones `gone`; playing one whose fetch yt-dlp says is unavailable marks it at once
+(`mark_gone`, from fetcher.py). A later recheck that finds it again, or a fetch that succeeds, clears the mark, so a video that was private
+for a while comes back, and a wrong guess from yt-dlp's wording costs no more than a few days hidden.
+
 `Job` runs a sync of several channels in a background thread for the web server, one at a time, and reports how far it has got; the timer
 runs `tubes sync` (cli.py), which calls `sync` directly."""
 import threading
 
 from tubes import cache, db, library, youtube
 
+RECHECK = 2500                                                                   # videos per recheck: 50 quota units of the 10,000 a day
 CHANNEL_FIELDS = ('title', 'handle', 'thumbnail', 'description', 'published', 'country', 'subscribers', 'total_videos', 'views', 'uploads')
 VIDEO_FIELDS = ('channel_id', 'title', 'published', 'duration', 'thumbnail', 'views', 'description', 'likes', 'comments', 'definition')
 
@@ -139,6 +146,31 @@ def sync_channel(channel_id, now=None, progress=None):
     return dict(channel=channel_id, title=row['title'], added=added, pages=pages, complete=complete)
 
 
+def recheck(limit=None, now=None):
+    """Ask YouTube about the `limit` (default RECHECK; 0 for every one) videos checked longest ago: refresh the ones it has (clearing `gone`),
+    mark the rest `gone`. Returns `{checked, gone, back}`: how many were asked about, newly hidden, and found again."""
+    now = now or cache.stamp(); limit = RECHECK if limit is None else limit
+    with db.connect() as con:
+        sql = "SELECT id, gone FROM videos ORDER BY COALESCE(checked, ''), id" + (' LIMIT ?' if limit else '')
+        was = dict(tuple(r) for r in con.execute(sql, (limit,) if limit else ()))
+    found = {r['id']: r for r in (youtube.video_row(item, now) for item in youtube.videos(list(was)))}
+    fields = [f for f in VIDEO_FIELDS if f != 'channel_id']                     # a video stays with the channel it was added under
+    with db.connect() as con:                                                    # updates only: a video removed meanwhile stays removed
+        if found: con.executemany(f"UPDATE videos SET {', '.join(f'{f} = :{f}' for f in fields)}, gone = NULL, checked = :checked WHERE id = :id", [dict({f: r[f] for f in fields}, id=i, checked=now) for i, r in found.items()])
+        missing = [i for i in was if i not in found]
+        if missing: con.executemany('UPDATE videos SET gone = COALESCE(gone, :now), checked = :now WHERE id = :id', [dict(id=i, now=now) for i in missing])
+    return dict(checked=len(was), gone=sum(1 for i in missing if not was[i]), back=sum(1 for i in found if was[i]))
+
+
+def mark_gone(video_id, now=None):
+    """Hide a video that playing found unavailable, until a recheck or a fetch finds it again."""
+    with db.connect() as con: con.execute('UPDATE videos SET gone = COALESCE(gone, ?) WHERE id = ?', (now or cache.stamp(), video_id))
+
+
+def mark_found(video_id):
+    with db.connect() as con: con.execute('UPDATE videos SET gone = NULL WHERE id = ? AND gone IS NOT NULL', (video_id,))
+
+
 def followed():
     with db.connect() as con: return [tuple(r) for r in con.execute('SELECT id, title FROM channels WHERE follow = ? ORDER BY LOWER(title), id', (True,))]
 
@@ -146,7 +178,8 @@ def followed():
 def sync(channel_ids=None, now=None, on_channel=None, progress=None):
     """Sync these channels (default: every followed one) in turn; returns `{channels: [...], errors: [...], added, synced}`. A failure on one
     channel is noted (with the videos it had added before it failed, which are kept and counted) and the next goes on, except running out of
-    quota, which stops the rest. `on_channel(id, title)` is called before each.
+    quota, which stops the rest. `on_channel(id, title)` is called before each. A sync of every followed channel that did not run out of quota
+    ends with a `recheck` (its result is `recheck`, or None).
     After a sync of every followed channel, the library's `synced` time moves on."""
     now = now or cache.stamp(); everything = channel_ids is None
     if everything: todo = followed()
@@ -167,7 +200,11 @@ def sync(channel_ids=None, now=None, on_channel=None, progress=None):
             if 'quota' in str(e): break
     if everything and not errors:
         with db.connect() as con: con.execute("INSERT INTO meta (key, value) VALUES ('library_synced', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (now,))
-    return dict(channels=done, errors=errors, added=sum(d['added'] for d in done + errors), synced=now)
+    checked = None
+    if everything and not any('quota' in e['error'] for e in errors):
+        try: checked = recheck(now=now)
+        except youtube.YoutubeError as e: errors.append(dict(channel=None, title='The recheck for videos gone from YouTube', error=str(e), added=0))   # named: not one that stopped the sync
+    return dict(channels=done, errors=errors, added=sum(d['added'] for d in done + errors), synced=now, recheck=checked)
 
 
 class Job:
@@ -178,7 +215,7 @@ class Job:
 
     def __init__(self):
         self.lock, self.thread = threading.Lock(), None
-        self.s = dict(running=False, total=0, done=0, current=None, added=0, errors=[], started=None, finished=None)
+        self.s = dict(running=False, total=0, done=0, current=None, added=0, gone=0, errors=[], started=None, finished=None)
 
     def state(self):
         with self.lock: return dict(self.s, errors=list(self.s['errors']))
@@ -187,7 +224,7 @@ class Job:
         with self.lock:
             if self.s['running']: raise Job.Busy('A sync is already running; it says how far it has got.')
             total = len(channel_ids) if channel_ids is not None else len(followed())
-            self.s = dict(running=True, total=total, done=0, current=None, added=0, errors=[], started=cache.stamp(), finished=None)
+            self.s = dict(running=True, total=total, done=0, current=None, added=0, gone=0, errors=[], started=cache.stamp(), finished=None)
         self.thread = threading.Thread(target=self._run, args=(channel_ids,), daemon=True, name='tubes-sync'); self.thread.start()
         return self.state()
 
@@ -204,7 +241,7 @@ class Job:
 
         try:
             r = sync(channel_ids, on_channel=on_channel, progress=progress)
-            with self.lock: self.s.update(errors=r['errors'], added=r['added'])
+            with self.lock: self.s.update(errors=r['errors'], added=r['added'], gone=(r['recheck'] or {}).get('gone', 0))
         except Exception as e:                                                   # the database went away, say: the page must still stop waiting
             with self.lock: self.s['errors'].append(dict(channel=None, title=None, error=f'The sync stopped: {e}'))
         finally:

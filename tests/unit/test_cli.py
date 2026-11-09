@@ -1,6 +1,6 @@
 import importlib, json
 import pytest
-from tubes import cache, cli, fetcher, oslib, settings, ytdlp
+from tubes import cache, catalogue, cli, fetcher, oslib, settings, youtube, ytdlp
 from library import seed
 from test_cache import write_playlist
 
@@ -47,6 +47,9 @@ def test_add_sync_channels_and_remove(capsys, fake_youtube, monkeypatch):
 
     del fake_youtube.channels['UCbbbbbbbbbbbbbbbbbbbbbb']
     assert cli.main(['sync']) == 1 and 'FAILED  YouTube has no channel' in capsys.readouterr().out
+    def down(now=None): raise youtube.YoutubeError('YouTube could not be reached: down')
+    monkeypatch.setattr(catalogue, 'recheck', down)
+    assert cli.main(['sync', A]) == 0 and cli.main(['sync']) == 1 and 'library                    FAILED  The recheck for videos gone from YouTube: YouTube could not be reached: down' in capsys.readouterr().out
     assert cli.main(['remove', 'UCbbbbbbbbbbbbbbbbbbbbbb']) == 0 and 'removed UCbbbbbbbbbbbbbbbbbbbbbb and 1 video(s)' in capsys.readouterr().out
     with pytest.raises(SystemExit, match='no channel UCbbbbbbbbbbbbbbbbbbbbbb'): cli.main(['remove', 'UCbbbbbbbbbbbbbbbbbbbbbb'])
     monkeypatch.delenv('YOUTUBE_API_KEY')

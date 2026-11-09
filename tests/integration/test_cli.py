@@ -41,7 +41,8 @@ def test_import_d1_carries_the_library_over_once(cli, fake_d1, fake_youtube):
     assert 'imported 1 channel(s) and 2 video(s)' in cli('import-d1').stdout
     assert '2 videos  complete' in cli('channels').stdout
     fake_youtube.channel(A, 'Workshop', handle='@workshop', videos=3)                       # one more on YouTube since storage's last sync
-    assert '1 new video(s)' in cli('sync').stdout and fake_youtube.count('videos') == 1
+    out = cli('sync').stdout
+    assert '1 new video(s)' in out and '3 video(s) rechecked: 0 gone from YouTube and hidden, 0 back' in out and fake_youtube.count('videos') == 2     # the new one's details, then the recheck
     fake_d1.token = 'rotated'
     r = cli('import-d1', check=False)
     assert r.code != 0 and 'D1 refused the query (403: Authentication error)' in r.out

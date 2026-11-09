@@ -37,7 +37,8 @@ def cmd_sync(args):
     if not youtube.configured(): sys.exit('YOUTUBE_API_KEY is not in the environment, so the library cannot be synced.')
     r = catalogue.sync(args.channel or None)
     lines = [f"  {c['channel']:26} {c['added']:>6} new  {'complete' if c['complete'] else 'backfill continues next sync':30} {c['title'][:40]}" for c in r['channels']]
-    lines += [f"  {e['channel']:26} FAILED  {e['error']}" for e in r['errors']] + [f"  {len(r['channels'])} channel(s) synced, {r['added']} new video(s)"]
+    lines += [f"  {e['channel'] or 'library':26} FAILED  {'' if e['channel'] else (e['title'] or 'the sync') + ': '}{e['error']}" for e in r['errors']] + [f"  {len(r['channels'])} channel(s) synced, {r['added']} new video(s)"]
+    if r['recheck']: lines.append(f"  {r['recheck']['checked']} video(s) rechecked: {r['recheck']['gone']} gone from YouTube and hidden, {r['recheck']['back']} back")
     out(args, r, '\n'.join(lines))
     return 1 if r['errors'] else 0
 

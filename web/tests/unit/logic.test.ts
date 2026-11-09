@@ -143,13 +143,16 @@ describe('the findings', () => {
 
   it('Library says what it follows, how far a sync has got and what each channel is doing', () => {
     expect(describeLibrary(channels, library)).toMatch(/^24\svideos from 3\sfollowed channels\. 1\schannel is still being read back to the first upload\. Every channel was last synced on /)
-    expect(describeLibrary(channels.filter(c => c.complete), { ...library, synced: null })).toMatch(/^12\svideos from 2\sfollowed channels\. Not every channel has been synced yet\.$/)
+    expect(describeLibrary(channels.filter(c => c.complete), { ...library, synced: null })).toMatch(/^12\svideos from 2\sfollowed channels\. Not every channel has been synced yet\. 3\svideos are hidden because YouTube no longer has them\.$/)
+    expect(describeLibrary(channels, { ...library, hidden: 0 })).toMatch(/synced on [^.]+\.$/)
     expect(describeLibrary([], library)).toMatch(/^The library follows no channels yet/)
     expect(describeLibrary(channels, { ...library, configured: false })).toMatch(/YOUTUBE_API_KEY/)
     expect(describeJob(syncJobs.idle)).toBeUndefined()
     expect(describeJob(syncJobs.running)).toMatch(/^Syncing 2 of 3: Night Sky\. 42\snew videos so far\.$/)
     expect(describeJob({ ...syncJobs.running, current: null })).toMatch(/^Starting a sync of 3\schannels\.$/)
-    expect(describeJob(syncJobs.done)).toMatch(/^The last sync, of 3\schannels, added 57\snew videos\.$/)
+    expect(describeJob(syncJobs.done)).toMatch(/^The last sync, of 3\schannels, added 57\snew videos\. 2\svideos gone from YouTube are now hidden\.$/)
+    expect(describeJob({ ...syncJobs.done, gone: 1 })).toMatch(/ 1\svideo gone from YouTube is now hidden\.$/)
+    expect(describeJob({ ...syncJobs.done, gone: 0, errors: [{ channel: null, title: 'The recheck for videos gone from YouTube', error: 'YouTube could not be reached.' }] })).toMatch(/added 57\snew videos\.$/)   // a failed recheck did not stop the sync
     expect(describeJob(syncJobs.failed)).toMatch(/added 12\snew videos\. 1\schannel failed\.$/)
     expect(describeJob({ ...syncJobs.failed, errors: syncJobs.failed.errors.slice(1) })).toMatch(/added 12\snew videos\. It stopped part way\.$/)
     expect(channels.map(c => channelState(c).word)).toEqual(['Kitchen Science', 'Night Sky', 'Rivers and Coasts', 'Workshop Notes'].map(t => ({ 'Kitchen Science': 'Reading back', 'Night Sky': 'Up to date', 'Rivers and Coasts': 'Not followed', 'Workshop Notes': 'Up to date' })[t]))

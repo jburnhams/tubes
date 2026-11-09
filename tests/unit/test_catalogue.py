@@ -115,6 +115,37 @@ def test_a_channel_removed_while_it_syncs_stays_removed(fake_youtube, monkeypatc
     assert library.channel(B) is None
 
 
+def test_recheck_hides_what_youtube_lost_and_brings_back_what_returns(fake_youtube, monkeypatch):
+    monkeypatch.setattr(catalogue, 'RECHECK', 100)
+    fake_youtube.channel(A, 'Workshop', videos=120); catalogue.add(A); catalogue.sync_channel(A)
+    lost = fake_youtube.videos.pop(vid(A, 5)); fake_youtube.videos[vid(A, 6)]['statistics']['viewCount'] = '99'
+    fake_youtube.calls.clear()
+    assert catalogue.recheck(now='t1') == dict(checked=100, gone=1, back=0)                        # the default slice (RECHECK, made 100 here), oldest checked first
+    assert fake_youtube.count('videos') == 2 and library.video(vid(A, 5))['gone'] == 't1' and library.video(vid(A, 6))['views'] == 99
+    assert catalogue.recheck(now='t2') == dict(checked=100, gone=0, back=0)                        # the 20 not yet checked come first, then the oldest checked
+    with db.connect() as con: assert con.execute('SELECT COUNT(*) FROM videos WHERE checked IS NULL').fetchone()[0] == 0
+    fake_youtube.videos[lost['id']] = lost
+    assert catalogue.recheck(0, now='t3') == dict(checked=120, gone=0, back=1) and library.video(vid(A, 5))['gone'] is None
+    with db.connect() as con: con.execute('DELETE FROM videos')
+    assert catalogue.recheck() == dict(checked=0, gone=0, back=0)
+
+
+def test_a_sync_of_everything_ends_with_a_recheck(fake_youtube):
+    fake_youtube.channel(A, 'Workshop', videos=3); catalogue.add(A); catalogue.sync()
+    del fake_youtube.videos[vid(A, 0)]
+    r = catalogue.sync()
+    assert r['recheck'] == dict(checked=3, gone=1, back=0) and r['errors'] == []
+    assert catalogue.sync([A])['recheck'] is None                                                  # only a sync of every followed channel rechecks
+    fake_youtube.quota_left = 2                                                                    # the channel and its page; the recheck is refused
+    r = catalogue.sync()
+    assert r['errors'] == [dict(channel=None, title='The recheck for videos gone from YouTube', error=r['errors'][0]['error'], added=0)] and 'quota' in r['errors'][0]['error']
+    fake_youtube.quota_left = 0
+    assert catalogue.sync()['recheck'] is None                                                     # out of quota on the channels: no recheck either
+    fake_youtube.quota_left = None
+    job = catalogue.Job(); fake_youtube.videos.pop(vid(A, 1)); job.start(); job.wait(30)
+    assert job.state()['gone'] == 1
+
+
 def test_remove_and_restart(fake_youtube):
     fake_youtube.channel(A, 'Workshop', videos=3); catalogue.add(A); catalogue.sync_channel(A)
     assert catalogue.restart(A) == dict(channel=A, videos=3)

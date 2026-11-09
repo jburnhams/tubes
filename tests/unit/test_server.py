@@ -48,7 +48,7 @@ def test_system_and_settings(client, monkeypatch):
     monkeypatch.setattr(ytdlp, 'version', lambda: '2026.10.26'); monkeypatch.setattr(fetcher, 'ffmpeg_version', lambda: 'ffmpeg version 7.1')
     s = client.get('/api/system').json()
     assert (s['ytdlp'], s['ffmpeg'], s['can_fetch'], s['fetching']) == ('2026.10.26', 'ffmpeg version 7.1', oslib.CAN_PASS_FDS, [])
-    assert s['disk']['total'] > 0 and s['cache']['limit'] == 10**12 and s['cache_dir'].endswith('cache') and s['library'] == dict(synced=None, channels=0, videos=0, configured=False)
+    assert s['disk']['total'] > 0 and s['cache']['limit'] == 10**12 and s['cache_dir'].endswith('cache') and s['library'] == dict(synced=None, channels=0, videos=0, hidden=0, configured=False)
     assert client.put('/api/settings', json=dict(max_height=720, player_client='')).json()['max_height'] == 720
     assert client.get('/api/settings').json()['player_client'] == ''
     assert client.put('/api/settings', json=dict(max_height=None)).json()['max_height'] == 1080
@@ -58,7 +58,7 @@ def test_system_and_settings(client, monkeypatch):
 
 def test_library_channels_and_videos(client, monkeypatch):
     seed()
-    assert client.get('/api/library').json() == dict(synced='2026-11-09T12:00:00+00:00', channels=2, videos=4, configured=False)
+    assert client.get('/api/library').json() == dict(synced='2026-11-09T12:00:00+00:00', channels=2, videos=4, hidden=0, configured=False)
     assert [c['title'] for c in client.get('/api/channels').json()] == ['night sky', 'Workshop']
     assert client.get(f"/api/channels/{CHANNELS[0]['id']}").json()['videos'] == 2 and client.get('/api/channels/nope').status_code == 404
     page = client.get('/api/videos', params=dict(limit=3)).json()
