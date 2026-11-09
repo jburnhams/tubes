@@ -7,7 +7,10 @@ command keeps a crash or a hang in its own process, with a timeout. Measured on 
   But YouTube refuses it for many videos, and yt-dlp's fallback (`web_embedded`) waits 4-10 s for an ad before downloading.
 - Signed in (`cookies_from_browser`) to a Premium account there is no ad wait for any client: the first segment came 5-7 s after Play on
   every test video, against 8-13 s signed out where the ad wait applied. `visionos` takes no cookies (yt-dlp skips it), so signed in it is
-  dropped and `tv_downgraded` is the fastest client that still offers 1080p (`web_safari` and `tv` gave 360p only).
+  dropped and `tv_downgraded` is the fastest client that still offers 1080p (`web_safari` and `tv` gave 360p only). Where `visionos` does play,
+  signed out is 1-3 s sooner, so with a browser set both are probed at once (fetcher.choose_both).
+- A probe says whether a download must wait: each format's `available_at` against the probe's `epoch` (`ad_wait`). A signed-in probe whose
+  session cannot be read (no such profile, keyring unreachable) exits with an error rather than carrying on signed out.
 - YouTube offers 1080p as separate video and audio streams. AV1, VP9 and H.264 were all offered; the latest Chrome (the only target) plays
   all three through MSE, so the order is AV1, VP9, H.264: AV1 is about half the size of H.264 at the same height.
 - A height-only cap picked 1440p for a widescreen film (2560x1072), so the cap checks width as well (16:9 of the height).
@@ -26,12 +29,17 @@ class YtdlpError(RuntimeError):
     """yt-dlp failed, timed out, could not be started, or found nothing usable; the message says which, in a sentence."""
 
 
-def base_command():
-    """yt-dlp and the options every call shares."""
+def signed_in_available():
+    """Whether a signed-in browser is set (`cookies_from_browser`)."""
+    return bool(settings.get('cookies_from_browser'))
+
+
+def base_command(signed_in=False):
+    """yt-dlp and the options every call shares; signed in, it reads the browser's YouTube session (and a probe and its downloads must agree)."""
     cmd = [settings.get('ytdlp'), '--no-warnings', '--no-progress', '--ignore-config']
-    client, browser = settings.get('player_client'), settings.get('cookies_from_browser')
-    if browser:
-        cmd += ['--cookies-from-browser', browser]
+    client = settings.get('player_client')
+    if signed_in:
+        cmd += ['--cookies-from-browser', settings.get('cookies_from_browser')]
         if client == 'visionos': client = SIGNED_IN_CLIENT          # visionos takes no cookies; asking for it alone would leave no client
     if client: cmd += ['--extractor-args', f'youtube:player_client={client}']
     return cmd
@@ -43,9 +51,9 @@ def watch_url(video_id):
     return f'https://www.youtube.com/watch?v={video_id}'
 
 
-def run_json(args, timeout):
+def run_json(args, timeout, signed_in=False):
     """Run yt-dlp with `args` and parse its JSON output."""
-    cmd = base_command() + list(args)
+    cmd = base_command(signed_in) + list(args)
     try: p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except FileNotFoundError: raise YtdlpError(f'yt-dlp is not installed (looked for {cmd[0]!r}); set the ytdlp setting to its path.') from None
     except subprocess.TimeoutExpired: raise YtdlpError(f'yt-dlp took longer than {timeout} s and was stopped.') from None
@@ -62,9 +70,16 @@ def last_error(text):
     return pick.removeprefix('ERROR:').strip()[:500]
 
 
-def probe(url):
-    """Full information about one video, with its formats."""
-    return run_json(['--dump-single-json', '--no-playlist', url], PROBE_TIMEOUT)
+def probe(url, signed_in=False):
+    """Full information about one video, with its formats. A signed-in probe whose browser session cannot be read fails (yt-dlp exits with an error in about 0.6 s)."""
+    return run_json(['--dump-single-json', '--no-playlist', url], PROBE_TIMEOUT, signed_in)
+
+
+def ad_wait(info, *chosen):
+    """Seconds the download of the chosen formats must wait for an ad (`available_at` against the probe's `epoch`), 0 when none, None when the probe does not say."""
+    times = [f.get('available_at') for f in chosen]
+    if not chosen or any(t is None for t in times) or info.get('epoch') is None: return None
+    return max(0, max(times) - info['epoch'])
 
 
 def codec_rank(vcodec):

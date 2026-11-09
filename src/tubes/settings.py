@@ -6,8 +6,9 @@
   max_height       the tallest picture to fetch, in pixels (default 1080; wider-than-16:9 pictures are capped by width too).
   player_client    the YouTube client yt-dlp asks as (default `visionos`, which starts downloads without the 4 s wait the default clients get; empty = yt-dlp's own choice).
   cookies_from_browser  a signed-in browser yt-dlp reads the YouTube session from (`--cookies-from-browser`, e.g. `chrome+gnomekeyring`;
-                   default empty: signed out). Signed in to a Premium account there are no ad waits before a download starts. The cookies
-                   stay in the browser, which keeps them fresh; nothing is copied into this file.
+                   default empty: signed out). Signed in to a Premium account there are no ad waits before a download starts. Each fetch
+                   probes signed out (visionos) and signed in at once, and goes signed out when that has no ad wait, signed in otherwise,
+                   and signed out with the wait when the session cannot be read. The cookies stay in the browser, which keeps them fresh.
   half_life_days   how fast a play's weight fades in the eviction score (default 30: a play counts half as much 30 days later).
   protect_days     how long a fetched video that nobody has played yet is kept from eviction (default 7).
   d1_database      the id of the Cloudflare D1 database that holds the library (`youtube_channels`, `youtube_videos`; library.py). The
