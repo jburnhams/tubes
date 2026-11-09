@@ -19,9 +19,11 @@ export const defaultSettings: Settings = {
   ffmpeg: 'ffmpeg',
 }
 
-/** A flat picture of one colour with a number on it: a stand-in thumbnail. */
+/** A flat picture of one colour with a lighter disc whose place depends on `label`: a stand-in thumbnail. No text: an SVG inside an <img>
+ *  draws text in the machine's own fonts, which the visual suite cannot pin, and another machine's glyphs failed the CI screenshots. */
 export function tile(hue: number, label: string): string {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180"><rect width="320" height="180" fill="hsl(${hue} 45% 55%)"/><text x="160" y="104" font-family="sans-serif" font-size="40" text-anchor="middle" fill="hsl(${hue} 45% 20%)">${label}</text></svg>`
+  const n = [...label].reduce((sum, ch) => sum + ch.charCodeAt(0), 0)
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180"><rect width="320" height="180" fill="hsl(${hue} 45% 55%)"/><circle cx="${60 + (n * 37) % 200}" cy="${50 + (n * 23) % 80}" r="36" fill="hsl(${hue} 45% 72%)"/></svg>`
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
 }
 
