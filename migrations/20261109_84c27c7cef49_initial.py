@@ -35,7 +35,7 @@ def upgrade() -> None:
     sa.Column('started', sa.String(length=40), nullable=False),
     sa.Column('title', sa.String(), nullable=True),
     sa.Column('channel', sa.String(), nullable=True),
-    sa.Column('bytes', sa.Integer(), server_default='0', nullable=False),
+    sa.Column('bytes', sa.BigInteger(), server_default='0', nullable=False),
     sa.Column('finished', sa.String(length=40), nullable=True),
     sa.Column('formats', sa.String(), nullable=True),
     sa.Column('error', sa.String(), nullable=True),
@@ -63,7 +63,7 @@ def upgrade() -> None:
     sa.Column('published', sa.String(length=40), nullable=False),
     sa.Column('duration', sa.Double(), nullable=True),
     sa.Column('thumbnail', sa.String(), nullable=True),
-    sa.Column('views', sa.Integer(), nullable=True),
+    sa.Column('views', sa.BigInteger(), nullable=True),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_videos'))
     )
     with op.batch_alter_table('videos', schema=None) as batch_op:

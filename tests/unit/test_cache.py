@@ -138,3 +138,11 @@ def test_folder_names_are_safe(monkeypatch, tmp_path):
     d = tmp_path / 'd'; d.mkdir(); (d / 'a').write_bytes(b'12')
     monkeypatch.setattr(os.path, 'getsize', lambda p: (_ for _ in ()).throw(OSError('gone')))
     assert cache.folder_bytes(str(d)) == 0                                                  # a file that vanishes mid-walk is skipped
+
+
+def test_a_copy_over_2_gb_is_recorded(monkeypatch):
+    # Postgres' INTEGER stops at 2^31 - 1 bytes; a long 1080p copy is bigger (SQLite never noticed: run with --pg).
+    cache.begin('aaaaaaaaaaa', cache.stamp())
+    monkeypatch.setattr(cache, 'folder_bytes', lambda path: 5_000_000_000)
+    cache.finish('aaaaaaaaaaa', cache.stamp())
+    assert cache.entry('aaaaaaaaaaa')['bytes'] == 5_000_000_000

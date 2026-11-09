@@ -11,7 +11,7 @@ carry them, so they sort and compare as text on both engines.
                      pinned, and the title and channel the library gave when it was fetched (kept, so a copy still has a name after its video
                      leaves the library). No foreign key to videos for the same reason.
   plays              one row per play, for the eviction score and, later, for predicting what to fetch next."""
-from sqlalchemy import Index, String, false
+from sqlalchemy import BigInteger, Index, String, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from omarchy_db import make_base
@@ -37,7 +37,7 @@ class Video(Base):
     published: Mapped[str] = mapped_column(String(40))
     duration: Mapped[float | None] = mapped_column(default=None)
     thumbnail: Mapped[str | None] = mapped_column(default=None)
-    views: Mapped[int | None] = mapped_column(default=None)
+    views: Mapped[int | None] = mapped_column(BigInteger, default=None)            # 64-bit: the most watched videos pass 2^31
 
 
 class Meta(Base):
@@ -53,7 +53,7 @@ class Copy(Base):
     started: Mapped[str] = mapped_column(String(40))
     title: Mapped[str | None] = mapped_column(default=None)
     channel: Mapped[str | None] = mapped_column(default=None)
-    bytes: Mapped[int] = mapped_column(server_default='0', default=0)
+    bytes: Mapped[int] = mapped_column(BigInteger, server_default='0', default=0)    # 64-bit: a long 1080p copy passes 2 GB
     finished: Mapped[str | None] = mapped_column(String(40), default=None)
     formats: Mapped[str | None] = mapped_column(default=None)
     error: Mapped[str | None] = mapped_column(default=None)
