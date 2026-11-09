@@ -1,4 +1,4 @@
-"""Sample library data for tests: channel and video rows, D1 HTTP answers (for d1import), and a helper to fill the library without YouTube."""
+"""Sample library data for tests: channel and video rows, and a helper to fill the library without YouTube."""
 CHANNELS = [dict(id='UCaaaaaaaaaaaaaaaaaaaaaa', title='Workshop', handle='@workshop', thumbnail='https://img.test/ws.jpg', synced='2026-01-20T10:00:00Z'),
             dict(id='UCbbbbbbbbbbbbbbbbbbbbbb', title='night sky', handle=None, thumbnail=None, synced=None)]
 
@@ -9,11 +9,6 @@ def video(vid, channel=0, published='2026-01-01T00:00:00Z', title=None, duration
 
 VIDEOS = [video('aaaaaaaaaaa', 0, '2026-01-03T00:00:00Z', 'Building a 50% shelf'), video('bbbbbbbbbbb', 0, '2026-01-02T00:00:00Z', 'Sanding the shelf'),
           video('ccccccccccc', 1, '2026-01-02T00:00:00Z', 'Stars in winter'), video('ddddddddddd', 1, '2026-01-01T00:00:00Z', 'The Moon, up close')]
-
-
-def d1(rows, success=True, errors=()):
-    """A D1 HTTP API answer."""
-    return dict(success=success, errors=[dict(message=m) for m in errors], result=[dict(results=rows, success=success)] if success else [])
 
 
 def seed(channels=CHANNELS, videos=VIDEOS, synced='2026-11-09T12:00:00+00:00'):

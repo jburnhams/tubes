@@ -26,7 +26,7 @@ YOUTUBE_API_KEY=...
 YOUTUBE_API_REFERER=https://<an allowed site>/    # only for a referrer-restricted key
 ```
 
-Moving over from the storage service once: with `CLOUDFLARE_API_TOKEN` (D1 read) and `CLOUDFLARE_ACCOUNT_ID` also in the environment, `./tubes import-d1 --database <D1 id>` merges its `youtube_channels` and `youtube_videos` (each channel keeps how far its sync got), then `./tubes sync`. After that the Cloudflare variables are not needed.
+Moving over from the storage service needed no import: the tables already held the library copied from it, so the first `./tubes sync` on the new code read each channel back to its first upload (about one quota unit per 50 videos) and added what was missing. Nothing reads storage's D1 any more, so no Cloudflare credentials are needed.
 
 ## 3. Service and timer
 

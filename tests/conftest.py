@@ -4,7 +4,7 @@ import os, socket, sys
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'utils'))
-TUNING = ('TUBES_D1_API', 'TUBES_YOUTUBE_API', 'YOUTUBE_API_KEY', 'YOUTUBE_API_REFERER', 'TUBES_CACHE', 'TUBES_YTDLP', 'TUBES_FFMPEG', 'TUBES_D1_DATABASE', 'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID', 'OMARCHY_DB_URL', 'FAKE_YTDLP_SECONDS', 'FAKE_YTDLP_FAIL')
+TUNING = ('TUBES_YOUTUBE_API', 'YOUTUBE_API_KEY', 'YOUTUBE_API_REFERER', 'TUBES_CACHE', 'TUBES_YTDLP', 'TUBES_FFMPEG', 'OMARCHY_DB_URL', 'FAKE_YTDLP_SECONDS', 'FAKE_YTDLP_FAIL')
 FAKE_YTDLP = os.path.join(os.path.dirname(__file__), 'utils', 'fake_ytdlp.py')
 
 
@@ -96,13 +96,3 @@ def fake_youtube(monkeypatch):
     y.close()
 
 
-@pytest.fixture
-def fake_d1(monkeypatch):
-    """A stand-in D1 HTTP API on localhost (tests/utils/fake_d1.py) holding the storage service's library tables, with the credentials and
-    database id set in the environment as a deployment would (for `tubes import-d1`); fill it with `fake_d1.channel(id, title)` and
-    `fake_d1.video(id, channel_id, title, published)`."""
-    from fake_d1 import FakeD1
-    d = FakeD1()
-    monkeypatch.setenv('TUBES_D1_API', d.api); monkeypatch.setenv('CLOUDFLARE_ACCOUNT_ID', d.account); monkeypatch.setenv('CLOUDFLARE_API_TOKEN', d.token); monkeypatch.setenv('TUBES_D1_DATABASE', d.database)
-    yield d
-    d.close()

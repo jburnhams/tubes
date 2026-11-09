@@ -26,7 +26,7 @@ CI (`.github/workflows/`): `unit.yml` (lint, unit tests with coverage on Linux f
 
 - `unit/`: fast, isolated, synthetic data and fakes; no external services or network.
 - `integration/`: the CLI (in process and as a real process) and the HTTP API over real on-disk files. Not part of the coverage gate.
-- Both suites are hermetic (autouse in `conftest.py`): `~`, `TUBES_HOME` and `TUBES_DATA` point into a tmp dir outside `tmp_path`, tuning and credential variables (`TUBES_*`, `CLOUDFLARE_*`, `OMARCHY_DB_URL`) are removed, `TUBES_DATABASE_URL` points at the test's own database, and any outbound (non-loopback) connection fails the test.
+- Both suites are hermetic (autouse in `conftest.py`): `~`, `TUBES_HOME` and `TUBES_DATA` point into a tmp dir outside `tmp_path`, tuning and credential variables (`TUBES_*`, `YOUTUBE_*`, `OMARCHY_DB_URL`) are removed, `TUBES_DATABASE_URL` points at the test's own database, and any outbound (non-loopback) connection fails the test.
 - `utils/`: helpers importable by name in any test (`from fakes import FakeUrlopen, FakePopen, FakeRun`; `tests/utils` is on `pythonpath`).
 - One test file per module (`cache.py` -> `unit/test_cache.py`; add to the existing file if there is one).
 

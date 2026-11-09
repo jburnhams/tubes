@@ -27,7 +27,6 @@ Tubes keeps its own tables (the library, cache copies, plays) in a database thro
 | `tubes add <link, id or @handle>` | follows a channel and syncs it (`--no-sync` to wait), or adds one video |
 | `tubes sync [channel ...]` | fetches new videos for every followed channel (or the ones named); a first sync reads back to the channel's first upload |
 | `tubes channels` / `tubes remove <channel>` | lists the channels with their state / removes one and its videos |
-| `tubes import-d1 [--database <id>]` | once, when moving over: merges the library the storage service kept in Cloudflare D1 (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`) |
 | `tubes fetch <id>` | fetches one video into the cache now |
 | `tubes cache` / `tubes evict [--dry-run]` | shows the cache with each copy's score / trims it |
 | `tubes set [key [value]]` | shows or changes a setting (`default` resets one) |

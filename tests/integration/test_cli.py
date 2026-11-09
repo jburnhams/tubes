@@ -1,8 +1,9 @@
-"""The command line end to end: `add`, `sync` and `remove` against a stand-in YouTube Data API (tests/utils/fake_youtube.py), `import-d1`
-against a stand-in D1 (tests/utils/fake_d1.py), both real HTTP servers on localhost, and `fetch` with tests/utils/fake_ytdlp.py standing in
-for yt-dlp (a real process, no network)."""
+"""The command line end to end: `add`, `sync` and `remove` against a stand-in YouTube Data API (tests/utils/fake_youtube.py), a real HTTP
+server on localhost, and `fetch` with tests/utils/fake_ytdlp.py standing in for yt-dlp (a real process, no network)."""
 import json, shutil
 import pytest
+from fake_youtube import vid
+from library import seed
 from tubes import oslib, settings
 
 needs_ffmpeg = pytest.mark.skipif(not shutil.which('ffmpeg') or not oslib.CAN_PASS_FDS, reason='fetching needs ffmpeg on PATH and Linux or macOS')
@@ -35,17 +36,16 @@ def test_add_sync_and_remove_a_channel(cli, fake_youtube):
     assert 'removed UCaaaaaaaaaaaaaaaaaaaaaa and 132 video(s)' in cli('remove', A).stdout
 
 
-def test_import_d1_carries_the_library_over_once(cli, fake_d1, fake_youtube):
-    (fake_d1.channel(A, 'Workshop', custom_url='@workshop', upload_playlist_id='UU' + A[2:], last_sync_at='2026-01-20T10:00:00Z', video_count=3)
-            .video('aaaa0000001', A, 'Upload 1 of Workshop', '2020-01-02T12:00:00Z', 9).video('aaaa0000000', A, 'Upload 0 of Workshop', '2020-01-01T12:00:00Z'))
-    assert 'imported 1 channel(s) and 2 video(s)' in cli('import-d1').stdout
-    assert '2 videos  complete' in cli('channels').stdout
-    fake_youtube.channel(A, 'Workshop', handle='@workshop', videos=3)                       # one more on YouTube since storage's last sync
+def test_the_first_sync_reads_back_a_library_copied_before_tubes_managed_it(cli, fake_youtube):
+    # The tables as the old copy from the storage service left them: channels with no sync state (followed by the column's default) and
+    # some of their videos. The first sync reads each channel back to its first upload and adds only what is missing.
+    seed(channels=[dict(id=A, title='Workshop', handle=None, thumbnail=None, synced='2026-01-20T10:00:00Z')],
+         videos=[dict(id=vid(A, n), channel_id=A, title=f'Upload {n} of Workshop', published=f'2020-01-0{n + 1}T12:00:00Z', duration=245, thumbnail=None, views=1) for n in (0, 1)])
+    assert '2 videos  backfilling' in cli('channels').stdout
+    fake_youtube.channel(A, 'Workshop', handle='@workshop', videos=3)                       # one more on YouTube since the last copy
     out = cli('sync').stdout
-    assert '1 new video(s)' in out and '3 video(s) rechecked: 0 gone from YouTube and hidden, 0 back' in out and fake_youtube.count('videos') == 2     # the new one's details, then the recheck
-    fake_d1.token = 'rotated'
-    r = cli('import-d1', check=False)
-    assert r.code != 0 and 'D1 refused the query (403: Authentication error)' in r.out
+    assert '1 new  complete' in out and '3 video(s) rechecked: 0 gone from YouTube and hidden, 0 back' in out and fake_youtube.count('videos') == 2     # the new one's details, then the recheck
+    assert '3 videos  complete     Workshop' in cli('channels').stdout
 
 
 @needs_ffmpeg
