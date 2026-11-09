@@ -2,4 +2,4 @@
 fastapi
 uvicorn
 pydantic
-omarchy-db @ git+https://github.com/jburnhams/database@c21e298e89a03dd37ad7a68dac5977f6a1f6c791#subdirectory=python   # the shared database tooling: SQLAlchemy, Alembic, psycopg, dbtool, pytest fixtures
+omarchy-db @ git+https://github.com/jburnhams/database@2d2940613d49fea5c2f70f62769a5ca56ea581a9#subdirectory=python   # the shared database tooling: SQLAlchemy, Alembic, psycopg, dbtool, pytest fixtures
