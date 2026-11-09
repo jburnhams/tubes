@@ -5,17 +5,17 @@ from tubes import youtube
 
 
 @pytest.mark.parametrize('text, want', [
-    ('https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=10', ('video', 'dQw4w9WgXcQ')),
-    ('youtu.be/dQw4w9WgXcQ', ('video', 'dQw4w9WgXcQ')),
-    ('https://m.youtube.com/shorts/dQw4w9WgXcQ', ('video', 'dQw4w9WgXcQ')),
-    ('https://www.youtube.com/live/dQw4w9WgXcQ?si=x', ('video', 'dQw4w9WgXcQ')),
+    ('https://www.youtube.com/watch?v=Ab1-Cd2_Ef3&t=10', ('video', 'Ab1-Cd2_Ef3')),
+    ('youtu.be/Ab1-Cd2_Ef3', ('video', 'Ab1-Cd2_Ef3')),
+    ('https://m.youtube.com/shorts/Ab1-Cd2_Ef3', ('video', 'Ab1-Cd2_Ef3')),
+    ('https://www.youtube.com/live/Ab1-Cd2_Ef3?si=x', ('video', 'Ab1-Cd2_Ef3')),
     ('https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa/videos', ('channel', 'UCaaaaaaaaaaaaaaaaaaaaaa')),
     ('https://www.youtube.com/@Some.Maker/featured', ('handle', '@Some.Maker')),
     ('www.youtube.com/c/oldname', ('handle', '@oldname')),
     ('https://youtube.com/user/oldername', ('handle', '@oldername')),
     ('UCaaaaaaaaaaaaaaaaaaaaaa', ('channel', 'UCaaaaaaaaaaaaaaaaaaaaaa')),
     (' @workshop ', ('handle', '@workshop')),
-    ('dQw4w9WgXcQ', ('video', 'dQw4w9WgXcQ')),
+    ('Ab1-Cd2_Ef3', ('video', 'Ab1-Cd2_Ef3')),
     ('workshop', ('handle', '@workshop')),
 ])
 def test_parse_reads_links_ids_and_handles(text, want):

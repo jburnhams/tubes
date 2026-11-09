@@ -61,7 +61,7 @@ export interface SyncJob {
   current: string | null
   /** New videos so far. */
   added: number
-  errors: { channel: string | null; title: string | null; error: string }[]
+  errors: { channel: string | null; title: string | null; error: string; added?: number }[]
   started: string | null
   finished: string | null
 }

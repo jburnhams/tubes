@@ -80,11 +80,39 @@ def test_sync_every_followed_channel(fake_youtube):
     assert seen == ['Night sky', 'Workshop'] and r['added'] == 4 and r['errors'] == [] and library.status()['synced'] == '2026-11-09T12:00:00+00:00'
     del fake_youtube.channels[B]; fake_youtube.uploads(A, 1)
     r = catalogue.sync(now='later')
-    assert r['errors'] == [dict(channel=B, title='Night sky', error=f'YouTube has no channel {B}.')] and r['added'] == 1
+    assert r['errors'] == [dict(channel=B, title='Night sky', error=f'YouTube has no channel {B}.', added=0)] and r['added'] == 1
     assert library.status()['synced'] == '2026-11-09T12:00:00+00:00'                                  # not every channel synced: the time stays
     fake_youtube.quota_left = 0
     r = catalogue.sync([A, B, 'UCunknown'])
     assert len(r['errors']) == 1 and 'quota' in r['errors'][0]['error']                               # out of quota: the rest are not tried
+
+
+def test_a_channel_that_fails_part_way_counts_what_it_added(fake_youtube):
+    fake_youtube.channel(A, 'Workshop', videos=160); catalogue.add(A)
+    fake_youtube.quota_left = 5                                                                       # two pages saved, the third refused
+    r = catalogue.sync()
+    assert r['added'] == 100 and r['errors'][0]['added'] == 100 and 'quota' in r['errors'][0]['error'] and library.status()['videos'] == 100
+
+
+def test_a_channel_removed_while_it_syncs_stays_removed(fake_youtube, monkeypatch):
+    fake_youtube.channel(A, 'Workshop', videos=120); catalogue.add(A)
+    page = youtube.uploads_page
+
+    def remove_after_first(playlist, token):                                                          # the person removes it while page 2 is read
+        if token: catalogue.remove(A)
+        return page(playlist, token)
+    monkeypatch.setattr(youtube, 'uploads_page', remove_after_first)
+    r = catalogue.sync()
+    assert r['errors'][0]['error'] == f'The channel {A} was removed while it synced.' and r['errors'][0]['added'] == 50
+    assert library.channel(A) is None and library.status()['videos'] == 0                            # no videos left behind without their channel
+    monkeypatch.setattr(youtube, 'uploads_page', page)
+    real = youtube.channel_row
+
+    def removed_meanwhile(item, now): catalogue.remove(B); return real(item, now)                    # removed between the lookup and the refresh
+    fake_youtube.channel(B, 'Night sky', videos=1); catalogue.add(B)
+    monkeypatch.setattr(youtube, 'channel_row', removed_meanwhile)
+    with pytest.raises(catalogue.NotFound, match='removed while it synced'): catalogue.sync_channel(B)
+    assert library.channel(B) is None
 
 
 def test_remove_and_restart(fake_youtube):

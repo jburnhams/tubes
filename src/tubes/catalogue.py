@@ -71,8 +71,8 @@ def remove(channel_id):
     """Remove a channel and its videos (their cached copies stay until evicted); returns how many videos went."""
     with db.connect() as con:
         if not con.execute('SELECT 1 FROM channels WHERE id = ?', (channel_id,)).fetchone(): raise NotFound(f'There is no channel {channel_id} in the library.')
+        con.execute('DELETE FROM channels WHERE id = ?', (channel_id,))                 # the channel first: a sync saving videos holds its row (see _store)
         gone = con.execute('DELETE FROM videos WHERE channel_id = ?', (channel_id,)).rowcount
-        con.execute('DELETE FROM channels WHERE id = ?', (channel_id,))
     return dict(channel=channel_id, videos=gone)
 
 
@@ -80,20 +80,28 @@ def restart(channel_id):
     """Forget a channel's videos and how far its sync got, so the next sync reads it again from the newest upload back (storage's Resync)."""
     with db.connect() as con:
         if not con.execute('SELECT 1 FROM channels WHERE id = ?', (channel_id,)).fetchone(): raise NotFound(f'There is no channel {channel_id} in the library.')
-        gone = con.execute('DELETE FROM videos WHERE channel_id = ?', (channel_id,)).rowcount
         con.execute('UPDATE channels SET sync_token = NULL, complete = ?, synced = NULL WHERE id = ?', (False, channel_id))
+        gone = con.execute('DELETE FROM videos WHERE channel_id = ?', (channel_id,)).rowcount
     return dict(channel=channel_id, videos=gone)
 
 
-def _store(ids, now):
-    """Save the videos among `ids` that the library does not have yet; returns how many were new."""
+def _gone(channel_id): return NotFound(f'The channel {channel_id} was removed while it synced.')
+
+
+def _store(channel_id, ids, now):
+    """Save the videos among `ids` that the library does not have yet; returns how many were new. The channel's row is touched in the same
+    transaction first: on Postgres that holds it, so a removal (which deletes the channel before its videos) either waits for these videos and
+    then deletes them, or has already gone and they are not saved. Either way no video outlives its channel."""
     if not ids: return 0
     with db.connect() as con:
         have = {r[0] for r in con.execute(f"SELECT id FROM videos WHERE id IN ({', '.join('?' * len(ids))})", tuple(ids))}
     new = [i for i in ids if i not in have]
     rows = [youtube.video_row(item, now) for item in youtube.videos(new)] if new else []
     if rows:
-        with db.connect() as con: save_videos(con, rows)
+        with db.connect() as con:
+            held = con.execute('UPDATE channels SET id = id WHERE id = ?', (channel_id,)).rowcount
+            if held: save_videos(con, rows)
+        if not held: raise _gone(channel_id)
     return len(rows)
 
 
@@ -104,7 +112,9 @@ def sync_channel(channel_id, now=None, progress=None):
     with db.connect() as con: c = db.row(con.execute('SELECT id, sync_token, complete FROM channels WHERE id = ?', (channel_id,)))
     if c is None: raise NotFound(f'There is no channel {channel_id} in the library.')
     row = youtube.channel_row(_channel('channel', channel_id), now)              # fresh counts and the uploads playlist, one unit
-    with db.connect() as con: save_channel(con, row)
+    with db.connect() as con:                                                    # an update, never an insert: a channel removed meanwhile stays removed
+        held = con.execute(f"UPDATE channels SET {', '.join(f'{f} = :{f}' for f in CHANNEL_FIELDS)} WHERE id = :id", {k: row[k] for k in ('id', *CHANNEL_FIELDS)}).rowcount
+    if not held: raise _gone(channel_id)
     if not row['uploads']: raise NotFound(f'YouTube gives no uploads for channel {channel_id}.')
     token, complete, added, pages = c['sync_token'], bool(c['complete']), 0, 0
 
@@ -114,7 +124,7 @@ def sync_channel(channel_id, now=None, progress=None):
     page, first = None, not complete and token is None                           # the newest pages, until one brings nothing new
     while True:
         ids, after = youtube.uploads_page(row['uploads'], page); pages += 1
-        new = _store(ids, now); added += new
+        new = _store(channel_id, ids, now); added += new
         if progress: progress(added)
         if after is None: token, complete = None, True; break                   # read to the first upload: nothing left to backfill
         if first: token = after; mark(sync_token=token)                         # a first sync: this walk is the backfill, saved as it goes
@@ -122,7 +132,7 @@ def sync_channel(channel_id, now=None, progress=None):
         page = after
     while not complete and token:                                                # the rest of an unfinished backfill
         ids, token = youtube.uploads_page(row['uploads'], token); pages += 1
-        added += _store(ids, now); complete = token is None
+        added += _store(channel_id, ids, now); complete = token is None
         mark(sync_token=token)
         if progress: progress(added)
     mark(sync_token=token, complete=complete, synced=now)
@@ -135,7 +145,8 @@ def followed():
 
 def sync(channel_ids=None, now=None, on_channel=None, progress=None):
     """Sync these channels (default: every followed one) in turn; returns `{channels: [...], errors: [...], added, synced}`. A failure on one
-    channel is noted and the next goes on, except running out of quota, which stops the rest. `on_channel(id, title)` is called before each.
+    channel is noted (with the videos it had added before it failed, which are kept and counted) and the next goes on, except running out of
+    quota, which stops the rest. `on_channel(id, title)` is called before each.
     After a sync of every followed channel, the library's `synced` time moves on."""
     now = now or cache.stamp(); everything = channel_ids is None
     if everything: todo = followed()
@@ -145,13 +156,18 @@ def sync(channel_ids=None, now=None, on_channel=None, progress=None):
     done, errors = [], []
     for cid, title in todo:
         if on_channel: on_channel(cid, title)
-        try: done.append(sync_channel(cid, now, progress))
+        so_far = [0]
+
+        def counted(added, so_far=so_far):
+            so_far[0] = added
+            if progress: progress(added)
+        try: done.append(sync_channel(cid, now, counted))
         except (youtube.YoutubeError, NotFound) as e:
-            errors.append(dict(channel=cid, title=title, error=str(e)))
+            errors.append(dict(channel=cid, title=title, error=str(e), added=so_far[0]))
             if 'quota' in str(e): break
     if everything and not errors:
         with db.connect() as con: con.execute("INSERT INTO meta (key, value) VALUES ('library_synced', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (now,))
-    return dict(channels=done, errors=errors, added=sum(d['added'] for d in done), synced=now)
+    return dict(channels=done, errors=errors, added=sum(d['added'] for d in done + errors), synced=now)
 
 
 class Job:
