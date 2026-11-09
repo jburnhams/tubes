@@ -1,5 +1,10 @@
 # Progress log
 
+## 2026-11-09: D1 dropped
+
+- Asked for: nothing reads storage's D1 any more, since Tubes manages the library itself. So the one-time import was not run: the tables already held the library copied from D1, and the first `tubes sync` on the new code reads each channel back to its first upload (one quota unit per 50 uploads, about 900 units for 40,000 videos, once) and adds only what is missing. Videos copied from D1 get their description, likes and the like from the rolling recheck over the following days.
+- Removed `d1import.py` and `tubes import-d1`, the `fake_d1` stand-in and its tests, and every Cloudflare variable. The integration suite instead checks that path: a library as the old copy left it (no sync state) is read back in full by the first sync.
+
 ## 2026-11-09: the library is managed here (ported from the storage service)
 
 - Asked for: break the link to the storage service and manage the catalogue in Tubes' admin, porting what storage has first.

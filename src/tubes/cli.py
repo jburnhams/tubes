@@ -1,9 +1,8 @@
-"""Command line. `doctor` checks the environment; `add`, `remove`, `sync` and `channels` manage the library from YouTube (`import-d1` carries
-it over once from the storage service's D1 database); `fetch`, `cache`, `evict` the cache; `set` the settings; `serve` starts the web server.
+"""Command line. `doctor` checks the environment; `add`, `remove`, `sync` and `channels` manage the library from YouTube; `fetch`, `cache`, `evict` the cache; `set` the settings; `serve` starts the web server.
 A timer on the server runs `tubes sync; tubes evict` every few hours (docs/deploy.md)."""
 import argparse, importlib, json, os, sys
 
-from tubes import __version__, cache, catalogue, d1import, fetcher, library, oslib, settings, youtube, ytdlp
+from tubes import __version__, cache, catalogue, fetcher, library, oslib, settings, youtube, ytdlp
 
 CHECKS = (('fastapi', 'fastapi'), ('uvicorn', 'uvicorn'), ('pydantic', 'pydantic'))
 
@@ -58,12 +57,6 @@ def cmd_remove(args):
     return out(args, r, f"  removed {r['channel']} and {r['videos']} video(s)")
 
 
-def cmd_import_d1(args):
-    try: r = d1import.run(args.database)
-    except d1import.D1Error as e: sys.exit(str(e))
-    return out(args, r, f"  imported {r['channels']} channel(s) and {r['videos']} video(s) from D1")
-
-
 def cmd_channels(args):
     items = library.channels()
     if not items and not args.json: print('  (no channels yet: ./tubes add <channel link or @handle>)'); return 0
@@ -113,7 +106,6 @@ def main(argv=None):
     a = sub.add_parser('add', help='add a channel (followed, then synced) or one video: a link, an id or an @handle'); a.add_argument('input'); a.add_argument('--no-sync', action='store_true', help='add a channel without fetching its videos yet'); a.add_argument('--json', action='store_true'); a.set_defaults(fn=cmd_add)
     r = sub.add_parser('remove', help='remove a channel and its videos from the library'); r.add_argument('channel'); r.add_argument('--json', action='store_true'); r.set_defaults(fn=cmd_remove)
     h = sub.add_parser('channels', help='list the channels in the library'); h.add_argument('--json', action='store_true'); h.set_defaults(fn=cmd_channels)
-    d = sub.add_parser('import-d1', help='once: carry the library over from the storage service’s D1 database (Cloudflare credentials from the environment)'); d.add_argument('--database', help='the D1 database id'); d.add_argument('--json', action='store_true'); d.set_defaults(fn=cmd_import_d1)
     f = sub.add_parser('fetch', help='fetch one video into the cache now (waits until it is done)'); f.add_argument('video'); f.add_argument('--json', action='store_true'); f.set_defaults(fn=cmd_fetch)
     c = sub.add_parser('cache', help='show the cache: use, limit and every copy with its score'); c.add_argument('--json', action='store_true'); c.set_defaults(fn=cmd_cache)
     e = sub.add_parser('evict', help='trim the cache when it is over 95%% of its limit'); e.add_argument('--dry-run', action='store_true'); e.add_argument('--json', action='store_true'); e.set_defaults(fn=cmd_evict)

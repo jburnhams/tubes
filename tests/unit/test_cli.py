@@ -56,13 +56,6 @@ def test_add_sync_channels_and_remove(capsys, fake_youtube, monkeypatch):
     with pytest.raises(SystemExit, match='YOUTUBE_API_KEY is not in the environment'): cli.main(['sync'])
 
 
-def test_import_d1(capsys, fake_d1):
-    fake_d1.channel('UCaaaaaaaaaaaaaaaaaaaaaa', 'Workshop').video('aaaaaaaaaaa', 'UCaaaaaaaaaaaaaaaaaaaaaa', 'Building a shelf', '2026-01-03T00:00:00Z')
-    assert cli.main(['import-d1']) == 0 and 'imported 1 channel(s) and 1 video(s) from D1' in capsys.readouterr().out
-    fake_d1.token = 'rotated'
-    with pytest.raises(SystemExit, match='403'): cli.main(['import-d1', '--database', fake_d1.database])
-
-
 def test_fetch_cache_and_evict(capsys, monkeypatch):
     seed()
     def fake_start(vid, title, channel, background=True):

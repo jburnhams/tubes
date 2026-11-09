@@ -1,6 +1,6 @@
 """The video library, read side: which channels and videos there are, for the screens. They are added and kept up to date from YouTube by
-catalogue.py (Admin's Library page, `tubes add`, `tubes sync`); until 2026-11 another service managed them in a Cloudflare D1 database and
-this module copied that, which `tubes import-d1` (d1import.py) does once to carry them over.
+catalogue.py (Admin's Library page, `tubes add`, `tubes sync`); until 2026-11 another service managed them and this module copied them
+from it.
 
 Lists are newest first and paged by a cursor after the last item (`<published>|<id>`), never an offset, so a page does not shift when a sync
 adds videos.
