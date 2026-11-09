@@ -176,7 +176,6 @@ export const paths = {
 export const keys = {
   system: ['system'],
   settings: ['settings'],
-  library: ['library'],
   channels: ['channels'],
   channel: (id: string) => ['channels', id],
   videos: ['videos'],
@@ -213,7 +212,6 @@ export const api = {
   system: () => fetchJson<SystemStatus>(withBase(paths.system)),
   settings: () => fetchJson<Settings>(withBase(paths.settings)),
   saveSettings: (s: Partial<Settings>) => callJson<Settings>(withBase(paths.settings), send('PUT', s)),
-  library: () => fetchJson<LibraryStatus>(withBase(paths.library)),
   sync: () => callJson<Synced>(withBase(paths.sync), { method: 'POST' }),
   channels: () => fetchJson<Channel[]>(withBase(paths.channels)),
   channel: (id: string) => fetchJson<Channel>(withBase(paths.channel(id))),

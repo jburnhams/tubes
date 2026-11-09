@@ -15,24 +15,27 @@ import { defineVisualConfig } from 'strata-react/visual'
 import { handlers, streamIn } from './src/mocks/handlers'
 
 export default defineVisualConfig({
+  // "3 weeks ago" under every video is worked out from now, so the clock is frozen a little after the sample library's last sync.
+  time: '2026-11-09T12:00:00Z',
   storybook: 'storybook-static',
   app: {
     dir: 'dist-visual',
     handlers,
     viewports: ['wide', 'phone'],
     routes: [
-      { name: 'browse', path: '/' },
+      // The watching side, in the old Tubes look.
+      { name: 'home', path: '/' },
       { name: 'search', path: '/search?q=the' },
       { name: 'channels', path: '/channels' },
-      // A channel is shot with its one page. A long list is not screenshotted: InfiniteList asks for the next
-      // page on its own as its end comes near, so which rows are in view depends on timing. Paging is tested
-      // in jsdom (tests/integration/ChannelsScreen).
+      // A channel is shot with its one page: the next page is asked for on its own as the end scrolls near, so which rows are in
+      // view would depend on timing. Paging is tested in jsdom (tests/integration/ChannelScreen).
       { name: 'channel', path: '/channels/UCworkshop00000000000001' },
       // The waiting frame, not a playing video: what a <video> draws depends on how far it got.
       { name: 'watch', path: '/watch/wo000000000', states: { fetching: streamIn('fetching'), failed: streamIn('failed') } },
+      // The admin area, in Strata's look.
       {
-        name: 'cache',
-        path: '/cache',
+        name: 'admin-cache',
+        path: '/admin/cache',
         states: {
           ready: [],
           removed: {
@@ -43,13 +46,13 @@ export default defineVisualConfig({
           },
         },
       },
-      { name: 'system', path: '/system' },
+      { name: 'admin-system', path: '/admin/system' },
       {
-        name: 'settings',
-        path: '/settings',
+        name: 'admin-settings',
+        path: '/admin/settings',
         states: {
           general: [],
-          appearance: { path: '/settings?tab=appearance' },
+          appearance: { path: '/admin/settings?tab=appearance' },
           invalid: {
             setup: async page => {
               await page.getByRole('textbox', { name: 'Cache folder' }).fill('videos')

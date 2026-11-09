@@ -77,7 +77,7 @@ export function SettingsForm({ current }: { current: Settings }) {
       cache_dir: f.cache_dir.trim(), cache_limit_gb: Number(f.cache_limit_gb), half_life_days: Number(f.half_life_days), protect_days: Number(f.protect_days),
       max_height: Number(f.max_height), d1_database: f.d1_database.trim(), player_client: f.player_client.trim(), ytdlp: f.ytdlp.trim(), ffmpeg: f.ffmpeg.trim(),
     })
-    await Promise.all([keys.settings, keys.system, keys.cache, keys.library].map(queryKey => queryClient.invalidateQueries({ queryKey })))
+    await Promise.all([keys.settings, keys.system, keys.cache].map(queryKey => queryClient.invalidateQueries({ queryKey })))
   }, { describeError })
 
   const onSubmit = (e: FormEvent) => {

@@ -5,6 +5,7 @@
 // `beforeEach: ({ msw }) => msw.use(messagesError)`; the mock server's data is reset before each.
 import '@fontsource-variable/source-sans-3'
 import '@fontsource-variable/jetbrains-mono'
+import '@fontsource-variable/roboto'
 import '../src/styles/app.css'
 import { useState } from 'react'
 import type { Decorator, Preview } from '@storybook/react-vite'

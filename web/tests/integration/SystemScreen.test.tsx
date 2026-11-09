@@ -8,7 +8,7 @@ import { mock, server } from '../utils/server'
 
 describe('System', () => {
   it('says all is ready, with the library copy, the tools and the disk', async () => {
-    openApp('/system')
+    openApp('/admin/system')
     expect(await screen.findByText(/^Everything is ready\. The library was copied on/)).toBeInTheDocument()
     expect(screen.getByText(/^24\svideos from 4\schannels$/)).toBeInTheDocument()
     expect(screen.getByText('Set')).toBeInTheDocument()
@@ -23,7 +23,7 @@ describe('System', () => {
 
   it('names the first thing that is wrong, and shows each one', async () => {
     server.use(systemInTrouble)
-    openApp('/system')
+    openApp('/admin/system')
     expect(await screen.findByText(/^This server cannot fetch videos/)).toBeInTheDocument()
     expect(screen.getByText('Missing')).toBeInTheDocument()
     expect(screen.getByText('Cannot fetch')).toBeInTheDocument()
@@ -34,7 +34,7 @@ describe('System', () => {
   })
 
   it('syncs the library now', async () => {
-    const { user } = openApp('/system')
+    const { user } = openApp('/admin/system')
     await user.click(await screen.findByRole('button', { name: 'Sync now' }))
     expect(await screen.findByText('Synced', { selector: '[role=status]' })).toBeInTheDocument()
     expect(mock.synced).toBe('2026-11-09T09:30:00+00:00')
@@ -42,22 +42,22 @@ describe('System', () => {
 
   it('says why a sync was refused, in the server’s words', async () => {
     server.use(syncFails)
-    const { user } = openApp('/system')
+    const { user } = openApp('/admin/system')
     await user.click(await screen.findByRole('button', { name: 'Sync now' }))
     expect(await screen.findByText('The library cannot be read without CLOUDFLARE_API_TOKEN. The copy was not changed.')).toBeInTheDocument()
   })
 
   it('links to cache and settings in the app and to the API outside it', async () => {
-    openApp('/system')
-    expect(await screen.findByRole('link', { name: /^Settings/, description: /The cache limit and folder/ })).toHaveAttribute('href', '/settings')
-    expect(screen.getByRole('link', { name: /^Cache/, description: /Trim now/ })).toHaveAttribute('href', '/cache')
+    openApp('/admin/system')
+    expect(await screen.findByRole('link', { name: /^Settings/, description: /The cache limit and folder/ })).toHaveAttribute('href', '/admin/settings')
+    expect(screen.getByRole('link', { name: /^Cache/, description: /Trim now/ })).toHaveAttribute('href', '/admin/cache')
     expect(screen.getByRole('link', { name: /API reference/ })).toHaveAttribute('href', '/api/docs')
     expect(screen.getByRole('link', { name: /Health check/ })).toHaveAttribute('href', '/api/health')
   })
 
   it('says the server could not answer', async () => {
     server.use(systemError)
-    openApp('/system')
+    openApp('/admin/system')
     expect(await screen.findByRole('alert')).toHaveTextContent('The server could not answer (503)')
   })
 })
@@ -67,7 +67,7 @@ describe('System, when a poll fails after a good one', () => {
     const client = createQueryClient({ defaultOptions: { queries: { retry: false } } })
     client.setQueryData(keys.system, systemStatus, { updatedAt: Date.UTC(2026, 10, 9, 8, 50) })
     server.use(systemError)
-    openApp('/system', { client })
+    openApp('/admin/system', { client })
     expect(await screen.findByText(/These readings are from 08:50\./)).toBeInTheDocument()
     expect(screen.getByText('Not answering')).toBeInTheDocument()
     expect(screen.getByText(/^The server is not answering/)).toBeInTheDocument()

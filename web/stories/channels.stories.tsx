@@ -4,7 +4,7 @@ import { channelsEmpty, channelsError, channelsLoading, videosLaterPageError, vi
 import { AppAt } from './app-at'
 
 const meta = {
-  title: 'Screens/Channels',
+  title: 'Watching/Channels',
   render: () => <AppAt route="/channels" />,
   tags: ['visual-wide'],
 } satisfies Meta
@@ -22,6 +22,7 @@ export const Phone: Story = { tags: ['visual-phone'] }
 /** One channel's videos, newest first. */
 export const Channel: Story = { render: () => <AppAt route={workshop} /> }
 export const ChannelVideosLoading: Story = { render: () => <AppAt route={workshop} />, beforeEach: ({ msw }) => msw.use(videosLoading) }
-/** A long channel whose later pages fail; scroll to the end to see Try again. */
+/** A long channel whose later pages fail: press Show more to see Try again. */
 export const ChannelLaterPageFails: Story = { render: () => <AppAt route={workshop} />, beforeEach: ({ msw }) => msw.use(videosLaterPageError), tags: ['no-visual'] }
 export const NoSuchChannel: Story = { render: () => <AppAt route="/channels/UCgone" /> }
+export const ChannelPhone: Story = { render: () => <AppAt route={workshop} />, tags: ['visual-phone'] }

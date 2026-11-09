@@ -5,7 +5,7 @@ import { mock, server } from '../utils/server'
 
 describe('Cache', () => {
   it('says how full it is, and lists the copies highest score first', async () => {
-    openApp('/cache')
+    openApp('/admin/cache')
     expect(await screen.findByText(/used by 6\svideos\. Trimming starts at/)).toBeInTheDocument()
     expect(screen.getByRole('meter', { name: 'Cache used' })).toBeInTheDocument()
     const table = screen.getByRole('table', { name: 'Copies, highest score first' })
@@ -20,7 +20,7 @@ describe('Cache', () => {
   })
 
   it('sorts by size, plays and score, with the sort in the URL', async () => {
-    const { user, router } = openApp('/cache')
+    const { user, router } = openApp('/admin/cache')
     const table = await screen.findByRole('table', { name: 'Copies, highest score first' })
     for (const name of ['Size', 'Plays', 'Score']) {
       await user.click(within(table).getByRole('button', { name }))
@@ -31,7 +31,7 @@ describe('Cache', () => {
   })
 
   it('pins and unpins a copy', async () => {
-    const { user } = openApp('/cache')
+    const { user } = openApp('/admin/cache')
     const first = mock.items[0]
     await user.click(await screen.findByRole('button', { name: `Pin ${first.title}` }))
     await waitFor(() => expect(mock.items[0].pinned).toBe(true))
@@ -41,13 +41,13 @@ describe('Cache', () => {
 
   it('says when a pin did not go through', async () => {
     server.use(pinFails)
-    const { user } = openApp('/cache')
+    const { user } = openApp('/admin/cache')
     await user.click(await screen.findByRole('button', { name: `Pin ${mock.items[0].title}` }))
     expect(await screen.findByText(/The pin was not changed\./)).toBeInTheDocument()
   })
 
   it('deletes a copy with a moment to undo it', async () => {
-    const { user } = openApp('/cache')
+    const { user } = openApp('/admin/cache')
     const victim = mock.items[2]
     await user.click(await screen.findByRole('button', { name: `Delete ${victim.title}` }))
     expect(screen.queryByRole('link', { name: victim.title })).toBeNull()
@@ -59,7 +59,7 @@ describe('Cache', () => {
 
   it('puts a copy back when deleting it fails', async () => {
     server.use(dropFails)
-    const { user } = openApp('/cache')
+    const { user } = openApp('/admin/cache')
     const victim = mock.items[2]
     await user.click(await screen.findByRole('button', { name: `Delete ${victim.title}` }))
     // A second removal commits the first, which the server refuses.
@@ -70,7 +70,7 @@ describe('Cache', () => {
   })
 
   it('trims now and says what went', async () => {
-    const { user } = openApp('/cache')
+    const { user } = openApp('/admin/cache')
     await user.click(await screen.findByRole('button', { name: 'Trim now' }))
     expect(await screen.findByText(/^Freed .* from 1\svideo\.$/)).toBeInTheDocument()
     expect(mock.items.some(i => i.state === 'failed')).toBe(false)
@@ -78,34 +78,34 @@ describe('Cache', () => {
 
   it('says when trimming had nothing to do', async () => {
     mock.items = mock.items.filter(i => i.state !== 'failed')
-    const { user } = openApp('/cache')
+    const { user } = openApp('/admin/cache')
     await user.click(await screen.findByRole('button', { name: 'Trim now' }))
     expect(await screen.findByText(/^Nothing needed to go/)).toBeInTheDocument()
   })
 
   it('says why trimming failed', async () => {
     server.use(evictFails)
-    const { user } = openApp('/cache')
+    const { user } = openApp('/admin/cache')
     await user.click(await screen.findByRole('button', { name: 'Trim now' }))
     await waitFor(() => expect(screen.getByRole('button', { name: /Trim now|Try again/ })).toBeInTheDocument())
   })
 
   it('says when it is over the trimming line', async () => {
     server.use(cacheNearlyFull)
-    openApp('/cache')
+    openApp('/admin/cache')
     expect(await screen.findByText(/over the trimming line/)).toBeInTheDocument()
   })
 
   it('says how the cache fills when it is empty', async () => {
     server.use(cacheEmpty)
-    openApp('/cache')
+    openApp('/admin/cache')
     expect(await screen.findByText(/^The cache is empty\./)).toBeInTheDocument()
     expect(screen.getByText('Nothing in the cache')).toBeInTheDocument()
   })
 
   it('says the server could not answer', async () => {
     server.use(cacheError)
-    openApp('/cache')
+    openApp('/admin/cache')
     expect(await screen.findByRole('alert')).toHaveTextContent('The server could not answer (503)')
   })
 })

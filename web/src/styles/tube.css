@@ -1,0 +1,68 @@
+/* The watching side's look: the old Tubes app's, which followed the familiar video-site layout (a
+   white page, a top bar with a centred search box, a left rail, rounded thumbnails with the
+   running time on them, Roboto). It lives only under the viewer shell (src/watch/); the admin area
+   (src/screens/) keeps Strata's roles and type steps. Strata removes Tailwind's stock colours, radii
+   and text sizes, so the few this side needs are named here, with a dark variant for ThemeProvider's
+   `.dark` class. Red is our own accent, for the mark and the progress of a fetch. */
+
+:root {
+  --tube-page: #ffffff;
+  --tube-ink: #0f0f0f;
+  --tube-quiet: #606060;
+  --tube-chip: #f2f2f2;
+  --tube-chip-hover: #e5e5e5;
+  --tube-line: #e5e5e5;
+  --tube-field: #ffffff;
+  --tube-field-line: #cccccc;
+  --tube-red: #e1251b;
+  --tube-on-red: #ffffff;
+  --tube-screen: #000000;
+  --tube-on-screen: #ffffff;
+  --tube-badge: rgb(0 0 0 / 0.8);
+  --tube-focus: #065fd4;
+}
+
+.dark {
+  --tube-page: #0f0f0f;
+  --tube-ink: #f1f1f1;
+  --tube-quiet: #aaaaaa;
+  --tube-chip: #272727;
+  --tube-chip-hover: #3f3f3f;
+  --tube-line: #3f3f3f;
+  --tube-field: #121212;
+  --tube-field-line: #303030;
+  --tube-focus: #3ea6ff;
+}
+
+@theme inline {
+  --color-tube-page: var(--tube-page);
+  --color-tube-ink: var(--tube-ink);
+  --color-tube-quiet: var(--tube-quiet);
+  --color-tube-chip: var(--tube-chip);
+  --color-tube-chip-hover: var(--tube-chip-hover);
+  --color-tube-line: var(--tube-line);
+  --color-tube-field: var(--tube-field);
+  --color-tube-field-line: var(--tube-field-line);
+  --color-tube-red: var(--tube-red);
+  --color-tube-on-red: var(--tube-on-red);
+  --color-tube-screen: var(--tube-screen);
+  --color-tube-on-screen: var(--tube-on-screen);
+  --color-tube-badge: var(--tube-badge);
+  --color-tube-focus: var(--tube-focus);
+}
+
+@theme {
+  --font-tube: "Roboto Variable", ui-sans-serif, system-ui, sans-serif;
+  --radius-tube: 0.75rem;
+  --radius-tube-sm: 0.5rem;
+  --text-tube-xs: 0.75rem;
+  --text-tube-xs--line-height: 1.125rem;
+  --text-tube-sm: 0.875rem;
+  --text-tube-sm--line-height: 1.25rem;
+  --text-tube-base: 1rem;
+  --text-tube-base--line-height: 1.375rem;
+  --text-tube-lg: 1.25rem;
+  --text-tube-lg--line-height: 1.75rem;
+  --text-tube-xl: 2.25rem;
+  --text-tube-xl--line-height: 3.125rem;
+}

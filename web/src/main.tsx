@@ -5,6 +5,7 @@
 // built from the same route tree the tests render (routes.tsx).
 import '@fontsource-variable/source-sans-3'
 import '@fontsource-variable/jetbrains-mono'
+import '@fontsource-variable/roboto'
 import './styles/app.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'

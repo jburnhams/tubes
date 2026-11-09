@@ -3,7 +3,7 @@ import { playFails, playLoading, streamIn, videoLoading } from '../src/mocks/han
 import { AppAt } from './app-at'
 
 const meta = {
-  title: 'Screens/Watch',
+  title: 'Watching/Watch',
   render: () => <AppAt route="/watch/wo000000000" />,
   tags: ['visual-wide'],
 } satisfies Meta

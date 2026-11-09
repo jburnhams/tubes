@@ -3,15 +3,15 @@ import { cacheEmpty, cacheError, cacheLoading, cacheNearlyFull, dropFails, evict
 import { AppAt } from './app-at'
 
 const meta = {
-  title: 'Screens/Cache',
-  render: () => <AppAt route="/cache" />,
+  title: 'Admin/Cache',
+  render: () => <AppAt route="/admin/cache" />,
   tags: ['visual-wide'],
 } satisfies Meta
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const Ready: Story = {}
-export const SortedBySize: Story = { render: () => <AppAt route="/cache?sort=bytes.desc" /> }
+export const SortedBySize: Story = { render: () => <AppAt route="/admin/cache?sort=bytes.desc" /> }
 /** Over the 95% line: the meter crosses Trimming and the finding says what goes next. */
 export const OverTheLine: Story = { beforeEach: ({ msw }) => msw.use(cacheNearlyFull) }
 export const Empty: Story = { beforeEach: ({ msw }) => msw.use(cacheEmpty) }

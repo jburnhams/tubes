@@ -7,8 +7,8 @@ import { syncFails, systemError, systemInTrouble, systemLoading } from '../src/m
 import { AppAt } from './app-at'
 
 const meta = {
-  title: 'Screens/System',
-  render: () => <AppAt route="/system" />,
+  title: 'Admin/System',
+  render: () => <AppAt route="/admin/system" />,
   tags: ['visual-wide'],
 } satisfies Meta
 export default meta

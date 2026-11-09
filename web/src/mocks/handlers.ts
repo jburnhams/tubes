@@ -8,7 +8,7 @@
 // `states: { error: [videosError] }` in the visual config.
 import { delay, http, HttpResponse } from 'msw'
 import { cursorOf, paths, type CacheItem, type Settings, type Stream, type Video, type VideoPage } from '../api'
-import { cacheItems, channels, defaultSettings, library, libraryEmpty, longChannel, report, streams, systemStatus, systemTrouble, videos } from './fixtures'
+import { cacheItems, channels, defaultSettings, library, longChannel, report, streams, systemStatus, systemTrouble, videos } from './fixtures'
 
 /** What the mock server holds. Writes change it, so a test can pin a copy and see it pinned. */
 export const mock = {
@@ -60,7 +60,6 @@ export const handlers = [
     mock.settings = { ...mock.settings, ...body }
     return HttpResponse.json(mock.settings)
   }),
-  http.get(at(paths.library), () => HttpResponse.json({ ...library, synced: mock.synced })),
   http.post(at(paths.sync), () => {
     mock.synced = '2026-11-09T09:30:00+00:00'
     return HttpResponse.json({ channels: library.channels, videos: library.videos, synced: mock.synced })
@@ -118,7 +117,6 @@ export const settingsLoading = http.get(at(paths.settings), () => delay('infinit
 export const settingsError = http.get(at(paths.settings), down)
 export const saveSettingsFails = http.put(at(paths.settings), down)
 
-export const libraryNeverSynced = http.get(at(paths.library), () => HttpResponse.json(libraryEmpty))
 export const syncFails = http.post(at(paths.sync), () => refused('The library cannot be read without CLOUDFLARE_API_TOKEN.', 502))
 
 export const channelsLoading = http.get(at(paths.channels), () => delay('infinite'))
@@ -131,12 +129,22 @@ export const shuffleError = http.get(at(paths.shuffle), down)
 
 export const videosLoading = http.get(at(paths.videos), () => delay('infinite'))
 export const videosError = http.get(at(paths.videos), down)
+/** The library holds just these videos (newest first, paged as the server does). */
+export const videosFrom = (list: Video[]) => http.get(at(paths.videos), ({ request }) => HttpResponse.json(videoPage(request.url, list)))
+/** No videos at all: before the first sync. */
+export const videosNone = videosFrom([])
 /** A channel with 60 videos: three pages of 24. */
-export const videosLong = http.get(at(paths.videos), ({ request }) => HttpResponse.json(videoPage(request.url, longChannel)))
+export const videosLong = videosFrom(longChannel)
 /** The first page arrives; every page after it fails, so the list shows its Try again row. */
 export const videosLaterPageError = http.get(at(paths.videos), ({ request }) =>
   new URL(request.url).searchParams.has('after') ? down() : HttpResponse.json(videoPage(request.url, longChannel)),
 )
+
+/** The first page arrives; every page after it never does, so the list shows its skeleton rows. */
+export const videosLaterPageLoading = http.get(at(paths.videos), async ({ request }) => {
+  if (new URL(request.url).searchParams.has('after')) await delay('infinite')
+  return HttpResponse.json(videoPage(request.url, longChannel))
+})
 
 export const videoLoading = http.get(at('/api/videos/:id'), () => delay('infinite'))
 export const playLoading = http.post(at('/api/videos/:id/play'), () => delay('infinite'))

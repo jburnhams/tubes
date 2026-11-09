@@ -4,8 +4,8 @@ Vitest 5, Testing Library, user-event, MSW, and strata-react's test helpers (`st
 
 ## Layout
 
-- `unit/`: node environment, no DOM. Pure functions: URL builders and field checks (`api.ts`), the screens' findings, the mock server's paging, and that `index.html` inlines Strata's colour-scheme script.
-- `integration/`: jsdom. One file per screen (`BrowseScreen`, `SearchScreen`, `ChannelsScreen` with a channel's page, `WatchScreen`, `CacheScreen`, `SystemScreen`, `SettingsScreen`) plus `App` for the frame and routing. Each test opens the app at a URL with `openApp('/settings?tab=appearance')` (`utils/render.tsx`), which renders the app's own route tree (`src/routes.tsx`) through `renderRoutes` from `strata-react/testing`, with a fresh query client (retries off) and ThemeProvider (storage off).
+- `unit/`: node environment, no DOM. Pure functions: URL builders and field checks (`api.ts`), the watching side's views and age (`watch/format.ts`), the screens' findings, the mock server's paging, and that `index.html` inlines Strata's colour-scheme script.
+- `integration/`: jsdom. One file per screen (`HomeScreen`, `SearchScreen`, `ChannelsScreen` with a channel's page, `WatchScreen`; the admin `CacheScreen`, `SystemScreen`, `SettingsScreen` at `/admin/...`) plus `App` for both frames and routing. Each test opens the app at a URL with `openApp('/admin/settings?tab=appearance')` (`utils/render.tsx`), which renders the app's own route tree (`src/routes.tsx`) through `renderRoutes` from `strata-react/testing`, with a fresh query client (retries off) and ThemeProvider (storage off).
 - `utils/`: `server.ts` is the msw server over the app's mock handlers (`src/mocks/handlers.ts`: **every endpoint the app calls needs a handler there**; an unanswered request fails the test). Put the server into another state with the named handlers (`server.use(videosError)`; `mock.streams[id] = streams.failed` for a copy's state); the store resets after each test. `setup.ts` installs Strata's layout shims so tables and lists measure in jsdom. `render.tsx` provides `openApp()`.
 - `visual/baselines/`: committed PNGs written by `strata-visual` (see below).
 
@@ -15,7 +15,7 @@ Vitest 5, Testing Library, user-event, MSW, and strata-react's test helpers (`st
 - One concept per `it`, named as a sentence. Cover the happy path, loading, empty, a server error and the edge values.
 - No arbitrary sleeps: `findBy*`, `waitFor`, or fake timers (`vi.useFakeTimers({ shouldAdvanceTime: true })` and `openApp(route, { user: { advanceTimers: vi.advanceTimersByTime } })` to run out the undo window).
 - Never mock a module or stub `fetch`: put the server into the state with MSW.
-- Copy from strata-react's `format` joins counts with a non-breaking space: match `/^6\svideos$/`, not a typed `"6 videos"`.
+- Copy from strata-react's `format` (the admin area) joins counts with a non-breaking space: match `/^6\svideos$/`, not a typed `"6 videos"`. The watching side writes its own (`watch/format.ts`) with ordinary spaces.
 - jsdom has neither MediaSource nor native HLS, so the Watch tests see the player say so; hls.js itself is tested through `attach()` with a fake class (`unit/logic.test.ts`). A long list is paged with `installFakeIntersectionObserver().scrollToEnd()`.
 - A bug found while testing: write `it.todo` or `it.fails`, comment it as a finding, and don't change app behaviour in a test-only change.
 
@@ -33,12 +33,14 @@ Vitest 5, Testing Library, user-event, MSW, and strata-react's test helpers (`st
 |---|---|---|---|
 | `src/api.ts` | 100 | done | unit/logic.test.ts and every integration test |
 | `src/routes.tsx` | 100 | done | integration/App.test.tsx |
-| `src/screens/Layout.tsx`, `NotFoundScreen.tsx` | 100 | done | integration/App.test.tsx |
 | `src/player.ts` | 100 | done | unit/logic.test.ts |
-| `src/screens/parts.tsx`, `VideoList.tsx` | 100 | done | Browse, Search and Channels tests |
-| `src/screens/BrowseScreen.tsx`, `SearchScreen.tsx` | 100 | done | integration/BrowseScreen, SearchScreen, unit/logic.test.ts |
-| `src/screens/ChannelsScreen.tsx`, `ChannelScreen.tsx` | 100 | done | integration/ChannelsScreen.test.tsx, unit/logic.test.ts |
-| `src/screens/WatchScreen.tsx` | 100 | done | integration/WatchScreen.test.tsx, unit/logic.test.ts |
+| `src/screens/Layout.tsx` | 100 | done | integration/App.test.tsx |
+| `src/watch/Shell.tsx`, `NotFoundScreen.tsx` | 100 | done | integration/App.test.tsx |
+| `src/watch/format.ts` | 100 | done | unit/logic.test.ts |
+| `src/watch/Shown.tsx`, `cards.tsx`, `useVideos.ts` | 100 | done | Home, Search and Channels tests |
+| `src/watch/HomeScreen.tsx`, `SearchScreen.tsx` | 100 | done | integration/HomeScreen, SearchScreen |
+| `src/watch/ChannelsScreen.tsx`, `ChannelScreen.tsx` | 100 | done | integration/ChannelsScreen.test.tsx |
+| `src/watch/WatchScreen.tsx` | 100 | done | integration/WatchScreen.test.tsx, unit/logic.test.ts |
 | `src/screens/CacheScreen.tsx` | 100 | done | integration/CacheScreen.test.tsx, unit/logic.test.ts |
 | `src/screens/SystemScreen.tsx` | 100 | done | integration/SystemScreen.test.tsx, unit/logic.test.ts |
 | `src/screens/SettingsScreen.tsx` | 100 | done | integration/SettingsScreen.test.tsx, unit/logic.test.ts |

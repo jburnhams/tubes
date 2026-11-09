@@ -2,16 +2,14 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { HttpError, colorSchemeScript, format } from 'strata-react'
 import { Refused, cursorOf, describeError, folderProblem, numberProblem, runningTime, videosUrl, withBase } from '../../src/api'
-import { channels, libraryEmpty, library, longChannel, report, streams, systemStatus, systemTrouble, tile, videos } from '../../src/mocks/fixtures'
+import { channels, libraryEmpty, longChannel, report, streams, systemStatus, systemTrouble, tile, videos } from '../../src/mocks/fixtures'
 import { videoPage } from '../../src/mocks/handlers'
 import { attach, problemText, type HlsClass, type HlsInstance, type Media } from '../../src/player'
-import { describeLibrary } from '../../src/screens/BrowseScreen'
 import { describeCache, describeEvicted } from '../../src/screens/CacheScreen'
-import { describeChannel } from '../../src/screens/ChannelScreen'
-import { describeChannels } from '../../src/screens/ChannelsScreen'
 import { settingsProblems } from '../../src/screens/SettingsScreen'
 import { describeSystem, usable } from '../../src/screens/SystemScreen'
-import { savedText, settled, waitingText } from '../../src/screens/WatchScreen'
+import { ago, videoCount, views, viewsAndAge } from '../../src/watch/format'
+import { savedText, settled, waitingText } from '../../src/watch/WatchScreen'
 
 describe('api helpers', () => {
   it('builds URLs under the base, and a page of videos after a cursor', () => {
@@ -101,16 +99,25 @@ describe('the player', () => {
 })
 
 describe('the findings', () => {
-  it('Browse says how big and how fresh the library copy is', () => {
-    expect(describeLibrary(library)).toBe(`${format.count(24, 'video')} from ${format.count(4, 'channel')}, copied from the library on ${format.dateTime(library.synced!)}.`)
-    expect(describeLibrary(libraryEmpty)).toMatch(/^Nothing has been copied/)
-  })
-
-  it('Channels counts them and dates the newest', () => {
-    expect(describeChannels(channels)).toBe(`${format.count(4, 'channel')} with ${format.count(24, 'video')}; the newest is from ${format.date('2026-01-20T00:00:00Z')}.`)
-    expect(describeChannels([{ ...channels[0], latest: null, videos: 0 }])).toBe(`${format.count(1, 'channel')} with ${format.count(0, 'video')}.`)
-    expect(describeChannel(channels[0])).toMatch(/^6\svideos, the newest from/)
-    expect(describeChannel({ ...channels[0], latest: null })).toBe('No videos from this channel have been copied yet.')
+  it('the watching side writes views and age as video sites do', () => {
+    const now = Date.parse('2026-11-09T12:00:00Z')
+    expect(videoCount(1)).toBe('1 video')
+    expect(videoCount(1234)).toBe('1,234 videos')
+    expect(views(null)).toBeNull()
+    expect(views(undefined)).toBeNull()
+    expect(views(1)).toBe('1 view')
+    expect(views(1234)).toBe('1.2K views')
+    expect(views(2_500_000)).toBe('2.5M views')
+    expect(ago('2026-11-09T11:59:30Z', now)).toBe('just now')
+    expect(ago('2026-11-09T12:00:30Z', now)).toBe('just now')
+    expect(ago('2026-11-09T11:58:00Z', now)).toBe('2 minutes ago')
+    expect(ago('2026-11-09T09:00:00Z', now)).toBe('3 hours ago')
+    expect(ago('2026-11-08T12:00:00Z', now)).toBe('1 day ago')
+    expect(ago('2026-10-26T12:00:00Z', now)).toBe('2 weeks ago')
+    expect(ago('2026-01-20T00:00:00Z', now)).toBe('9 months ago')
+    expect(ago('2024-11-01T00:00:00Z', now)).toBe('2 years ago')
+    expect(viewsAndAge({ views: 1000, published: '2026-11-08T12:00:00Z' }, now)).toBe('1K views · 1 day ago')
+    expect(viewsAndAge({ views: null, published: '2026-11-08T12:00:00Z' }, now)).toBe('1 day ago')
   })
 
   it('Cache says how full it is and what trimming did', () => {
@@ -140,10 +147,11 @@ describe('the findings', () => {
     expect(waitingText(streams.none)).toBe('Asking for the video…')
     expect(waitingText({ ...streams.fetching, formats: null })).toBe('Finding the best copy to fetch…')
     expect(waitingText(streams.fetching)).toBe('Fetching 1080p AV1 + AAC. It starts in a moment.')
-    expect(savedText(streams.ready, 606)).toBe('All of it, kept in the cache')
-    expect(savedText(streams.failed, 606)).toBe('None')
-    expect(savedText(streams.playable, 606)).toBe('0:12 of 10:06 so far')
-    expect(savedText(streams.playable, null)).toBe('0:12 so far')
+    expect(savedText(streams.ready, 606)).toBe('Saved on this server')
+    expect(savedText(streams.failed, 606)).toBe('Not saved')
+    expect(savedText(streams.none, 606)).toBe('Not saved')
+    expect(savedText(streams.playable, 606)).toBe('Fetching: 0:12 of 10:06 so far')
+    expect(savedText(streams.playable, null)).toBe('Fetching: 0:12 so far')
   })
 
   it('Settings checks every field before sending', () => {

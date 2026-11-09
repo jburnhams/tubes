@@ -60,7 +60,7 @@ export function SystemScreen() {
   const queryClient = useQueryClient()
   const sync = useAsyncAction(async () => {
     await api.sync()
-    await Promise.all([keys.system, keys.library, keys.channels, keys.videos].map(queryKey => queryClient.invalidateQueries({ queryKey })))
+    await Promise.all([keys.system, keys.channels, keys.videos].map(queryKey => queryClient.invalidateQueries({ queryKey })))
   }, { describeError })
 
   return (
@@ -119,8 +119,8 @@ export function SystemScreen() {
             <section aria-labelledby="next" className="grid gap-3">
               <h2 id="next" className="type-heading">Go to</h2>
               <LinkCardList label="Places to go from here">
-                <LinkCard to="/cache" title="Cache" description="What is saved, what goes first when it fills, and Trim now." />
-                <LinkCard to="/settings" title="Settings" description="The cache limit and folder, quality, the library's database, the tools' paths." />
+                <LinkCard to="/admin/cache" title="Cache" description="What is saved, what goes first when it fills, and Trim now." />
+                <LinkCard to="/admin/settings" title="Settings" description="The cache limit and folder, quality, the library's database, the tools' paths." />
                 <LinkCard href={withBase('/api/docs')} title="API reference" description="Every endpoint the server answers, with a form to try each one." />
                 <LinkCard href={withBase(paths.health)} title="Health check" description="The JSON a monitor polls to see that the server is up." />
               </LinkCardList>

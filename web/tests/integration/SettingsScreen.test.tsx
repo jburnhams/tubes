@@ -6,7 +6,7 @@ import { mock, server } from '../utils/server'
 
 describe('Settings', () => {
   it('starts the form from what the server holds and saves a change', async () => {
-    const { user } = openApp('/settings')
+    const { user } = openApp('/admin/settings')
     const limit = await screen.findByRole('textbox', { name: 'Cache limit (GB)' })
     expect(limit).toHaveValue('1000')
     expect(screen.getByRole('textbox', { name: 'Cache folder' })).toHaveValue('/srv/tubes/cache')
@@ -25,7 +25,7 @@ describe('Settings', () => {
   })
 
   it('says under each field what is wrong, and saves nothing', async () => {
-    const { user } = openApp('/settings')
+    const { user } = openApp('/admin/settings')
     const folder = await screen.findByRole('textbox', { name: 'Cache folder' })
     const ytdlp = screen.getByRole('textbox', { name: 'yt-dlp' })
     await user.clear(folder)
@@ -39,20 +39,20 @@ describe('Settings', () => {
 
   it('says what happened when saving fails', async () => {
     server.use(saveSettingsFails)
-    const { user } = openApp('/settings')
+    const { user } = openApp('/admin/settings')
     await user.click(await screen.findByRole('button', { name: 'Save settings' }))
     expect(await screen.findByText(/The settings were not changed\./)).toBeInTheDocument()
   })
 
   it('says why the server refused, in its words', async () => {
     server.use(http.put('*/api/settings', () => HttpResponse.json({ detail: '/srv/tubes/cache is not writable.' }, { status: 400 })))
-    const { user } = openApp('/settings')
+    const { user } = openApp('/admin/settings')
     await user.click(await screen.findByRole('button', { name: 'Save settings' }))
     expect(await screen.findByText('/srv/tubes/cache is not writable. The settings were not changed.')).toBeInTheDocument()
   })
 
   it('keeps the tab in the URL, and the colour scheme choice changes the page', async () => {
-    const { user, router } = openApp('/settings')
+    const { user, router } = openApp('/admin/settings')
     await user.click(screen.getByRole('tab', { name: 'Appearance' }))
     expect(router.state.location.search).toBe('?tab=appearance')
     await user.click(screen.getByRole('radio', { name: 'Dark' }))
@@ -60,14 +60,14 @@ describe('Settings', () => {
   })
 
   it('opens on a tab from a link', () => {
-    openApp('/settings?tab=appearance')
+    openApp('/admin/settings?tab=appearance')
     expect(screen.getByRole('tab', { name: 'Appearance' })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('group', { name: 'Colour scheme' })).toBeInTheDocument()
   })
 
   it('says the server could not answer', async () => {
     server.use(settingsError)
-    openApp('/settings')
+    openApp('/admin/settings')
     expect(await screen.findByRole('alert')).toHaveTextContent('The server could not answer (503)')
   })
 })

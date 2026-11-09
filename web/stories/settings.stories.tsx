@@ -3,15 +3,15 @@ import { saveSettingsFails, settingsError, settingsLoading } from '../src/mocks/
 import { AppAt } from './app-at'
 
 const meta = {
-  title: 'Screens/Settings',
-  render: () => <AppAt route="/settings" />,
+  title: 'Admin/Settings',
+  render: () => <AppAt route="/admin/settings" />,
   tags: ['visual-wide'],
 } satisfies Meta
 export default meta
 type Story = StoryObj<typeof meta>
 
 export const General: Story = {}
-export const Appearance: Story = { render: () => <AppAt route="/settings?tab=appearance" /> }
+export const Appearance: Story = { render: () => <AppAt route="/admin/settings?tab=appearance" /> }
 export const Loading: Story = { beforeEach: ({ msw }) => msw.use(settingsLoading) }
 export const ServerError: Story = { beforeEach: ({ msw }) => msw.use(settingsError) }
 /** Saving fails; press Save settings to see it. */
