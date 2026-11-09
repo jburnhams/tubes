@@ -155,7 +155,7 @@ describe('the findings', () => {
   })
 
   it('Settings checks every field before sending', () => {
-    const ok = { cache_dir: '/srv/c', cache_limit_gb: '1000', half_life_days: '30', protect_days: '0', max_height: '1080', d1_database: '', player_client: '', ytdlp: 'yt-dlp', ffmpeg: 'ffmpeg' }
+    const ok = { cache_dir: '/srv/c', cache_limit_gb: '1000', half_life_days: '30', protect_days: '0', max_height: '1080', d1_database: '', player_client: '', cookies_from_browser: '', ytdlp: 'yt-dlp', ffmpeg: 'ffmpeg' }
     expect(Object.values(settingsProblems(ok)).filter(Boolean)).toEqual([])
     const bad = settingsProblems({ ...ok, cache_dir: 'x', cache_limit_gb: '-1', half_life_days: '', protect_days: 'a', ytdlp: ' ', ffmpeg: '' })
     expect(bad).toEqual({

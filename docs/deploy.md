@@ -13,6 +13,8 @@ dbtool new-app tubes                       # its own role and schema in the shar
 ./tubes set d1_database <library D1 id>
 ```
 
+Signed in to YouTube in a browser on the server (a Premium account has no ad waits before downloads), `./tubes set cookies_from_browser chrome+gnomekeyring` (yt-dlp's `--cookies-from-browser` value; the keyring part is needed where the desktop keyring encrypts cookies, and it must be unlocked, as with autologin).
+
 yt-dlp and ffmpeg must be on the service's `PATH` or set with `./tubes set ytdlp /full/path` (and `ffmpeg`). Keep yt-dlp current (`yt-dlp -U`, or the package manager's update): YouTube changes break old versions within weeks.
 
 ## 2. Credentials

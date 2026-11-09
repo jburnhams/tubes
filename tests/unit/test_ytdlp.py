@@ -15,6 +15,15 @@ def test_base_command_uses_the_player_client_setting():
     assert ytdlp.base_command() == ['/opt/bin/yt-dlp', '--no-warnings', '--no-progress', '--ignore-config']
 
 
+def test_signed_in_reads_the_browser_and_swaps_visionos_for_a_client_that_takes_cookies():
+    settings.save(dict(cookies_from_browser='chrome+gnomekeyring'))
+    assert ytdlp.base_command()[4:] == ['--cookies-from-browser', 'chrome+gnomekeyring', '--extractor-args', 'youtube:player_client=tv_downgraded']
+    settings.save(dict(player_client='mweb'))
+    assert ytdlp.base_command()[-1] == 'youtube:player_client=mweb'
+    settings.save(dict(player_client=''))
+    assert ytdlp.base_command()[4:] == ['--cookies-from-browser', 'chrome+gnomekeyring']
+
+
 def test_run_json_failures(fake_run, monkeypatch):
     fake_run.returns['--dump-single-json'] = 'not json'
     with pytest.raises(ytdlp.YtdlpError, match='did not return JSON'): ytdlp.probe('https://x.test/v')

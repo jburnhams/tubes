@@ -12,6 +12,7 @@ export const defaultSettings: Settings = {
   cache_limit_gb: 1000,
   max_height: 1080,
   player_client: 'visionos',
+  cookies_from_browser: '',
   half_life_days: 30,
   protect_days: 7,
   d1_database: 'b1c3f037-0000-4000-8000-000000000000',

@@ -4,6 +4,10 @@ yt-dlp runs as a command, not as a library: it is upgraded daily outside this ap
 command keeps a crash or a hang in its own process, with a timeout. Measured on the home server (docs/progress.md, 2026-11-09):
 
 - `player_client=visionos` starts a download in about 2 s, against 7.8 s for the default clients, which YouTube makes wait 4 s first.
+  But YouTube refuses it for many videos, and yt-dlp's fallback (`web_embedded`) waits 4-10 s for an ad before downloading.
+- Signed in (`cookies_from_browser`) to a Premium account there is no ad wait for any client: the first segment came 5-7 s after Play on
+  every test video, against 8-13 s signed out where the ad wait applied. `visionos` takes no cookies (yt-dlp skips it), so signed in it is
+  dropped and `tv_downgraded` is the fastest client that still offers 1080p (`web_safari` and `tv` gave 360p only).
 - YouTube offers 1080p as separate video and audio streams. AV1, VP9 and H.264 were all offered; the latest Chrome (the only target) plays
   all three through MSE, so the order is AV1, VP9, H.264: AV1 is about half the size of H.264 at the same height.
 - A height-only cap picked 1440p for a widescreen film (2560x1072), so the cap checks width as well (16:9 of the height).
@@ -14,6 +18,7 @@ from tubes import settings
 
 CODEC_RANK = (('av01', 0), ('vp09', 1), ('vp9', 1), ('avc1', 2))       # lower is better; anything else is not fetched
 PROBE_TIMEOUT = 120
+SIGNED_IN_CLIENT = 'tv_downgraded'
 VIDEO_ID = re.compile(r'^[A-Za-z0-9_-]{11}$')
 
 
@@ -24,7 +29,10 @@ class YtdlpError(RuntimeError):
 def base_command():
     """yt-dlp and the options every call shares."""
     cmd = [settings.get('ytdlp'), '--no-warnings', '--no-progress', '--ignore-config']
-    client = settings.get('player_client')
+    client, browser = settings.get('player_client'), settings.get('cookies_from_browser')
+    if browser:
+        cmd += ['--cookies-from-browser', browser]
+        if client == 'visionos': client = SIGNED_IN_CLIENT          # visionos takes no cookies; asking for it alone would leave no client
     if client: cmd += ['--extractor-args', f'youtube:player_client={client}']
     return cmd
 

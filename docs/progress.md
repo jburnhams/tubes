@@ -1,5 +1,12 @@
 # Progress log
 
+## 2026-11-09: signed in to a Premium account
+
+- Asked for: use the owner's Google account (YouTube Premium) so the ad wait goes.
+- Measured on the same eight videos with yt-dlp reading a signed-in Chrome profile on the server (`--cookies-from-browser chrome+gnomekeyring`; without `+gnomekeyring` nothing decrypts under that desktop): yt-dlp saw Premium, every playable video offered ad-free 1080p AV1/VP9, no "Sleeping ... as required by the site" and no 403s. First segment 5-7 s after Play on every video (was 8-13 s where the ad wait applied; the few videos `visionos` plays signed out start 2-3 s slower signed in). It works from a systemd user service, as long as the desktop keyring is unlocked (autologin). Reading the cookies costs about 0.1 s.
+- Clients signed in: `tv_downgraded` gave 1080p with the fastest probes (3.7-5.5 s); default, `web_creator` and `mweb` also work; `web_safari` and `tv` gave 360p only (SABR); `visionos` takes no cookies and is skipped. Premium-only formats (616) need a PO token and did not appear.
+- New setting `cookies_from_browser` (empty by default: signed out). When set, every yt-dlp call gets `--cookies-from-browser`, including the two downloads (the saved probe holds no cookies), and `visionos` is swapped for `tv_downgraded`. Reading the live profile rather than an exported cookies.txt keeps the session fresh, since the browser refreshes it.
+
 ## 2026-11-09: why videos start slowly on the server
 
 - Asked for: the deployed server took about 13 s from Play to the first segment, against about 2 s in the spike; check other videos and clients.
