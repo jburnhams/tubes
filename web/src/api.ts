@@ -13,6 +13,7 @@ export interface Settings {
   cache_limit_gb: number
   max_height: number
   player_client: string
+  cookies_from_browser: string
   half_life_days: number
   protect_days: number
   d1_database: string

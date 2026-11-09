@@ -49,7 +49,7 @@ function FormSkeleton() {
   )
 }
 
-type Fields = Record<'cache_dir' | 'cache_limit_gb' | 'half_life_days' | 'protect_days' | 'max_height' | 'd1_database' | 'player_client' | 'ytdlp' | 'ffmpeg', string>
+type Fields = Record<'cache_dir' | 'cache_limit_gb' | 'half_life_days' | 'protect_days' | 'max_height' | 'd1_database' | 'player_client' | 'cookies_from_browser' | 'ytdlp' | 'ffmpeg', string>
 
 /** Every problem the form can see before sending, by field. */
 export function settingsProblems(f: Fields): Partial<Record<keyof Fields, string>> {
@@ -67,7 +67,7 @@ export function SettingsForm({ current }: { current: Settings }) {
   const queryClient = useQueryClient()
   const [f, setF] = useState<Fields>({
     cache_dir: current.cache_dir, cache_limit_gb: String(current.cache_limit_gb), half_life_days: String(current.half_life_days), protect_days: String(current.protect_days),
-    max_height: String(current.max_height), d1_database: current.d1_database, player_client: current.player_client, ytdlp: current.ytdlp, ffmpeg: current.ffmpeg,
+    max_height: String(current.max_height), d1_database: current.d1_database, player_client: current.player_client, cookies_from_browser: current.cookies_from_browser, ytdlp: current.ytdlp, ffmpeg: current.ffmpeg,
   })
   const [problems, setProblems] = useState<ReturnType<typeof settingsProblems>>({})
   const set = (k: keyof Fields) => (e: { target: { value: string } }) => setF(old => ({ ...old, [k]: e.target.value }))
@@ -75,7 +75,7 @@ export function SettingsForm({ current }: { current: Settings }) {
   const save = useAsyncAction(async () => {
     await api.saveSettings({
       cache_dir: f.cache_dir.trim(), cache_limit_gb: Number(f.cache_limit_gb), half_life_days: Number(f.half_life_days), protect_days: Number(f.protect_days),
-      max_height: Number(f.max_height), d1_database: f.d1_database.trim(), player_client: f.player_client.trim(), ytdlp: f.ytdlp.trim(), ffmpeg: f.ffmpeg.trim(),
+      max_height: Number(f.max_height), d1_database: f.d1_database.trim(), player_client: f.player_client.trim(), cookies_from_browser: f.cookies_from_browser.trim(), ytdlp: f.ytdlp.trim(), ffmpeg: f.ffmpeg.trim(),
     })
     await Promise.all([keys.settings, keys.system, keys.cache].map(queryKey => queryClient.invalidateQueries({ queryKey })))
   }, { describeError })
@@ -112,8 +112,11 @@ export function SettingsForm({ current }: { current: Settings }) {
             {heights.map(h => <option key={h} value={String(h)}>{h}p</option>)}
           </NativeSelect>
         </Field>
-        <Field label="yt-dlp player client" hint="Which YouTube client yt-dlp asks as. Leave as visionos unless downloads stop starting; empty lets yt-dlp choose.">
+        <Field label="yt-dlp player client" hint="Which YouTube client yt-dlp asks as. visionos is fastest signed out; signed in, it is replaced by tv_downgraded. Empty lets yt-dlp choose.">
           <Input value={f.player_client} onChange={set('player_client')} autoComplete="off" spellCheck={false} />
+        </Field>
+        <Field label="Signed-in browser" hint="A browser on this server signed in to YouTube, such as chrome+gnomekeyring. A Premium account has no ad waits, so videos start sooner. Empty fetches signed out.">
+          <Input value={f.cookies_from_browser} onChange={set('cookies_from_browser')} autoComplete="off" spellCheck={false} />
         </Field>
         <Field label="yt-dlp" hint="The command, or its full path." error={problems.ytdlp}>
           <Input value={f.ytdlp} onChange={set('ytdlp')} autoComplete="off" spellCheck={false} />

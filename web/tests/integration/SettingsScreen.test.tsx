@@ -19,9 +19,10 @@ describe('Settings', () => {
     await user.clear(screen.getByRole('textbox', { name: 'D1 database id' }))
     await user.type(screen.getByRole('textbox', { name: 'D1 database id' }), ' abc ')
     await user.clear(screen.getByRole('textbox', { name: 'yt-dlp player client' }))
+    await user.type(screen.getByRole('textbox', { name: 'Signed-in browser' }), ' chrome+gnomekeyring ')
     await user.click(screen.getByRole('button', { name: 'Save settings' }))
     expect(await screen.findByText('Saved', { selector: '[role=status]' })).toBeInTheDocument()
-    expect(mock.settings).toMatchObject({ cache_limit_gb: 800, max_height: 2160, protect_days: 0, d1_database: 'abc', player_client: '' })
+    expect(mock.settings).toMatchObject({ cache_limit_gb: 800, max_height: 2160, protect_days: 0, d1_database: 'abc', player_client: '', cookies_from_browser: 'chrome+gnomekeyring' })
   })
 
   it('says under each field what is wrong, and saves nothing', async () => {

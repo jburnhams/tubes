@@ -15,6 +15,25 @@ def test_base_command_uses_the_player_client_setting():
     assert ytdlp.base_command() == ['/opt/bin/yt-dlp', '--no-warnings', '--no-progress', '--ignore-config']
 
 
+def test_signed_in_reads_the_browser_and_swaps_visionos_for_a_client_that_takes_cookies():
+    assert not ytdlp.signed_in_available()
+    settings.save(dict(cookies_from_browser='chrome+gnomekeyring'))
+    assert ytdlp.signed_in_available() and ytdlp.base_command()[-1] == 'youtube:player_client=visionos'          # signed out still asks as visionos
+    assert ytdlp.base_command(True)[4:] == ['--cookies-from-browser', 'chrome+gnomekeyring', '--extractor-args', 'youtube:player_client=tv_downgraded']
+    settings.save(dict(player_client='mweb'))
+    assert ytdlp.base_command(True)[-1] == 'youtube:player_client=mweb'
+    settings.save(dict(player_client=''))
+    assert ytdlp.base_command(True)[4:] == ['--cookies-from-browser', 'chrome+gnomekeyring']
+
+
+def test_ad_wait_reads_available_at_against_the_probe_time():
+    v, a = dict(available_at=110), dict(available_at=104)
+    assert ytdlp.ad_wait(dict(epoch=100), v, a) == 10
+    assert ytdlp.ad_wait(dict(epoch=100), dict(available_at=98), a) == 4
+    assert ytdlp.ad_wait(dict(epoch=120), v, a) == 0
+    assert ytdlp.ad_wait(dict(epoch=100), v, dict()) is None and ytdlp.ad_wait(dict(), v, a) is None and ytdlp.ad_wait(dict(epoch=1)) is None
+
+
 def test_run_json_failures(fake_run, monkeypatch):
     fake_run.returns['--dump-single-json'] = 'not json'
     with pytest.raises(ytdlp.YtdlpError, match='did not return JSON'): ytdlp.probe('https://x.test/v')

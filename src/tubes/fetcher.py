@@ -17,6 +17,7 @@ usable streams (YouTube's SABR-only answer), so a probe whose streams cannot be 
 Fetches run in background threads of the server process, one per video, at most `MAX_RUNNING` at a time; a play of a video already being fetched
 joins it. The pipes need file descriptors passed by number, which Windows lacks, so fetching runs on Linux and macOS only (oslib.CAN_PASS_FDS)."""
 import json, os, subprocess, threading, time
+from concurrent.futures import ThreadPoolExecutor
 
 from tubes import cache, oslib, settings, ytdlp
 
@@ -52,15 +53,38 @@ def hls_command(out_name=cache.PLAYLIST, video_fd=3, audio_fd=4):
             '-hls_flags', 'independent_segments+temp_file', '-hls_fmp4_init_filename', 'init.mp4', '-hls_segment_filename', 'seg_%05d.m4s', out_name]
 
 
-def stream_command(fmt_id, info_path):
-    return ytdlp.base_command() + ['--no-part', '-f', str(fmt_id), '--load-info-json', info_path, '-o', '-']
+def stream_command(fmt_id, info_path, signed_in=False):
+    return ytdlp.base_command(signed_in) + ['--no-part', '-f', str(fmt_id), '--load-info-json', info_path, '-o', '-']
+
+
+def choose_once(url, signed_in=False):
+    """One probe and its streams: (info, video format, audio format, signed_in)."""
+    info = ytdlp.probe(url, signed_in)
+    return (info, *ytdlp.choose_formats(info.get('formats') or [], settings.get('max_height')), signed_in)
+
+
+def choose_both(url):
+    """With a signed-in browser set: probe signed out (the fast `visionos` client) and signed in at once. The signed-out answer wins when its
+    streams have no ad wait (visionos played; about 1.3 s sooner); else the signed-in one; else, when the session cannot be read (browser
+    signed out, keyring locked), the signed-out one with its wait. Running both costs neither any time (measured)."""
+    pool = ThreadPoolExecutor(2)
+    try:
+        out, inn = pool.submit(choose_once, url, False), pool.submit(choose_once, url, True)
+        try:
+            fast = out.result()
+            if ytdlp.ad_wait(fast[0], fast[1], fast[2]) == 0: return fast
+        except ytdlp.YtdlpError: fast = None
+        try: return inn.result()
+        except ytdlp.YtdlpError:
+            if fast: return fast
+            raise
+    finally: pool.shutdown(wait=False)        # a probe that lost is left to finish on its own
 
 
 def choose(url):
-    """Probe the video and choose its streams: (info, video format, audio format). A probe without usable streams is tried once more."""
+    """Probe the video and choose its streams: (info, video format, audio format, signed_in). A probe without usable streams is tried once more."""
     for attempt in (1, 2):
-        info = ytdlp.probe(url)
-        try: return (info, *ytdlp.choose_formats(info.get('formats') or [], settings.get('max_height')))
+        try: return choose_both(url) if ytdlp.signed_in_available() else choose_once(url)
         except ytdlp.YtdlpError:
             if attempt == 2: raise
 
@@ -99,12 +123,12 @@ def _run(job, url):
     """Probe, choose the streams, run the pipeline, record the result, then trim the cache. Never raises: a failure is recorded on the video's copy."""
     error = None
     try:
-        info, video, audio = choose(url)
+        info, video, audio, signed_in = choose(url)
         cache.set_formats(job.video_id, ytdlp.describe(video, audio))
         if job.cancelled: return                     # deleted while probing: start nothing (finally records it as stopped)
         info_path = os.path.join(cache.folder(job.video_id), INFO)
         with open(info_path, 'w', encoding='utf8') as f: json.dump(info, f)
-        error = pipeline(job, info_path, video['format_id'], audio['format_id'], info.get('duration'))
+        error = pipeline(job, info_path, video['format_id'], audio['format_id'], info.get('duration'), signed_in)
     except ytdlp.YtdlpError as e: error = str(e)
     except OSError as e: error = f'Could not start the fetch: {e}'
     finally:
@@ -116,7 +140,7 @@ def _run(job, url):
     if not error: cache.evict(cache.utcnow())
 
 
-def pipeline(job, info_path, video_fmt, audio_fmt, duration=None):
+def pipeline(job, info_path, video_fmt, audio_fmt, duration=None, signed_in=False):
     """Run yt-dlp x2 into ffmpeg until all three end; returns None when the playlist is complete, else the reason it is not."""
     out = cache.folder(job.video_id)
     rv, wv = os.pipe(); ra, wa = os.pipe()
@@ -124,8 +148,8 @@ def pipeline(job, info_path, video_fmt, audio_fmt, duration=None):
         try:
             ff = subprocess.Popen(hls_command(video_fd=rv, audio_fd=ra), cwd=out, pass_fds=(rv, ra), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=log)
             job.procs.append(ff)
-            job.procs.append(subprocess.Popen(stream_command(video_fmt, info_path), stdin=subprocess.DEVNULL, stdout=wv, stderr=log))
-            job.procs.append(subprocess.Popen(stream_command(audio_fmt, info_path), stdin=subprocess.DEVNULL, stdout=wa, stderr=log))
+            job.procs.append(subprocess.Popen(stream_command(video_fmt, info_path, signed_in), stdin=subprocess.DEVNULL, stdout=wv, stderr=log))
+            job.procs.append(subprocess.Popen(stream_command(audio_fmt, info_path, signed_in), stdin=subprocess.DEVNULL, stdout=wa, stderr=log))
         except OSError:
             job.stop(); raise
         finally:

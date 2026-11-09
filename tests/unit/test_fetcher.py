@@ -1,6 +1,6 @@
 import json, os, subprocess, threading
 import pytest
-from tubes import cache, fetcher, oslib, ytdlp
+from tubes import cache, fetcher, oslib, settings, ytdlp
 from library import seed
 from test_cache import write_playlist
 
@@ -40,9 +40,9 @@ def test_start_joins_a_running_fetch_and_returns_a_ready_copy(monkeypatch):
 
 def test_a_fetch_in_the_background_succeeds_and_trims_the_cache(monkeypatch):
     seed()
-    monkeypatch.setattr(ytdlp, 'probe', lambda url: INFO)
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: INFO)
     seen = []; gate = threading.Event()   # holds the fetch until the first answer is checked, which would otherwise race it
-    def fake_pipeline(job, info_path, v, a, duration):
+    def fake_pipeline(job, info_path, v, a, duration, signed_in):
         gate.wait(10)
         with open(info_path, encoding='utf8') as f: seen.append((json.load(f), v, a, duration))
         write_playlist(job.video_id, 2, True); return None
@@ -60,9 +60,9 @@ def test_a_fetch_in_the_background_succeeds_and_trims_the_cache(monkeypatch):
 
 def test_a_probe_without_usable_streams_is_tried_once_more(monkeypatch):
     answers = [dict(formats=[dict(format_id='96', vcodec='avc1', acodec='mp4a', height=1080, protocol='m3u8_native')]), INFO]   # SABR-only, then a normal answer
-    monkeypatch.setattr(ytdlp, 'probe', lambda url: answers.pop(0))
-    info, video, audio = fetcher.choose('https://u')
-    assert info is INFO and (video['format_id'], audio['format_id']) == ('399', '140') and answers == []
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: answers.pop(0))
+    info, video, audio, signed_in = fetcher.choose('https://u')
+    assert not signed_in and info is INFO and (video['format_id'], audio['format_id']) == ('399', '140') and answers == []
 
 
 @pytest.mark.parametrize('probe, pipeline_result, error', [
@@ -73,7 +73,7 @@ def test_a_probe_without_usable_streams_is_tried_once_more(monkeypatch):
 ])
 def test_failures_are_recorded_on_the_copy(monkeypatch, probe, pipeline_result, error):
     seed()
-    def fake_probe(url):
+    def fake_probe(url, signed_in=False):
         if isinstance(probe, Exception): raise probe
         return probe
     def fake_pipeline(*a):
@@ -87,7 +87,7 @@ def test_failures_are_recorded_on_the_copy(monkeypatch, probe, pipeline_result, 
 
 def test_a_cancelled_fetch_is_recorded_as_stopped(monkeypatch):
     seed()
-    monkeypatch.setattr(ytdlp, 'probe', lambda url: INFO)
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: INFO)
     def fake_pipeline(job, *a):
         job.cancelled = True; return None
     monkeypatch.setattr(fetcher, 'pipeline', fake_pipeline)
@@ -191,7 +191,7 @@ def test_ffmpeg_version(fake_run, monkeypatch):
 
 def test_a_copy_deleted_while_probing_starts_no_download(monkeypatch):
     seed()
-    def probe(url):
+    def probe(url, signed_in=False):
         fetcher._running['aaaaaaaaaaa'].stop(); return INFO                                 # the delete arrives while yt-dlp is still probing
     monkeypatch.setattr(ytdlp, 'probe', probe)
     monkeypatch.setattr(fetcher, 'pipeline', lambda *a: pytest.fail('no download starts after a stop'))
@@ -220,7 +220,50 @@ def test_a_ready_copy_whose_files_are_gone_is_fetched_again(monkeypatch, tmp_pat
     seed()
     cache.begin('aaaaaaaaaaa', cache.stamp()); write_playlist('aaaaaaaaaaa', 2, True); cache.finish('aaaaaaaaaaa', cache.stamp())
     monkeypatch.setenv('TUBES_CACHE', str(tmp_path / 'moved'))                                # the cache folder changed in Settings
-    monkeypatch.setattr(ytdlp, 'probe', lambda url: INFO)
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: INFO)
     ran = []; monkeypatch.setattr(fetcher, 'pipeline', lambda job, *a: ran.append(job.video_id) or write_playlist(job.video_id, 2, True))
     monkeypatch.setattr(cache, 'evict', lambda now: None)
     assert fetcher.start('aaaaaaaaaaa', background=False)['complete'] is True and ran == ['aaaaaaaaaaa']
+
+
+def chosen_ids(result): return (result[1]['format_id'], result[2]['format_id'], result[3])
+
+
+def test_signed_out_wins_when_its_streams_have_no_ad_wait(monkeypatch):
+    settings.save(dict(cookies_from_browser='chrome'))
+    asked_signed_in = threading.Event()        # the losing probe runs on its own thread and may start after the winner returns
+    def probe(url, signed_in=False):
+        if signed_in: asked_signed_in.set()
+        return dict(INFO, epoch=100, formats=[dict(f, available_at=100) for f in INFO['formats']])
+    monkeypatch.setattr(ytdlp, 'probe', probe)
+    assert chosen_ids(fetcher.choose('https://u')) == ('399', '140', False) and asked_signed_in.wait(5)
+
+
+def test_signed_in_wins_over_an_ad_wait_and_signed_out_is_the_fallback(monkeypatch):
+    settings.save(dict(cookies_from_browser='chrome'))
+    waiting = dict(INFO, epoch=100, formats=[dict(f, available_at=109) for f in INFO['formats']])
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: INFO if signed_in else waiting)
+    assert chosen_ids(fetcher.choose('https://u')) == ('399', '140', True)
+    def locked(url, signed_in=False):
+        if signed_in: raise ytdlp.YtdlpError('Environment variable DBUS_SESSION_BUS_ADDRESS is unset')
+        return waiting
+    monkeypatch.setattr(ytdlp, 'probe', locked)
+    result = fetcher.choose('https://u')
+    assert chosen_ids(result) == ('399', '140', False) and ytdlp.ad_wait(result[0], result[1], result[2]) == 9
+
+
+def test_signed_in_alone_when_signed_out_fails_and_both_failing_is_an_error(monkeypatch):
+    settings.save(dict(cookies_from_browser='chrome'))
+    def only_in(url, signed_in=False):
+        if not signed_in: raise ytdlp.YtdlpError('UNPLAYABLE')
+        return INFO
+    monkeypatch.setattr(ytdlp, 'probe', only_in)
+    assert chosen_ids(fetcher.choose('https://u')) == ('399', '140', True)
+    def neither(url, signed_in=False): raise ytdlp.YtdlpError('cookies' if signed_in else 'UNPLAYABLE')
+    monkeypatch.setattr(ytdlp, 'probe', neither)
+    with pytest.raises(ytdlp.YtdlpError, match='cookies'): fetcher.choose('https://u')
+
+
+def test_signed_in_downloads_read_the_browser_too():
+    settings.save(dict(cookies_from_browser='chrome'))
+    assert '--cookies-from-browser' in fetcher.stream_command('399', '/p.json', True) and '--cookies-from-browser' not in fetcher.stream_command('399', '/p.json')
