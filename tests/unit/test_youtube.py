@@ -75,3 +75,13 @@ def test_the_three_calls_against_the_stand_in(fake_youtube):
     assert len(got) == 60 and fake_youtube.count('videos') == 2
     fake_youtube.referer = 'https://site.test/'
     with pytest.raises(youtube.YoutubeError, match='403'): youtube.channel('channel', 'UCaaaaaaaaaaaaaaaaaaaaaa')
+
+
+def test_channels_and_lookup_rows(fake_youtube):
+    ids = [f'UC{n:022d}' for n in range(60)]
+    for i in ids[:55]: fake_youtube.channel(i, f'Channel {i[-2:]}', topics=['Music', 'Pop_music'], kids=i.endswith('1'))
+    found = youtube.channels(ids)
+    assert len(found) == 55 and [p['part'] for e, p in fake_youtube.calls] == [youtube.LOOKUP_PARTS] * 2
+    r = youtube.lookup_row(found[1])
+    assert r == dict(channel_id=ids[1], title='Channel 01', handle=None, thumbnail=f'https://img.test/{ids[1]}/l.jpg', subscribers=50, total_videos=0, topics='Music|Pop music', made_for_kids=True)
+    assert youtube.lookup_row(dict(id='UCx'))['topics'] is None and youtube.lookup_row(dict(id='UCx'))['made_for_kids'] is None
