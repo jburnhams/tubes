@@ -25,7 +25,7 @@ jobs:
             python-version: '3.13'
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -37,7 +37,7 @@ jobs:
         run: pytest tests/unit --cov --cov-report=term --cov-report=xml
       - name: Upload coverage
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-coverage
           path: coverage.xml
@@ -57,7 +57,7 @@ jobs:
       OMARCHY_DB_TEST_ADMIN_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.13'
           cache: pip
@@ -73,7 +73,7 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 26.x
           cache: npm
@@ -97,7 +97,7 @@ jobs:
         working-directory: web
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 26.x
           cache: npm
@@ -110,7 +110,7 @@ jobs:
       - run: npm run test:visual
       - name: Upload screenshots that differ
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: visual-diffs
           path: web/tests/visual/output/
