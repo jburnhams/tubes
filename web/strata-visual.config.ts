@@ -46,6 +46,20 @@ export default defineVisualConfig({
           },
         },
       },
+      { name: 'admin-history', path: '/admin/history' },
+      {
+        name: 'admin-suggestions',
+        path: '/admin/suggestions',
+        states: {
+          ready: [],
+          dismissed: {
+            setup: async page => {
+              await page.getByRole('button', { name: 'Dismiss Garden Birds' }).click()
+              await page.getByRole('button', { name: 'Undo' }).waitFor()
+            },
+          },
+        },
+      },
       {
         name: 'admin-library',
         path: '/admin/library',

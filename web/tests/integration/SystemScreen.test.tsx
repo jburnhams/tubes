@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { createQueryClient } from 'strata-react'
 import { keys } from '../../src/api'
 import { systemStatus } from '../../src/mocks/fixtures'
@@ -57,6 +57,8 @@ describe('System', () => {
 
 describe('System, when a poll fails after a good one', () => {
   it('keeps the last readings and says how old they are', async () => {
+    vi.useFakeTimers({ now: Date.UTC(2026, 10, 9, 9, 0), shouldAdvanceTime: true })     // the notice gives the time alone on the same day: pin the day
+    onTestFinished(() => { vi.useRealTimers() })
     const client = createQueryClient({ defaultOptions: { queries: { retry: false } } })
     client.setQueryData(keys.system, systemStatus, { updatedAt: Date.UTC(2026, 10, 9, 8, 50) })
     server.use(systemError)

@@ -1,5 +1,5 @@
 """The YouTube Data API v3, as the catalogue (catalogue.py) uses it: channels by id or handle, a channel's uploads playlist a page at a
-time, and videos' details in batches of 50. Ported from the storage service's Worker (src/services/youtube.ts), which managed the library
+time, videos' details in batches of 50, and channels' topics for suggestions (history.py). Ported from the storage service's Worker (src/services/youtube.ts), which managed the library
 before Tubes did.
 
 The key is the environment's `YOUTUBE_API_KEY`, never the settings file. A key can be restricted to HTTP referrers in Google's console;
@@ -14,6 +14,7 @@ API = 'https://www.googleapis.com/youtube/v3'
 TIMEOUT = 30
 VIDEO_PARTS = 'snippet,contentDetails,statistics'
 CHANNEL_PARTS = 'snippet,statistics,contentDetails'
+LOOKUP_PARTS = 'snippet,statistics,status,topicDetails'                         # what a suggestion shows of a channel (history.py)
 VIDEO_ID = re.compile(r'^[A-Za-z0-9_-]{11}$')
 CHANNEL_ID = re.compile(r'^UC[A-Za-z0-9_-]{22}$')
 DURATION = re.compile(r'^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$')
@@ -114,6 +115,28 @@ def channel(kind, value):
     """The channel resource for an id or a handle, or None when YouTube has no such channel."""
     items = call('channels', part=CHANNEL_PARTS, **({'id': value} if kind == 'channel' else {'forHandle': value})).get('items') or []
     return items[0] if items else None
+
+
+def channels(ids, parts=LOOKUP_PARTS):
+    """The channel resources for these ids (by default with their topics and audience, for suggestions), 50 per call; YouTube leaves out any it no longer has."""
+    ids, out = list(ids), []
+    for i in range(0, len(ids), 50): out += call('channels', part=parts, id=','.join(ids[i:i + 50]), maxResults=50).get('items') or []
+    return out
+
+
+def topic_name(url):
+    """A topic's name from the Wikipedia link YouTube gives for it: `.../wiki/Lifestyle_(sociology)` is `Lifestyle`."""
+    name = urllib.parse.unquote((url or '').rstrip('/').rsplit('/', 1)[-1]).replace('_', ' ')
+    return re.sub(r'\s*\([^)]*\)$', '', name).strip() or None
+
+
+def lookup_row(item):
+    """What a suggestion keeps of a channel resource (see `channels`)."""
+    sn, st = item.get('snippet') or {}, item.get('statistics') or {}
+    topics = sorted({t for t in (topic_name(u) for u in (item.get('topicDetails') or {}).get('topicCategories') or []) if t})
+    return dict(channel_id=item['id'], title=sn.get('title') or item['id'], handle=sn.get('customUrl') or None, thumbnail=best_thumbnail(sn.get('thumbnails')),
+                subscribers=None if st.get('hiddenSubscriberCount') else _int(st.get('subscriberCount')), total_videos=_int(st.get('videoCount')),
+                topics='|'.join(topics) or None, made_for_kids=(item.get('status') or {}).get('madeForKids'))
 
 
 def videos(ids):
