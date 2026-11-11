@@ -28,7 +28,7 @@
     "@fontsource-variable/source-sans-3": "^5.3.1",
     "@tanstack/react-query": "^5.107.1",
     "hls.js": "^1.7.4",
-    "lucide-react": "^0.500.0",
+    "lucide-react": "^1.70.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router": "^8.5.1",
