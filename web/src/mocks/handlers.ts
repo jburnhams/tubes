@@ -83,6 +83,7 @@ export function suggestionSummary(): SuggestionSummary {
 
 /** A sync as the server starts one: running, over these channels (every followed one by default). */
 function startSync(ids?: string[] | null): SyncJob {
+  if (mock.job.running && ids) return (mock.job = { ...mock.job, total: mock.job.total + ids.length })    // the running sync takes them next
   const todo = ids ?? mock.channels.filter(c => c.follow !== false).map(c => c.id)
   mock.job = { ...syncJobs.idle, running: true, total: todo.length, current: mock.channels.find(c => c.id === todo[0])?.title ?? null, started: '2026-11-09T12:00:00+00:00' }
   return mock.job

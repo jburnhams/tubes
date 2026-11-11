@@ -169,6 +169,8 @@ def test_job_runs_in_the_background_and_reports(fake_youtube, monkeypatch):
     assert (s['running'], s['done'], s['total'], s['added'], s['errors'], s['current']) == (False, 2, 2, 61, [], None) and s['finished']
     job.start([A]); job.wait(30)
     assert job.state()['total'] == 1 and job.state()['added'] == 0
+    assert job.follow_up([B])['total'] == 1; job.wait(30)                                   # nothing running: it starts one
+    assert job.state()['done'] == 1
 
     def broken(*a, **kw): raise RuntimeError('database gone')
     monkeypatch.setattr(catalogue, 'sync', broken)

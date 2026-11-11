@@ -19,7 +19,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import { ActiveList, AsyncButton, DataView, EmptyState, Field, Input, KeysLegend, NativeSelect, PageHeader, RowAction, Skeleton, Status, Tabs, Thumbnail, UndoBar, format, useActiveItem, useAsyncAction, useHotkeys, useLoad, useUndoable, type Shortcut } from 'strata-react'
-import { api, describeError, keys, type Suggestion, type SuggestionFilter, type SuggestionGroup, type SuggestionSummary } from '../api'
+import { api, describeError, keys, withBase, type Suggestion, type SuggestionFilter, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Added } from '../api'
 
 const views = [
   { value: 'open', label: 'To consider' },
@@ -48,6 +48,11 @@ export function describeWatched(x: Suggestion): string {
 /** Where a suggestion sits: its group's name and YouTube's topics for it, or '' for neither. */
 export function placeOf(x: Suggestion, groups: Map<number, string>): string {
   return [x.group_id === null ? undefined : groups.get(x.group_id), x.topics.join(', ')].filter(Boolean).join(' · ')
+}
+
+/** What following said: its videos come at once, or after the channels the running sync has already (it takes this one next). */
+export function describeFollowed(title: string, sync: SyncJob): string {
+  return sync.total > 1 ? `Following ${title}. Its videos are fetched after the ${format.count(sync.total - 1, 'channel')} the running sync has first.` : `Following ${title}. Its videos are being fetched.`
 }
 
 /** What the group select offers: each group with how many channels it holds, then the ungrouped. */
@@ -182,8 +187,8 @@ function Answers({ items, total, dismissedView, summary }: { items: Suggestion[]
 
   const reread = async () => { for (const queryKey of [keys.suggestions, keys.channels, keys.library, keys.videos]) await queryClient.invalidateQueries({ queryKey }) }
   const follow = useAsyncAction(async (x: Suggestion) => {
-    await api.add(x.channel_id)
-    setSaid(`Following ${x.title}. Its videos are being fetched.`)
+    const r = await api.add(x.channel_id)
+    setSaid(describeFollowed(x.title, (r as Extract<Added, { kind: 'channel' }>).sync))     // a channel's id adds the channel
     await reread()
   }, { describeError })
   const addWatched = useAsyncAction(async (x: Suggestion) => {
@@ -232,7 +237,7 @@ function Answers({ items, total, dismissedView, summary }: { items: Suggestion[]
             <div className="flex min-w-0 flex-1 items-start gap-3">
             <Thumbnail src={s.thumbnail} alt="" missing="None" className="w-12 shrink-0 rounded-full" />
             <div className="grid min-w-0 flex-1 gap-1">
-              <a href={`https://www.youtube.com/channel/${encodeURIComponent(s.channel_id)}`} target="_blank" rel="noreferrer" className="truncate type-body font-medium hover:underline">{s.title}</a>
+              <a href={withBase(`https://www.youtube.com/channel/${encodeURIComponent(s.channel_id)}`)} target="_blank" rel="noreferrer" className="truncate type-body font-medium hover:underline">{s.title}</a>
               <p className="type-body-sm text-muted-foreground tabular-nums">{describeWatched(s)}</p>
               <p className="flex flex-wrap items-center gap-2 type-caption text-muted-foreground">
                 {placeOf(s, groups) && <span>{placeOf(s, groups)}</span>}

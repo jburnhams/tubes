@@ -82,7 +82,9 @@ describe('Suggestions', () => {
     expect(await screen.findByText('Following Bike Repairs. Its videos are being fetched.')).toBeInTheDocument()
     await waitFor(() => expect(titles()[0]).toBe('Puppet Theatre'))
     expect(mock.followed).toEqual(['UCsuggest000000000000001'])
-    expect(await screen.findByText(/So far 1 followed and 1 dismissed\.$/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Follow Puppet Theatre' }))       // the first one's sync still runs: this one is taken next
+    expect(await screen.findByText(/^Following Puppet Theatre\. Its videos are fetched after the 1\schannel the running sync has first\.$/)).toBeInTheDocument()
+    expect(await screen.findByText(/So far 2 followed and 1 dismissed\.$/)).toBeInTheDocument()
   })
 
   it('adds only the watched videos, and says how many', async () => {

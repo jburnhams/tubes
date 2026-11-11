@@ -9,7 +9,7 @@ API (JSON):
   GET  /api/system                         versions (app, Python, yt-dlp, ffmpeg), folders, disk, cache use, the library copy's state
   GET  /api/settings, PUT /api/settings    every setting (settings.py); PUT takes any subset, a null resets one
   GET  /api/library                       {synced, channels, videos, configured}: when every followed channel was last synced, and whether the YouTube key is set
-  POST /api/library {input}                add a channel (followed; its sync starts at once) or one video from a link, id or @handle: {kind, channel|video, sync}
+  POST /api/library {input}                add a channel (followed; its sync starts at once, or after the running sync's channels) or one video from a link, id or @handle: {kind, channel|video, sync}
   GET  /api/library/sync                   the background sync: {running, total, done, current, added, errors, started, finished}
   POST /api/library/sync {channels}        start one for these channel ids (default: every followed channel); 409 while one runs
   GET  /api/channels, GET /api/channels/{id}   channels with their video counts and sync state
@@ -135,8 +135,7 @@ def create_app():
     def post_library(b: AddIn):
         r = guard(catalogue.add, b.input)
         if r['kind'] == 'channel':                                   # a new channel's videos arrive at once, as when storage's Sync was pressed after adding it
-            try: r['sync'] = job.start([r['channel']['id']])
-            except catalogue.Job.Busy: r['sync'] = job.state()      # it waits for the next sync; the page says one is running
+            r['sync'] = job.follow_up([r['channel']['id']])          # after the running sync's own channels, if one runs
         return r
 
     @app.get('/api/library/sync')
@@ -154,9 +153,7 @@ def create_app():
     def post_restart(channel_id: str):
         r = guard(catalogue.restart, channel_id)
         if not youtube.configured(): return dict(r, sync=job.state())
-        try: r['sync'] = job.start([channel_id])
-        except catalogue.Job.Busy: r['sync'] = job.state()
-        return r
+        r['sync'] = job.follow_up([channel_id]); return r
 
     @app.get('/api/channels')
     def get_channels(): return library.channels()

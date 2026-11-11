@@ -9,7 +9,7 @@
 // from a history database on the server.
 import { Link, useSearchParams } from 'react-router'
 import { DataTable, DataView, EmptyState, Field, LineChart, NativeSelect, PageHeader, Skeleton, Status, TableSkeleton, format, useLoad, type Column } from 'strata-react'
-import { api, keys, type HistoryFilter, type HistorySource, type HistoryStats } from '../api'
+import { api, keys, withBase, type HistoryFilter, type HistorySource, type HistoryStats } from '../api'
 
 type TopChannel = HistoryStats['channels_top'][number]
 type TopVideo = HistoryStats['videos_top'][number]
@@ -109,7 +109,7 @@ function Watched({ h }: { h: HistoryStats }) {
     { key: 'title', header: 'Channel', truncate: true, cell: c => (
       <span className="flex min-w-0 items-center gap-2">
         {c.followed ? <Link to={`/channels/${encodeURIComponent(c.channel_id)}`} className="truncate hover:underline">{channelName(c)}</Link>
-          : <a href={`https://www.youtube.com/channel/${encodeURIComponent(c.channel_id)}`} target="_blank" rel="noreferrer" className="truncate hover:underline">{channelName(c)}</a>}
+          : <a href={withBase(`https://www.youtube.com/channel/${encodeURIComponent(c.channel_id)}`)} target="_blank" rel="noreferrer" className="truncate hover:underline">{channelName(c)}</a>}
         {c.followed && <Status tone="success">Followed</Status>}
       </span>
     ) },
@@ -120,7 +120,7 @@ function Watched({ h }: { h: HistoryStats }) {
   const videos: Column<TopVideo>[] = [
     { key: 'title', header: 'Video', truncate: true, cell: v => (
       <span className="flex min-w-0 flex-col">
-        <a href={`https://www.youtube.com/watch?v=${encodeURIComponent(v.video_id)}`} target="_blank" rel="noreferrer" className="truncate hover:underline">{v.title ?? 'A video no longer on YouTube'}</a>
+        <a href={withBase(`https://www.youtube.com/watch?v=${encodeURIComponent(v.video_id)}`)} target="_blank" rel="noreferrer" className="truncate hover:underline">{v.title ?? 'A video no longer on YouTube'}</a>
         {v.channel && <span className="truncate type-caption text-muted-foreground">{v.channel}</span>}
       </span>
     ) },

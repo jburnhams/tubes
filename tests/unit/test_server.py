@@ -85,13 +85,14 @@ def test_manage_the_library(client, fake_youtube):
     r = client.post('/api/library', json=dict(input='https://www.youtube.com/@workshop')).json()
     assert r['kind'] == 'channel' and r['channel']['title'] == 'Workshop' and r['sync']['running'] is True and r['sync']['total'] == 1
     assert client.post('/api/library/sync', json=dict(channels=[A])).status_code == 409      # one at a time
-    r = client.post('/api/library', json=dict(input='UCbbbbbbbbbbbbbbbbbbbbbb')).json()     # added while the first runs: synced by the next one
-    assert r['sync']['running'] is True and r['sync']['total'] == 1
+    r = client.post('/api/library', json=dict(input='UCbbbbbbbbbbbbbbbbbbbbbb')).json()     # added while the first runs: the running sync takes it next
+    assert r['sync']['running'] is True and r['sync']['total'] == 2
+    assert client.post('/api/library', json=dict(input='UCbbbbbbbbbbbbbbbbbbbbbb')).json()['sync']['total'] == 2   # queued once
     fake_youtube.hold.set(); job.wait(30)
     s = client.get('/api/library/sync').json()
-    assert (s['running'], s['done'], s['added'], s['errors']) == (False, 1, 55, [])
+    assert (s['running'], s['done'], s['added'], s['errors']) == (False, 2, 57, [])
     assert client.post('/api/library/sync').json()['total'] == 2; job.wait(30)
-    assert client.get('/api/library/sync').json()['added'] == 2 and client.get('/api/library').json()['synced'] is not None
+    assert client.get('/api/library/sync').json()['added'] == 0 and client.get('/api/library').json()['synced'] is not None
     c = client.get(f'/api/channels/{A}').json()
     assert (c['videos'], c['complete'], c['follow'], c['total_videos']) == (55, True, True, 55)
     v = client.post('/api/library', json=dict(input='https://youtu.be/aaaa0000003')).json()
@@ -102,7 +103,7 @@ def test_manage_the_library(client, fake_youtube):
     fake_youtube.hold.clear()
     r = client.post(f'/api/channels/{A}/restart').json()
     assert r['videos'] == 55 and r['sync']['running'] is True
-    assert client.post(f'/api/channels/{A}/restart').json()['sync']['running'] is True       # one is running: the restart waits for the next
+    assert client.post(f'/api/channels/{A}/restart').json()['sync']['total'] == 2            # one is running: the restart follows it
     fake_youtube.hold.set(); job.wait(30)
     assert client.get(f'/api/channels/{A}').json()['videos'] == 55
     assert client.delete(f'/api/channels/{A}').json() == dict(channel=A, videos=55)
