@@ -91,3 +91,42 @@ def test_set_and_serve(capsys, monkeypatch):
     monkeypatch.setattr(server_app, 'main', lambda argv: called.append(argv))
     assert cli.main(['serve', '--host', '0.0.0.0', '--port', '9000']) == 0
     assert called == [['--host', '0.0.0.0', '--port', '9000']]
+
+
+def test_history_import_list_refresh_and_remove(capsys, tmp_path, fake_youtube):
+    from takeout import as_html, as_json, chan, watch
+    ws = [watch(f'2026-0{1 + n % 3}-0{1 + n}T10:00:00Z', f'v{n:010d}', f'Video {n}', chan('a'), 'Channel a') for n in range(6)]
+    (tmp_path / 'a.json').write_text(as_json(ws), encoding='utf8'); (tmp_path / 'b.html').write_text(as_html(ws[:2]), encoding='utf8')
+    assert cli.main(['history']) == 0 and 'no history yet' in capsys.readouterr().out
+    fake_youtube.channel(chan('a'), 'Channel a')
+    assert cli.main(['history', 'import', str(tmp_path / 'a.json'), '--source', 'one']) == 0
+    out = capsys.readouterr().out
+    assert 'one: 6 watch(es) from 2026-01-01 to 2026-03-06' in out and '1 channel(s) in the history, 0 in 0 group(s); YouTube asked about 1 (0 no longer there)' in out
+    assert cli.main(['history', 'import', str(tmp_path / 'b.html'), '--source', 'two', '--no-lookup', '--json']) == 0 and json.loads(capsys.readouterr().out)['watches'] == 2
+    assert cli.main(['history']) == 0 and '  one                        6 watches       1 channels  2026-01-01 to 2026-03-06' in capsys.readouterr().out
+    assert cli.main(['history', '--json']) == 0 and [s['source'] for s in json.loads(capsys.readouterr().out)] == ['one', 'two']
+    fake_youtube.quota_left = 0
+    assert cli.main(['history', 'refresh']) == 0 and '1 channel(s) in the history' in capsys.readouterr().out
+    from tubes import history
+    err = history.refresh(now='2027-06-01T00:00:00+00:00')['error']
+    assert 'quota' in err and 'YouTube could not be asked' in cli.describe_refresh(dict(channels=1, groups=0, grouped=0, looked_up=0, missing=0, error=err))
+    assert cli.main(['history', 'remove', '--source', 'two']) == 0 and 'forgot two' in capsys.readouterr().out
+    with pytest.raises(SystemExit, match='no history called two'): cli.main(['history', 'remove', '--source', 'two'])
+    with pytest.raises(SystemExit, match='usage: tubes history remove'): cli.main(['history', 'remove'])
+    with pytest.raises(SystemExit, match='usage: tubes history import'): cli.main(['history', 'import', str(tmp_path / 'a.json')])
+    with pytest.raises(SystemExit, match='No such file'): cli.main(['history', 'import', str(tmp_path / 'none.json'), '--source', 'x'])
+    (tmp_path / 'c.txt').write_text('hello', encoding='utf8')
+    with pytest.raises(SystemExit, match='not a Google Takeout watch history'): cli.main(['history', 'import', str(tmp_path / 'c.txt'), '--source', 'x'])
+
+
+def test_history_sync_from_a_history_database(capsys, tmp_path, monkeypatch):
+    import sqlite3
+    path = tmp_path / 'kept.db'
+    with sqlite3.connect(path) as con:
+        con.execute('CREATE TABLE kept (account TEXT, at TEXT, video_id TEXT, title TEXT, channel_id TEXT, channel_name TEXT)')
+        con.execute("INSERT INTO kept VALUES ('main', '2026-01-01T10:00:00Z', 'v0000000001', 'One', 'UCaaaaaaaaaaaaaaaaaaaaaa', 'Channel a')")
+    with pytest.raises(SystemExit, match='No history database is set'): cli.main(['history', 'sync'])
+    assert cli.main(['set', 'history_url', f'sqlite:///{path}']) == 0 and cli.main(['set', 'history_table', 'kept']) == 0
+    capsys.readouterr()
+    assert cli.main(['history', 'sync', '--no-lookup']) == 0
+    assert capsys.readouterr().out == '  main: 1 watch(es)\n  1 channel(s) in the history, 0 in 0 group(s)\n'
