@@ -73,5 +73,13 @@ Export "YouTube and YouTube Music" from Google Takeout (history as JSON if offer
 ./tubes history refresh    # regroup and ask YouTube about channels not looked up for 30 days
 ```
 
+If another database already keeps the history (a table or view with the columns account, at, video_id, title, channel_id, channel_name), point Tubes at it instead and sync it with the library:
+
+```
+./tubes set history_url 'postgresql+psycopg:///<database>'
+./tubes set history_table '<schema>.<table>'
+./tubes history sync       # also worth adding to the sync timer: ./tubes sync; ./tubes history sync; ./tubes evict
+```
+
 A Takeout from a second account (a brand account included) is made after switching to it in Takeout; import it under another name. The import asks YouTube about every channel watched at least twice, 50 per quota unit.
 

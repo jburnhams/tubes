@@ -46,6 +46,7 @@ export default defineVisualConfig({
           },
         },
       },
+      { name: 'admin-history', path: '/admin/history' },
       {
         name: 'admin-suggestions',
         path: '/admin/suggestions',

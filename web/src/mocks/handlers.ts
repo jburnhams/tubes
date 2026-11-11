@@ -8,7 +8,7 @@
 // `states: { error: [videosError] }` in the visual config.
 import { delay, http, HttpResponse } from 'msw'
 import { cursorOf, paths, type CacheItem, type Channel, type HistorySource, type Settings, type Stream, type Suggestion, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Video, type VideoPage } from '../api'
-import { cacheItems, channels, defaultSettings, historySources, library, libraryNew, longChannel, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
+import { cacheItems, channels, defaultSettings, historyDays, historySources, historyStats, library, libraryNew, longChannel, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
 
 /** What the mock server holds. Writes change it, so a test can pin a copy and see it pinned. */
 export const mock = {
@@ -190,6 +190,15 @@ export const handlers = [
     mock.sources = [...mock.sources.filter(x => x.source !== b.source), { source: b.source, watches, channels: 1, first: '2026-01-01T10:00:00+00:00', last: '2026-02-01T10:00:00+00:00' }].sort((a, c) => a.source.localeCompare(c.source))
     return HttpResponse.json({ source: b.source, watches, first: '2026-01-01T10:00:00+00:00', last: '2026-02-01T10:00:00+00:00', refresh: { channels: 7, groups: 2, grouped: 5, looked_up: 0, missing: 0, error: null } })
   }),
+  // History: a start within the last 40 days answers by day; a source answers the same, smaller; a year before the history answers nothing.
+  http.get(at(paths.history), ({ request }) => {
+    const p = new URL(request.url).searchParams
+    const start = p.get('start'), end = p.get('end')
+    const base = end && end < '2019-06' ? { ...historyStats, watches: 0, videos: 0, channels: 0, periods: [], channels_top: [], videos_top: [], first: null, last: null }
+      : start && start >= '2026-09-30' ? historyDays : historyStats
+    const one = p.get('source') ? { watches: Math.round(base.watches / 2) } : {}
+    return HttpResponse.json({ ...base, ...one, sources: mock.sources })
+  }),
   http.get(at(paths.suggestions), ({ request }) => HttpResponse.json(suggestionPage(request.url, mock.suggestions))),
   http.put(at('/api/suggestions/groups/:id'), async ({ params, request }) => {
     const { name } = (await request.json()) as { name: string }
@@ -316,3 +325,8 @@ export const renameFails = http.put(at('/api/suggestions/groups/:id'), down)
 export const refreshQuota = http.post(at(paths.suggestionsRefresh), () => HttpResponse.json({ channels: 7, groups: 2, grouped: 5, looked_up: 0, missing: 0, error: 'YouTube refused the request (403: quota).', summary: suggestionSummary() }))
 /** More channels match than the server sends: the list says it shows the first ones. */
 export const suggestionsTruncated = http.get(at(paths.suggestions), ({ request }) => HttpResponse.json({ ...suggestionPage(request.url, mock.suggestions), total: 250 }))
+export const historyLoading = http.get(at(paths.history), () => delay('infinite'))
+export const historyError = http.get(at(paths.history), down)
+export const historyNone = http.get(at(paths.history), () => HttpResponse.json({ ...historyStats, watches: 0, videos: 0, channels: 0, periods: [], channels_top: [], videos_top: [], first: null, last: null, sources: [] }))
+/** One account only: no account choice. */
+export const historyOneAccount = http.get(at(paths.history), () => HttpResponse.json({ ...historyStats, sources: [historySources[0]] }))

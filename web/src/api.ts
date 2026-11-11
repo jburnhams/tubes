@@ -221,6 +221,8 @@ export interface SuggestionSummary {
   followed: number
   refreshed: string | null
   configured: boolean
+  /** A history database is set on the server: Regroup reads it again first. */
+  database?: boolean
 }
 
 /** What the list is filtered by; each lives in the page's URL. */
@@ -234,6 +236,31 @@ export function suggestionsUrl(f: SuggestionFilter): string {
   if (f.dismissed) q.set('dismissed', 'true')
   const s = q.toString()
   return s ? `${paths.suggestions}?${s}` : paths.suggestions
+}
+
+/** `GET /api/history`: what was watched in a timeframe. `periods` counts watches per `by` (a day, or a month for spans over 92 days). */
+export interface HistoryStats {
+  watches: number
+  videos: number
+  channels: number
+  first: string | null
+  last: string | null
+  by: 'day' | 'month'
+  periods: { period: string; watches: number }[]
+  channels_top: { channel_id: string; title: string | null; watches: number; videos: number; last: string; followed: boolean }[]
+  videos_top: { video_id: string; title: string | null; channel_id: string | null; channel: string | null; watches: number; last: string }[]
+  sources: HistorySource[]
+}
+
+export interface HistoryFilter { start?: string; end?: string; source?: string }
+
+export function historyUrl(f: HistoryFilter): string {
+  const q = new URLSearchParams()
+  if (f.start) q.set('start', f.start)
+  if (f.end) q.set('end', f.end)
+  if (f.source) q.set('source', f.source)
+  const s = q.toString()
+  return s ? `${paths.history}?${s}` : paths.history
 }
 
 export interface Refreshed { channels: number; groups: number; grouped: number; looked_up: number; missing: number; error: string | null }
@@ -284,6 +311,7 @@ export const paths = {
   cache: '/api/cache',
   cacheItem: (id: string) => `/api/cache/${encodeURIComponent(id)}`,
   evict: '/api/cache/evict',
+  history: '/api/history',
   suggestions: '/api/suggestions',
   suggestionsSummary: '/api/suggestions/summary',
   suggestionsRefresh: '/api/suggestions/refresh',
@@ -309,6 +337,7 @@ export const keys = {
   stream: (id: string) => ['stream', id],
   cache: ['cache'],
   suggestions: ['suggestions'],
+  history: (f: HistoryFilter) => ['suggestions', 'history', f.start ?? '', f.end ?? '', f.source ?? ''],
   suggestionList: (f: SuggestionFilter) => ['suggestions', 'list', f.group ?? '', f.topic ?? '', f.kids ?? '', f.dismissed ? 'dismissed' : 'open'],
   suggestionSummary: ['suggestions', 'summary'],
 } as const
@@ -358,6 +387,7 @@ export const api = {
   pin: (id: string, pinned: boolean) => fetchJson<unknown>(withBase(paths.cacheItem(id)), send('PUT', { pinned })),
   dropCopy: (id: string) => fetchJson<{ video_id: string; freed: number }>(withBase(paths.cacheItem(id)), { method: 'DELETE' }),
   evict: () => fetchJson<Evicted>(withBase(paths.evict), send('POST', { dry_run: false })),
+  history: (f: HistoryFilter) => fetchJson<HistoryStats>(withBase(historyUrl(f))),
   suggestions: (f: SuggestionFilter) => fetchJson<SuggestionPage>(withBase(suggestionsUrl(f))),
   suggestionSummary: () => fetchJson<SuggestionSummary>(withBase(paths.suggestionsSummary)),
   refreshSuggestions: () => callJson<Refreshed & { summary: SuggestionSummary }>(withBase(paths.suggestionsRefresh), { method: 'POST' }),

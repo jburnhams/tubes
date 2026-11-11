@@ -17,6 +17,7 @@ import { Layout } from './screens/Layout'
 import { CacheScreen } from './screens/CacheScreen'
 import { LibraryScreen } from './screens/LibraryScreen'
 import { SuggestionsScreen } from './screens/SuggestionsScreen'
+import { HistoryScreen } from './screens/HistoryScreen'
 import { SystemScreen } from './screens/SystemScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 
@@ -28,6 +29,7 @@ export const routes: RouteObject[] = [
       { index: true, element: <Navigate to="/admin/system" replace /> },
       { path: 'library', element: <LibraryScreen /> },
       { path: 'suggestions', element: <SuggestionsScreen /> },
+      { path: 'history', element: <HistoryScreen /> },
       { path: 'cache', element: <CacheScreen /> },
       { path: 'system', element: <SystemScreen /> },
       { path: 'settings', element: <SettingsScreen /> },

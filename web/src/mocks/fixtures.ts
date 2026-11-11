@@ -2,7 +2,7 @@
 // tests, every Storybook story and the visual suite's screenshots, so a screen looks the same in
 // each. Dates are fixed, so screenshots do not change from day to day. Pictures are flat SVG
 // tiles as data URLs, so nothing is fetched from outside.
-import type { CacheItem, CacheReport, Channel, HistorySource, LibraryStatus, Settings, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video } from '../api'
+import type { CacheItem, CacheReport, Channel, HistorySource, HistoryStats, LibraryStatus, Settings, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video } from '../api'
 
 export const GB = 1e9
 
@@ -173,3 +173,25 @@ export const suggestionGroups: SuggestionGroup[] = [
   { id: 1, name: 'Making and mending', named: true, channels: 3 },
   { id: 2, name: 'Puppet Theatre, Counting Songs', named: false, channels: 2 },
 ]
+
+/** What was watched, by month over a year (with one quiet month), the top channels (one followed) and videos. */
+export const historyStats: Omit<HistoryStats, 'sources'> = {
+  watches: 2_140, videos: 1_610, channels: 212, first: '2025-11-12T08:00:00+00:00', last: '2026-10-30T19:12:00+00:00', by: 'month',
+  periods: [['2025-11', 120], ['2025-12', 210], ['2026-01', 340], ['2026-02', 180], ['2026-04', 90], ['2026-05', 260], ['2026-06', 310], ['2026-07', 150], ['2026-08', 140], ['2026-09', 190], ['2026-10', 150]].map(([period, watches]) => ({ period: String(period), watches: Number(watches) })),
+  channels_top: [
+    { channel_id: 'UCsuggest000000000000002', title: 'Puppet Theatre', watches: 248, videos: 89, last: '2026-10-30T07:00:00+00:00', followed: false },
+    { channel_id: 'UCworkshop00000000000001', title: 'Workshop Notes', watches: 201, videos: 150, last: '2026-10-28T19:00:00+00:00', followed: true },
+    { channel_id: 'UCsuggest000000000000001', title: 'Bike Repairs', watches: 96, videos: 90, last: '2026-09-07T20:00:00+00:00', followed: false },
+  ],
+  videos_top: [
+    { video_id: 'pu000000001', title: 'The puppet who lost his hat', channel_id: 'UCsuggest000000000000002', channel: 'Puppet Theatre', watches: 14, last: '2026-10-30T07:00:00+00:00' },
+    { video_id: 'wo000000000', title: 'Building a bird box', channel_id: 'UCworkshop00000000000001', channel: 'Workshop Notes', watches: 9, last: '2026-10-20T19:00:00+00:00' },
+    { video_id: 'gone0000001', title: null, channel_id: null, channel: null, watches: 3, last: '2026-02-01T10:00:00+00:00' },
+  ],
+}
+
+/** The same over 30 days, by day. */
+export const historyDays: Omit<HistoryStats, 'sources'> = {
+  ...historyStats, watches: 64, videos: 50, channels: 12, by: 'day', first: '2026-10-11T08:00:00+00:00',
+  periods: Array.from({ length: 20 }, (_, i) => ({ period: `2026-10-${String(i + 11).padStart(2, '0')}`, watches: (i * 7) % 6 + (i % 4 === 0 ? 0 : 1) })).filter(p => p.watches > 0),
+}
