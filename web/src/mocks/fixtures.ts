@@ -2,7 +2,7 @@
 // tests, every Storybook story and the visual suite's screenshots, so a screen looks the same in
 // each. Dates are fixed, so screenshots do not change from day to day. Pictures are flat SVG
 // tiles as data URLs, so nothing is fetched from outside.
-import type { CacheItem, CacheReport, Channel, LibraryStatus, Settings, Stream, SyncJob, SystemStatus, Video } from '../api'
+import type { CacheItem, CacheReport, Channel, HistorySource, LibraryStatus, Settings, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video } from '../api'
 
 export const GB = 1e9
 
@@ -145,3 +145,31 @@ export const systemStatus: SystemStatus = {
 
 /** The same server with yt-dlp missing, nothing synced and its disk nearly full. */
 export const systemTrouble: SystemStatus = { ...systemStatus, ytdlp: null, can_fetch: false, library: libraryEmpty, fetching: [], disk: { total: 10_000 * GB, used: 9_700 * GB, free: 300 * GB } }
+
+/** The watch histories behind the suggestions: two, as from two accounts. */
+export const historySources: HistorySource[] = [
+  { source: 'home', watches: 4_210, channels: 380, first: '2019-03-02T18:00:00+00:00', last: '2026-10-30T19:12:00+00:00' },
+  { source: 'work', watches: 1_288, channels: 140, first: '2023-01-10T08:30:00+00:00', last: '2026-09-02T12:40:00+00:00' },
+]
+
+const suggestion = (n: number, title: string, hue: number, s: Partial<Suggestion>): Suggestion => ({
+  channel_id: `UCsuggest${String(n).padStart(15, '0')}`, title, handle: `@${title.toLowerCase().replace(/[^a-z]/g, '')}`, thumbnail: tile(hue, title), watches: 10, videos: 8,
+  first: '2024-02-01T10:00:00+00:00', last: '2026-10-01T10:00:00+00:00', score: 5, group_id: null, subscribers: 10_000, total_videos: 120, topics: [], made_for_kids: null,
+  missing: false, dismissed: null, in_library: false, ...s,
+})
+
+/** Channels from the history, best score first: two groups (one named), one ungrouped, one made for kids, one with a video in the library. */
+export const suggestions: Suggestion[] = [
+  suggestion(1, 'Bike Repairs', 20, { watches: 412, videos: 380, score: 140.2, group_id: 1, topics: ['Hobby', 'Vehicle'], total_videos: 2_900, last: '2026-10-28T19:00:00+00:00' }),
+  suggestion(2, 'Puppet Theatre', 300, { watches: 248, videos: 89, score: 120.5, group_id: 2, topics: ['Entertainment', 'Film'], made_for_kids: true, last: '2026-10-30T07:00:00+00:00' }),
+  suggestion(3, 'Model Railways', 100, { watches: 180, videos: 172, score: 61.9, group_id: 1, topics: ['Hobby'], last: '2026-09-07T20:00:00+00:00', in_library: true }),
+  suggestion(4, 'Garden Birds', 140, { watches: 96, videos: 90, score: 33.4, group_id: 1, topics: ['Lifestyle'], total_videos: null }),
+  suggestion(5, 'Counting Songs', 50, { watches: 51, videos: 39, score: 30.1, group_id: 2, topics: ['Music'], made_for_kids: true }),
+  suggestion(6, 'Old Synth Sounds', 260, { watches: 105, videos: 48, score: 9.8, topics: ['Electronic music', 'Music'], last: '2023-08-02T22:00:00+00:00', thumbnail: null }),
+  suggestion(7, 'City Walks', 200, { watches: 12, videos: 12, score: 2.1, group_id: null, dismissed: '2026-11-01T10:00:00+00:00', last: null }),
+]
+
+export const suggestionGroups: SuggestionGroup[] = [
+  { id: 1, name: 'Making and mending', named: true, channels: 3 },
+  { id: 2, name: 'Puppet Theatre, Counting Songs', named: false, channels: 2 },
+]

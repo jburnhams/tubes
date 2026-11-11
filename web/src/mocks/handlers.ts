@@ -7,8 +7,8 @@
 // state: `server.use(videosError)` in a test, `msw.use(videosError)` in a story's beforeEach,
 // `states: { error: [videosError] }` in the visual config.
 import { delay, http, HttpResponse } from 'msw'
-import { cursorOf, paths, type CacheItem, type Channel, type Settings, type Stream, type SyncJob, type Video, type VideoPage } from '../api'
-import { cacheItems, channels, defaultSettings, library, libraryNew, longChannel, report, streams, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
+import { cursorOf, paths, type CacheItem, type Channel, type HistorySource, type Settings, type Stream, type Suggestion, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Video, type VideoPage } from '../api'
+import { cacheItems, channels, defaultSettings, historySources, library, libraryNew, longChannel, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
 
 /** What the mock server holds. Writes change it, so a test can pin a copy and see it pinned. */
 export const mock = {
@@ -23,6 +23,13 @@ export const mock = {
   /** Video ids YouTube no longer has, as POST /api/videos/check finds them; `checks` records each call's ids. */
   gone: [] as string[],
   checks: [] as string[][],
+  /** The suggestions as the server holds them; following one (POST /api/library with its id) takes it off the list. */
+  suggestions: [...suggestions] as Suggestion[],
+  followed: [] as string[],
+  groups: [...suggestionGroups] as SuggestionGroup[],
+  sources: [...historySources] as HistorySource[],
+  /** Each import's {source, text}. */
+  imports: [] as { source: string; text: string }[],
 }
 
 /** Back to the healthy state: call between tests and stories. */
@@ -36,6 +43,42 @@ export function resetMock() {
   mock.job = syncJobs.idle
   mock.gone = []
   mock.checks = []
+  mock.suggestions = [...suggestions]
+  mock.followed = []
+  mock.groups = [...suggestionGroups]
+  mock.sources = [...historySources]
+  mock.imports = []
+}
+
+/** `GET /api/suggestions?...` from the held suggestions, as history.suggestions does. */
+export function suggestionPage(url: string, list: Suggestion[]) {
+  const p = new URL(url).searchParams
+  const items = list
+    .filter(x => !mock.followed.includes(x.channel_id) && !x.missing)
+    .filter(x => (p.get('dismissed') === 'true' ? !!x.dismissed : !x.dismissed))
+    .filter(x => !p.get('group') || (p.get('group') === 'none' ? x.group_id === null : String(x.group_id) === p.get('group')))
+    .filter(x => !p.get('topic') || x.topics.includes(p.get('topic')!))
+    .filter(x => !p.get('kids') || (p.get('kids') === 'true' ? x.made_for_kids === true : x.made_for_kids !== true))
+  return { items, total: items.length }
+}
+
+/** `GET /api/suggestions/summary` from the held suggestions. */
+export function suggestionSummary(): SuggestionSummary {
+  const open = mock.suggestions.filter(x => !mock.followed.includes(x.channel_id) && !x.dismissed)
+  const topics = new Map<string, number>()
+  for (const x of open) for (const t of x.topics) topics.set(t, (topics.get(t) ?? 0) + 1)
+  return {
+    sources: mock.sources,
+    groups: mock.groups.map(g => ({ ...g, channels: open.filter(x => x.group_id === g.id).length })),
+    ungrouped: open.filter(x => x.group_id === null).length,
+    topics: [...topics].map(([name, channels]) => ({ name, channels })).sort((a, b) => b.channels - a.channels || a.name.localeCompare(b.name)),
+    kids: open.filter(x => x.made_for_kids).length,
+    open: open.length,
+    dismissed: mock.suggestions.filter(x => x.dismissed && !mock.followed.includes(x.channel_id)).length,
+    followed: mock.followed.length,
+    refreshed: '2026-11-08T09:00:00+00:00',
+    configured: true,
+  }
 }
 
 /** A sync as the server starts one: running, over these channels (every followed one by default). */
@@ -83,6 +126,7 @@ export const handlers = [
     const { input } = (await request.json()) as { input: string }
     if (input === '@nobody') return refused('YouTube has no channel @nobody.', 404)
     if (/^[\w-]{11}$/.test(input)) return HttpResponse.json({ kind: 'video', video: { ...videos[0], id: input, title: 'A video added on its own' } })
+    if (mock.suggestions.some(x => x.channel_id === input)) mock.followed.push(input)
     const known = mock.channels.find(c => c.id === input || c.handle === input)
     const channel: Channel = known ? { ...known, follow: true } : { id: 'UCnew0000000000000000005', title: 'Paper Planes', handle: input.startsWith('@') ? input : null, thumbnail: tile(320, 'P'), synced: null, videos: 0, latest: null, follow: true, complete: false, resumable: false, total_videos: 48, subscribers: 900, added: '2026-11-09T12:00:00Z' }
     mock.channels = known ? mock.channels.map(c => (c === known ? channel : c)) : [...mock.channels, channel].sort((a, b) => a.title.localeCompare(b.title))
@@ -136,6 +180,39 @@ export const handlers = [
   // The player's own requests. jsdom cannot play media, so these only need to answer; the visual suite never shoots a playing video.
   http.get(at('/api/media/:id/:name'), () => new HttpResponse('#EXTM3U\n#EXT-X-ENDLIST\n', { headers: { 'Content-Type': 'application/vnd.apple.mpegurl' } })),
   http.get(at(paths.cache), () => HttpResponse.json(report(mock.items))),
+  http.get(at(paths.suggestionsSummary), () => HttpResponse.json(suggestionSummary())),
+  http.post(at(paths.suggestionsRefresh), () => HttpResponse.json({ channels: mock.suggestions.length, groups: mock.groups.length, grouped: 5, looked_up: 0, missing: 0, error: null, summary: suggestionSummary() })),
+  http.post(at(paths.suggestionsImport), async ({ request }) => {
+    const b = (await request.json()) as { source: string; text: string }
+    if (!b.text.includes('Watched')) return refused('That is not a Google Takeout watch history (watch-history.json or watch-history.html).')
+    mock.imports.push(b)
+    const watches = (b.text.match(/Watched/g) ?? []).length
+    mock.sources = [...mock.sources.filter(x => x.source !== b.source), { source: b.source, watches, channels: 1, first: '2026-01-01T10:00:00+00:00', last: '2026-02-01T10:00:00+00:00' }].sort((a, c) => a.source.localeCompare(c.source))
+    return HttpResponse.json({ source: b.source, watches, first: '2026-01-01T10:00:00+00:00', last: '2026-02-01T10:00:00+00:00', refresh: { channels: 7, groups: 2, grouped: 5, looked_up: 0, missing: 0, error: null } })
+  }),
+  http.get(at(paths.suggestions), ({ request }) => HttpResponse.json(suggestionPage(request.url, mock.suggestions))),
+  http.put(at('/api/suggestions/groups/:id'), async ({ params, request }) => {
+    const { name } = (await request.json()) as { name: string }
+    const g = mock.groups.find(x => String(x.id) === params.id)
+    if (!g) return refused(`There is no group ${String(params.id)}.`, 404)
+    const named = { ...g, name: name.trim() || g.name, named: !!name.trim() }
+    mock.groups = mock.groups.map(x => (x === g ? named : x))
+    return HttpResponse.json(named)
+  }),
+  http.put(at('/api/suggestions/:id'), async ({ params, request }) => {
+    const { dismissed } = (await request.json()) as { dismissed: boolean }
+    const x = mock.suggestions.find(y => y.channel_id === params.id)
+    if (!x) return refused(`There is no suggestion ${String(params.id)}.`, 404)
+    const now = { ...x, dismissed: dismissed ? '2026-11-09T12:00:00+00:00' : null }
+    mock.suggestions = mock.suggestions.map(y => (y === x ? now : y))
+    return HttpResponse.json(now)
+  }),
+  http.post(at('/api/suggestions/:id/videos'), ({ params }) => {
+    const x = mock.suggestions.find(y => y.channel_id === params.id)
+    if (!x) return refused(`There is no suggestion ${String(params.id)}.`, 404)
+    mock.suggestions = mock.suggestions.map(y => (y === x ? { ...y, in_library: true } : y))
+    return HttpResponse.json({ added: x.videos - 2, already: x.in_library ? 2 : 0, missing: x.in_library || x.videos > 300 ? 2 : 0 })
+  }),
   http.put(at('/api/cache/:id'), async ({ params, request }) => {
     const { pinned } = (await request.json()) as { pinned: boolean }
     const found = mock.items.find(i => i.video_id === params.id)
@@ -223,3 +300,19 @@ export const streamIn = (state: keyof typeof streams) => [
   http.post(at('/api/videos/:id/play'), () => HttpResponse.json(streams[state])),
   http.get(at('/api/videos/:id/stream'), () => HttpResponse.json(streams[state])),
 ]
+
+export const suggestionsLoading = http.get(at(paths.suggestions), () => delay('infinite'))
+export const suggestionsError = http.get(at(paths.suggestions), down)
+export const summaryLoading = http.get(at(paths.suggestionsSummary), () => delay('infinite'))
+export const summaryError = http.get(at(paths.suggestionsSummary), down)
+/** No history imported yet: the page is the import form. */
+export const suggestionsFirstVisit = http.get(at(paths.suggestionsSummary), () => HttpResponse.json({ ...suggestionSummary(), sources: [], groups: [], topics: [], open: 0, ungrouped: 0, kids: 0 }))
+/** The server has no YouTube key: nothing can be followed or added. */
+export const suggestionsNoKey = http.get(at(paths.suggestionsSummary), () => HttpResponse.json({ ...suggestionSummary(), configured: false }))
+export const followFails = http.post(at(paths.library), () => refused('YouTube refused the request (403: the key has used its quota for today (it resets at midnight Pacific time)).', 502))
+export const addWatchedFails = http.post(at('/api/suggestions/:id/videos'), down)
+export const dismissFails = http.put(at('/api/suggestions/:id'), down)
+export const renameFails = http.put(at('/api/suggestions/groups/:id'), down)
+export const refreshQuota = http.post(at(paths.suggestionsRefresh), () => HttpResponse.json({ channels: 7, groups: 2, grouped: 5, looked_up: 0, missing: 0, error: 'YouTube refused the request (403: quota).', summary: suggestionSummary() }))
+/** More channels match than the server sends: the list says it shows the first ones. */
+export const suggestionsTruncated = http.get(at(paths.suggestions), ({ request }) => HttpResponse.json({ ...suggestionPage(request.url, mock.suggestions), total: 250 }))

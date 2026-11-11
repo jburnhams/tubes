@@ -62,3 +62,16 @@ handle_path /tubes/* {
 ## 5. Check
 
 `./tubes doctor` (tools, database, the YouTube key, when the library was last synced), then System in the app: every line should say Found, Can fetch, Set and Answering.
+
+## 6. Suggestions from a watch history (optional)
+
+Export "YouTube and YouTube Music" from Google Takeout (history as JSON if offered) for each account, then import each history under its own name, on the server or from Admin > Suggestions:
+
+```
+./tubes history import "<takeout>/YouTube and YouTube Music/history/watch-history.json" --source <name>
+./tubes history            # what is imported
+./tubes history refresh    # regroup and ask YouTube about channels not looked up for 30 days
+```
+
+A Takeout from a second account (a brand account included) is made after switching to it in Takeout; import it under another name. The import asks YouTube about every channel watched at least twice, 50 per quota unit.
+

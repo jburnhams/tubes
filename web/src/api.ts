@@ -170,6 +170,74 @@ export interface SystemStatus {
   library: LibraryStatus
 }
 
+/** One imported watch history (`tubes history import`, or the Suggestions page). */
+export interface HistorySource {
+  source: string
+  watches: number
+  channels: number
+  first: string
+  last: string
+}
+
+/** `GET /api/suggestions`: a channel from the watch history the library could take in. */
+export interface Suggestion {
+  channel_id: string
+  title: string
+  handle: string | null
+  thumbnail: string | null
+  watches: number
+  /** Different videos of it watched. */
+  videos: number
+  first: string | null
+  last: string | null
+  /** Its watches added up, each counting half as much a year later: the list's order. */
+  score: number
+  group_id: number | null
+  subscribers: number | null
+  total_videos: number | null
+  /** YouTube's broad topics for the channel, such as Music or Hobby. */
+  topics: string[]
+  /** What the channel says of its audience; null when YouTube was not asked or it says nothing. */
+  made_for_kids: boolean | null
+  missing: boolean
+  dismissed: string | null
+  /** The library holds some of its videos without following it. */
+  in_library: boolean
+}
+
+export interface SuggestionPage { items: Suggestion[]; total: number }
+
+export interface SuggestionGroup { id: number; name: string; named: boolean; channels: number }
+
+/** `GET /api/suggestions/summary`: what surrounds the list. Counts are of channels. */
+export interface SuggestionSummary {
+  sources: HistorySource[]
+  groups: SuggestionGroup[]
+  ungrouped: number
+  topics: { name: string; channels: number }[]
+  kids: number
+  open: number
+  dismissed: number
+  followed: number
+  refreshed: string | null
+  configured: boolean
+}
+
+/** What the list is filtered by; each lives in the page's URL. */
+export interface SuggestionFilter { group?: string; topic?: string; kids?: string; dismissed?: boolean }
+
+export function suggestionsUrl(f: SuggestionFilter): string {
+  const q = new URLSearchParams()
+  if (f.group) q.set('group', f.group)
+  if (f.topic) q.set('topic', f.topic)
+  if (f.kids === 'yes' || f.kids === 'no') q.set('kids', String(f.kids === 'yes'))
+  if (f.dismissed) q.set('dismissed', 'true')
+  const s = q.toString()
+  return s ? `${paths.suggestions}?${s}` : paths.suggestions
+}
+
+export interface Refreshed { channels: number; groups: number; grouped: number; looked_up: number; missing: number; error: string | null }
+
 // Where the app is served from: '' at the server's own root, '/prefix' behind a reverse proxy. Read
 // from the page's base URL: the server gives every page a relative <base> back to its root
 // (app.py with_base), and assets are relative (vite.config.ts base './'), so one build works in
@@ -216,6 +284,13 @@ export const paths = {
   cache: '/api/cache',
   cacheItem: (id: string) => `/api/cache/${encodeURIComponent(id)}`,
   evict: '/api/cache/evict',
+  suggestions: '/api/suggestions',
+  suggestionsSummary: '/api/suggestions/summary',
+  suggestionsRefresh: '/api/suggestions/refresh',
+  suggestionsImport: '/api/suggestions/import',
+  suggestion: (id: string) => `/api/suggestions/${encodeURIComponent(id)}`,
+  suggestionVideos: (id: string) => `/api/suggestions/${encodeURIComponent(id)}/videos`,
+  suggestionGroup: (id: number) => `/api/suggestions/groups/${id}`,
 } as const
 
 /** The query keys the screens share, so a write can invalidate every read it changes. */
@@ -233,6 +308,9 @@ export const keys = {
   play: (id: string) => ['play', id],
   stream: (id: string) => ['stream', id],
   cache: ['cache'],
+  suggestions: ['suggestions'],
+  suggestionList: (f: SuggestionFilter) => ['suggestions', 'list', f.group ?? '', f.topic ?? '', f.kids ?? '', f.dismissed ? 'dismissed' : 'open'],
+  suggestionSummary: ['suggestions', 'summary'],
 } as const
 
 /** A request the server refused with a reason (`{detail}`), such as a fetch that cannot start. The reason is its sentence. */
@@ -280,6 +358,14 @@ export const api = {
   pin: (id: string, pinned: boolean) => fetchJson<unknown>(withBase(paths.cacheItem(id)), send('PUT', { pinned })),
   dropCopy: (id: string) => fetchJson<{ video_id: string; freed: number }>(withBase(paths.cacheItem(id)), { method: 'DELETE' }),
   evict: () => fetchJson<Evicted>(withBase(paths.evict), send('POST', { dry_run: false })),
+  suggestions: (f: SuggestionFilter) => fetchJson<SuggestionPage>(withBase(suggestionsUrl(f))),
+  suggestionSummary: () => fetchJson<SuggestionSummary>(withBase(paths.suggestionsSummary)),
+  refreshSuggestions: () => callJson<Refreshed & { summary: SuggestionSummary }>(withBase(paths.suggestionsRefresh), { method: 'POST' }),
+  importHistory: (source: string, text: string) => callJson<{ source: string; watches: number; first: string; last: string; refresh: Refreshed }>(withBase(paths.suggestionsImport), send('POST', { source, text })),
+  dismiss: (id: string, dismissed: boolean) => callJson<Suggestion>(withBase(paths.suggestion(id)), send('PUT', { dismissed })),
+  /** Add the channel's watched videos to the library, without following it. */
+  addWatched: (id: string) => callJson<{ added: number; already: number; missing: number }>(withBase(paths.suggestionVideos(id)), { method: 'POST' }),
+  renameGroup: (id: number, name: string) => callJson<SuggestionGroup>(withBase(paths.suggestionGroup(id)), send('PUT', { name })),
 }
 
 /** What is wrong with a folder, or undefined. The server takes absolute paths only, `~` included. */

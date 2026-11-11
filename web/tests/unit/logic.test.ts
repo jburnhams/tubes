@@ -12,6 +12,10 @@ import { channelState, describeAdded, describeJob, describeLibrary } from '../..
 import { ago, videoCount, views, viewsAndAge } from '../../src/watch/format'
 import { isPlaceholder } from '../../src/watch/missing'
 import { savedText, settled, waitingText } from '../../src/watch/WatchScreen'
+import { describeSuggestions, describeWatched, filterOf, groupChoices, placeOf } from '../../src/screens/SuggestionsScreen'
+import { suggestionsUrl } from '../../src/api'
+import { historySources, suggestions } from '../../src/mocks/fixtures'
+import { suggestionSummary } from '../../src/mocks/handlers'
 
 describe('api helpers', () => {
   it('builds URLs under the base, and a page of videos after a cursor', () => {
@@ -218,5 +222,27 @@ describe('index.html', () => {
   it('inlines the colour-scheme script ThemeProvider expects, so a dark page does not flash light', () => {
     const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8')
     expect(html).toContain(`<script>${colorSchemeScript()}</script>`)
+  })
+})
+
+describe('suggestions', () => {
+  it('says where they come from, and how far through them', () => {
+    const one = { ...suggestionSummary(), sources: [historySources[0]], dismissed: 0, followed: 0 }
+    expect(describeSuggestions(one)).toMatch(/^6\schannels from the home history to consider, out of 4,210\swatches\.$/)
+    expect(describeSuggestions({ ...one, followed: 2, configured: false })).toMatch(/So far 2 followed\. Following and adding need the server’s YouTube key \(YOUTUBE_API_KEY\)\.$/)
+    expect(describeSuggestions({ ...one, sources: [] })).toMatch(/^No watch history yet\./)
+  })
+
+  it('describes a channel, the groups to choose from and the filter in the URL', () => {
+    expect(describeWatched({ ...suggestions[6], total_videos: null })).toMatch(/^12\swatches · 12\svideos$/)
+    const s = suggestionSummary()
+    expect(groupChoices({ ...s, ungrouped: 0 }).map(c => c.value)).toEqual(['', '1', '2'])
+    expect(groupChoices({ ...s, groups: [{ id: 3, name: 'Empty', named: false, channels: 0 }] }).map(c => c.value)).toEqual(['', 'none'])
+    expect(filterOf(new URLSearchParams('group=2&topic=Music&kids=yes&view=dismissed'))).toEqual({ group: '2', topic: 'Music', kids: 'yes', dismissed: true })
+    const names = new Map([[1, 'Making and mending']])
+    expect([suggestions[0], suggestions[1], suggestions[6]].map(x => placeOf(x, names))).toEqual(['Making and mending · Hobby, Vehicle', 'Entertainment, Film', ''])
+    expect(suggestionsUrl({})).toBe('/api/suggestions')
+    expect(suggestionsUrl({ group: 'none', topic: 'Pop music', kids: 'no', dismissed: true })).toBe('/api/suggestions?group=none&topic=Pop+music&kids=false&dismissed=true')
+    expect(suggestionsUrl({ kids: 'maybe' })).toBe('/api/suggestions')
   })
 })
