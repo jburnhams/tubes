@@ -37,7 +37,7 @@ jobs:
         run: pytest tests/unit --cov --cov-report=term --cov-report=xml
       - name: Upload coverage
         if: matrix.python-version == '3.13' && matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-coverage
           path: coverage.xml
@@ -110,7 +110,7 @@ jobs:
       - run: npm run test:visual
       - name: Upload screenshots that differ
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: visual-diffs
           path: web/tests/visual/output/
