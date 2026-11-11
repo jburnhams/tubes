@@ -12,6 +12,12 @@ import { channelState, describeAdded, describeJob, describeLibrary } from '../..
 import { ago, videoCount, views, viewsAndAge } from '../../src/watch/format'
 import { isPlaceholder } from '../../src/watch/missing'
 import { savedText, settled, waitingText } from '../../src/watch/WatchScreen'
+import { describeSuggestions, describeWatched, filterOf, groupChoices, placeOf } from '../../src/screens/SuggestionsScreen'
+import { historyUrl, suggestionsUrl } from '../../src/api'
+import { describeHistory, fillPeriods, periodLabel, rangeChoices, rangeOf } from '../../src/screens/HistoryScreen'
+import { historyStats } from '../../src/mocks/fixtures'
+import { historySources, suggestions } from '../../src/mocks/fixtures'
+import { suggestionSummary } from '../../src/mocks/handlers'
 
 describe('api helpers', () => {
   it('builds URLs under the base, and a page of videos after a cursor', () => {
@@ -218,5 +224,53 @@ describe('index.html', () => {
   it('inlines the colour-scheme script ThemeProvider expects, so a dark page does not flash light', () => {
     const html = readFileSync(new URL('../../index.html', import.meta.url), 'utf8')
     expect(html).toContain(`<script>${colorSchemeScript()}</script>`)
+  })
+})
+
+describe('suggestions', () => {
+  it('says where they come from, and how far through them', () => {
+    const one = { ...suggestionSummary(), sources: [historySources[0]], dismissed: 0, followed: 0 }
+    expect(describeSuggestions(one)).toMatch(/^6\schannels from the home history to consider, out of 4,210\swatches\.$/)
+    expect(describeSuggestions({ ...one, followed: 2, configured: false })).toMatch(/So far 2 followed\. Following and adding need the server’s YouTube key \(YOUTUBE_API_KEY\)\.$/)
+    expect(describeSuggestions({ ...one, sources: [] })).toMatch(/^No watch history yet\./)
+  })
+
+  it('describes a channel, the groups to choose from and the filter in the URL', () => {
+    expect(describeWatched({ ...suggestions[6], total_videos: null })).toMatch(/^12\swatches · 12\svideos$/)
+    const s = suggestionSummary()
+    expect(groupChoices({ ...s, ungrouped: 0 }).map(c => c.value)).toEqual(['', '1', '2'])
+    expect(groupChoices({ ...s, groups: [{ id: 3, name: 'Empty', named: false, channels: 0 }] }).map(c => c.value)).toEqual(['', 'none'])
+    expect(filterOf(new URLSearchParams('group=2&topic=Music&kids=yes&view=dismissed'))).toEqual({ group: '2', topic: 'Music', kids: 'yes', dismissed: true })
+    const names = new Map([[1, 'Making and mending']])
+    expect([suggestions[0], suggestions[1], suggestions[6]].map(x => placeOf(x, names))).toEqual(['Making and mending · Hobby, Vehicle', 'Entertainment, Film', ''])
+    expect(suggestionsUrl({})).toBe('/api/suggestions')
+    expect(suggestionsUrl({ group: 'none', topic: 'Pop music', kids: 'no', dismissed: true })).toBe('/api/suggestions?group=none&topic=Pop+music&kids=false&dismissed=true')
+    expect(suggestionsUrl({ kids: 'maybe' })).toBe('/api/suggestions')
+  })
+})
+
+describe('history', () => {
+  const now = Date.UTC(2026, 10, 9, 12)
+  it('turns a timeframe into start and end', () => {
+    expect(rangeOf('30d', now)).toEqual({ start: '2026-10-10T12:00:00+00:00', words: 'in the last 30 days' })
+    expect(rangeOf(null, now)).toEqual({ start: '2025-11-09T12:00:00+00:00', words: 'in the last 12 months' })
+    expect(rangeOf('nonsense', now).words).toBe('in the last 12 months')
+    expect(rangeOf('all', now)).toEqual({ words: 'in all the history' })
+    expect(rangeOf('2024', now)).toEqual({ start: '2024-01-01T00:00:00+00:00', end: '2025-01-01T00:00:00+00:00', words: 'in 2024' })
+    expect(rangeOf('12m').start).toMatch(/^\d{4}-/)
+    expect(rangeChoices([]).map(c => c.value)).toEqual(['12m', '30d', 'all'])
+    expect(historyUrl({})).toBe('/api/history')
+    expect(historyUrl({ start: 'a', end: 'b', source: 'c' })).toBe('/api/history?start=a&end=b&source=c')
+  })
+
+  it('labels and fills periods, and says what was watched', () => {
+    expect(periodLabel('2026-03', 'month')).toBe('Mar 2026')
+    expect(periodLabel('2026-03-04', 'day')).toBe('4 Mar')
+    expect(fillPeriods({ by: 'month', periods: [{ period: '2026-01', watches: 3 }, { period: '2026-03', watches: 1 }] })).toEqual([{ period: '2026-01', watches: 3 }, { period: '2026-02', watches: 0 }, { period: '2026-03', watches: 1 }])
+    expect(fillPeriods({ by: 'day', periods: [{ period: '2026-02-28', watches: 1 }, { period: '2026-03-01', watches: 2 }] })).toHaveLength(2)
+    expect(fillPeriods({ by: 'day', periods: [{ period: '2026-02-28', watches: 1 }] })).toHaveLength(1)
+    const h = { ...historyStats, sources: historySources }
+    expect(describeHistory({ ...h, channels_top: [] }, 'in 2026')).toMatch(/channels in 2026\.$/)
+    expect(describeHistory({ ...h, channels_top: [{ ...h.channels_top[0], title: null }] }, 'then')).toMatch(/Most watched: UCsuggest000000000000002/)
   })
 })

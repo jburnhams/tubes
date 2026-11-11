@@ -56,11 +56,12 @@ class FakeYoutube:
 
     # What YouTube holds.
 
-    def channel(self, cid, title, handle=None, videos=0):
+    def channel(self, cid, title, handle=None, videos=0, topics=None, kids=None):
         self.channels[cid] = dict(kind='youtube#channel', id=cid, snippet=dict(title=title, description=f'About {title}', customUrl=handle, publishedAt='2015-01-01T00:00:00Z', country='GB',
                                                                                thumbnails=dict(default=dict(url=f'https://img.test/{cid}/s.jpg', width=88, height=88), high=dict(url=f'https://img.test/{cid}/l.jpg', width=800, height=800))),
                                   statistics=dict(viewCount='1000', subscriberCount='50', hiddenSubscriberCount=False, videoCount=str(videos)),
-                                  contentDetails=dict(relatedPlaylists=dict(uploads='UU' + cid[2:])))
+                                  contentDetails=dict(relatedPlaylists=dict(uploads='UU' + cid[2:])), status=dict(madeForKids=kids) if kids is not None else {},
+                                  topicDetails=dict(topicCategories=[f'https://en.wikipedia.org/wiki/{t}' for t in topics]) if topics else {})
         self.playlists.setdefault('UU' + cid[2:], [])
         if videos: self.uploads(cid, videos)
         return self

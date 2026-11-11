@@ -44,4 +44,6 @@ Vitest 5, Testing Library, user-event, MSW, and strata-react's test helpers (`st
 | `src/watch/WatchScreen.tsx` | 100 | done | integration/WatchScreen.test.tsx, unit/logic.test.ts |
 | `src/screens/CacheScreen.tsx` | 100 | done | integration/CacheScreen.test.tsx, unit/logic.test.ts |
 | `src/screens/SystemScreen.tsx` | 100 | done | integration/SystemScreen.test.tsx, unit/logic.test.ts |
+| `src/screens/HistoryScreen.tsx` | 100 | done | integration/HistoryScreen.test.tsx, unit/logic.test.ts |
+| `src/screens/SuggestionsScreen.tsx` | 100 | done | integration/SuggestionsScreen.test.tsx, unit/logic.test.ts |
 | `src/screens/SettingsScreen.tsx` | 100 | done | integration/SettingsScreen.test.tsx, unit/logic.test.ts |
