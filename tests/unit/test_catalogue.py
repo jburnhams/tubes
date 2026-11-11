@@ -194,3 +194,14 @@ def test_a_report_from_the_watching_side_is_rechecked_not_trusted(fake_youtube):
     catalogue.mark_gone(v2)                                                                                 # a failed fetch hid it; YouTube still has it
     assert catalogue.report([v2], now='2026-11-09T12:09:00+00:00') == dict(checked=1, gone=0, back=1, hidden=[])
     assert catalogue.report([]) == dict(checked=0, gone=0, back=0, hidden=[])
+
+
+def test_add_videos_brings_their_channels_in_unfollowed(fake_youtube):
+    fake_youtube.channel(A, 'Workshop', videos=3).channel(B, 'Garden', videos=2)
+    catalogue.add(B)                                                                         # followed already: stays followed
+    r = catalogue.add_videos([vid(A, 0), vid(A, 1), vid(A, 1), vid(B, 0), 'gonegonegon'], now='t1')
+    assert r == dict(added=3, already=0, missing=1)
+    assert library.channel(A)['follow'] is False and library.channel(B)['follow'] is True and catalogue.followed() == [(B, 'Garden')]
+    assert sorted(v['id'] for v in videos_of(A)) == [vid(A, 0), vid(A, 1)]
+    assert catalogue.add_videos([vid(A, 0), vid(A, 2)]) == dict(added=1, already=1, missing=0)
+    assert catalogue.add_videos([]) == dict(added=0, already=0, missing=0)

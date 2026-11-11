@@ -180,3 +180,33 @@ def test_the_watching_side_reports_missing_videos(client, fake_youtube, monkeypa
     monkeypatch.delenv('YOUTUBE_API_KEY')
     r = client.post('/api/videos/check', json=dict(ids=[vid(A, 1)]))
     assert r.status_code == 503 and 'YOUTUBE_API_KEY' in r.json()['detail']
+
+
+def test_suggestions(client, fake_youtube, monkeypatch):
+    from takeout import as_json, chan, watch
+    from fake_youtube import vid
+    a, b = chan('a'), chan('b')
+    fake_youtube.channel(a, 'Channel a', topics=['Music'], videos=3).channel(b, 'Channel b')
+    ws = [watch(f'2026-01-0{d}T10:0{m}:00Z', vid(c, d % 3), f'Video {d}', c, f'Channel {c[2]}') for d in range(1, 7) for m, c in enumerate((a, b))]
+    assert client.get('/api/suggestions/summary').json()['open'] == 0
+    assert client.post('/api/suggestions/import', json=dict(source='one', text='nope')).status_code == 400
+    r = client.post('/api/suggestions/import', json=dict(source='one', text=as_json(ws))).json()
+    assert (r['watches'], r['refresh']['groups'], r['refresh']['looked_up']) == (12, 1, 2)
+    s = client.get('/api/suggestions/summary').json()
+    assert (s['open'], s['topics'], [g['channels'] for g in s['groups']]) == (2, [dict(name='Music', channels=1)], [2])
+    assert [i['channel_id'] for i in client.get('/api/suggestions', params=dict(topic='Music')).json()['items']] == [a]
+    assert client.get('/api/suggestions', params=dict(group='x')).status_code == 404
+    gid = s['groups'][0]['id']
+    assert client.put(f'/api/suggestions/groups/{gid}', json=dict(name='Both')).json()['name'] == 'Both'
+    assert client.put('/api/suggestions/groups/99', json=dict(name='x')).status_code == 404
+    assert client.put(f'/api/suggestions/{b}', json=dict(dismissed=True)).json()['dismissed'] is not None
+    assert client.get('/api/suggestions', params=dict(dismissed=True)).json()['total'] == 1
+    assert client.put('/api/suggestions/UCnone', json=dict(dismissed=True)).status_code == 404
+    assert client.post(f'/api/suggestions/{a}/videos').json() == dict(added=3, already=0, missing=0)
+    assert client.get(f'/api/channels/{a}').json()['follow'] is False
+    assert client.post('/api/suggestions/UCnone/videos').status_code == 404
+    assert client.post('/api/suggestions/refresh').json()['summary']['open'] == 1
+    assert client.delete('/api/suggestions/sources/one').json()['refresh']['channels'] == 0
+    assert client.delete('/api/suggestions/sources/one').status_code == 404
+    monkeypatch.delenv('YOUTUBE_API_KEY')
+    assert client.post(f'/api/suggestions/{a}/videos').status_code == 503

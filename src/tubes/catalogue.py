@@ -77,6 +77,24 @@ def add(text, now=None):
     return dict(kind='channel', channel=library.channel(row['id']))
 
 
+def add_videos(ids, now=None):
+    """Add these videos (say, the ones of a channel watched before, from history.py) without following anything: each one's channel comes in
+    unfollowed if the library does not have it. Returns `{added, already, missing}`: new to the library, held already (refreshed), and those
+    YouTube no longer has (private or removed)."""
+    ids = list(dict.fromkeys(ids)); now = now or cache.stamp()
+    if not ids: return dict(added=0, already=0, missing=0)
+    rows = [youtube.video_row(item, now) for item in youtube.videos(ids)]
+    with db.connect() as con:
+        have = {r[0] for r in con.execute(f"SELECT id FROM videos WHERE id IN ({', '.join('?' * len(ids))})", tuple(ids))}
+        known = {r[0] for r in con.execute('SELECT id FROM channels')}
+    new_channels = sorted({r['channel_id'] for r in rows} - known - {''})
+    channels = [youtube.channel_row(item, now) for item in youtube.channels(new_channels, youtube.CHANNEL_PARTS)] if new_channels else []
+    with db.connect() as con:
+        for c in channels: save_channel(con, c, follow=False)
+        save_videos(con, rows)
+    return dict(added=sum(1 for r in rows if r['id'] not in have), already=sum(1 for r in rows if r['id'] in have), missing=len(ids) - len(rows))
+
+
 def remove(channel_id):
     """Remove a channel and its videos (their cached copies stay until evicted); returns how many videos went."""
     with db.connect() as con:

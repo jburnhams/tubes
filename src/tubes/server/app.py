@@ -25,6 +25,15 @@ API (JSON):
   PUT  /api/cache/{id} {pinned}            pin or unpin a copy
   DELETE /api/cache/{id}                   delete a copy now
   POST /api/cache/evict {dry_run}          run eviction
+  GET  /api/suggestions?group=&topic=&kids=&q=&dismissed=&limit=   channels from the imported watch history, best first: {items, total}
+  GET  /api/suggestions/summary            the histories, groups, topics and counts around that list
+  POST /api/suggestions/refresh            remake the suggestions from the history and ask YouTube about new channels
+  POST /api/suggestions/import {source, text}   import a Takeout watch history (its file's text) under a name, then refresh
+  DELETE /api/suggestions/sources/{source}  forget an imported history
+  PUT  /api/suggestions/groups/{id} {name}  name a group (empty: back to the made-up name)
+  PUT  /api/suggestions/{channel} {dismissed}   dismiss a suggestion or bring it back
+  POST /api/suggestions/{channel}/videos   add the channel's watched videos to the library without following it: {added, already, missing}
+  (following a suggestion is POST /api/library with its channel id)
 Every other path serves the web app (`src/tubes/server/static/index.html` when built with `cd web && npm run build`, else the plain stand-in
 `landing.html`), so a reload or a shared link opens that screen: the app routes in the browser (React Router)."""
 import os, platform, shutil
@@ -34,7 +43,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from tubes import __version__, cache, catalogue, fetcher, library, oslib, settings, youtube, ytdlp
+from tubes import __version__, cache, catalogue, fetcher, history, library, oslib, settings, youtube, ytdlp
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 LANDING = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'landing.html')
@@ -58,6 +67,19 @@ class SyncIn(BaseModel):
     channels: list[str] | None = None
 
 
+class DismissIn(BaseModel):
+    dismissed: bool
+
+
+class NameIn(BaseModel):
+    name: str
+
+
+class ImportIn(BaseModel):
+    source: str
+    text: str
+
+
 class CheckIn(BaseModel):
     ids: list[str] = Field(min_length=1, max_length=50)
 
@@ -79,7 +101,7 @@ def create_app():
     def guard(fn, *a, **kw):
         try: return fn(*a, **kw)
         except (settings.SettingError, fetcher.FetchError, ValueError) as e: raise HTTPException(400, str(e))
-        except catalogue.NotFound as e: raise HTTPException(404, str(e))
+        except (catalogue.NotFound, history.NotFound) as e: raise HTTPException(404, str(e))
         except catalogue.Job.Busy as e: raise HTTPException(409, str(e))
         except youtube.YoutubeError as e: raise HTTPException(503 if not youtube.configured() else 502, str(e))
         except KeyError as e: raise HTTPException(400, str(e.args[0]))
@@ -194,6 +216,34 @@ def create_app():
 
     @app.post('/api/cache/evict')
     def post_evict(b: EvictIn): return cache.evict(cache.utcnow(), dry_run=b.dry_run)
+
+    @app.get('/api/suggestions')
+    def get_suggestions(group: str | None = None, topic: str | None = None, kids: bool | None = None, q: str | None = None, dismissed: bool = False, limit: int = Query(history.LIST_LIMIT, ge=1, le=1000)):
+        return guard(history.suggestions, group, topic, kids, q, dismissed, limit)
+
+    @app.get('/api/suggestions/summary')
+    def get_suggestions_summary(): return history.summary()
+
+    @app.post('/api/suggestions/refresh')
+    def post_suggestions_refresh(): return dict(history.refresh(), summary=history.summary())
+
+    @app.post('/api/suggestions/import')
+    def post_suggestions_import(b: ImportIn): return guard(history.import_text, b.text, b.source)
+
+    @app.delete('/api/suggestions/sources/{source}')
+    def delete_source(source: str): return guard(history.remove_source, source)
+
+    @app.put('/api/suggestions/groups/{group_id}')
+    def put_group(group_id: int, b: NameIn): return guard(history.rename_group, group_id, b.name)
+
+    @app.put('/api/suggestions/{channel_id}')
+    def put_suggestion(channel_id: str, b: DismissIn): return guard(history.dismiss, channel_id, b.dismissed)
+
+    @app.post('/api/suggestions/{channel_id}/videos')
+    def post_suggestion_videos(channel_id: str):
+        if not youtube.configured(): raise HTTPException(503, 'YouTube cannot be asked without YOUTUBE_API_KEY in the server’s environment.')
+        guard(history.suggestion, channel_id)
+        return guard(catalogue.add_videos, history.watched_videos(channel_id))
 
     if os.path.isdir(os.path.join(STATIC, 'assets')): app.mount('/assets', StaticFiles(directory=os.path.join(STATIC, 'assets')), name='assets')
 

@@ -1,8 +1,9 @@
-"""Command line. `doctor` checks the environment; `add`, `remove`, `sync` and `channels` manage the library from YouTube; `fetch`, `cache`, `evict` the cache; `set` the settings; `serve` starts the web server.
+"""Command line. `doctor` checks the environment; `add`, `remove`, `sync` and `channels` manage the library from YouTube; `history` imports a
+watch history that suggestions are made from; `fetch`, `cache`, `evict` the cache; `set` the settings; `serve` starts the web server.
 A timer on the server runs `tubes sync; tubes evict` every few hours (docs/deploy.md)."""
 import argparse, importlib, json, os, sys
 
-from tubes import __version__, cache, catalogue, fetcher, library, oslib, settings, youtube, ytdlp
+from tubes import __version__, cache, catalogue, fetcher, history, library, oslib, settings, youtube, ytdlp
 
 CHECKS = (('fastapi', 'fastapi'), ('uvicorn', 'uvicorn'), ('pydantic', 'pydantic'))
 
@@ -64,6 +65,30 @@ def cmd_channels(args):
     return out(args, items, '\n'.join(f"  {c['id']:26} {c['videos']:>6} videos  {state(c):12} {c['title'][:50]}" for c in items))
 
 
+def describe_refresh(r):
+    s = f"  {r['channels']} channel(s) in the history, {r['grouped']} in {r['groups']} group(s)"
+    if r['looked_up']: s += f"; YouTube asked about {r['looked_up']} ({r['missing']} no longer there)"
+    return s + (f"\n  YouTube could not be asked: {r['error']}" if r['error'] else '')
+
+
+def cmd_history(args):
+    """Import a Takeout watch history, list or forget the imported ones, or remake the suggestions."""
+    try:
+        if args.action == 'import':
+            if not args.file or not args.source: sys.exit('usage: tubes history import FILE --source NAME')
+            r = history.import_file(args.file, args.source, lookup=not args.no_lookup)
+            return out(args, r, f"  {r['source']}: {r['watches']} watch(es) from {r['first'][:10]} to {r['last'][:10]}\n" + describe_refresh(r['refresh']))
+        if args.action == 'refresh':
+            r = history.refresh(lookup=not args.no_lookup); return out(args, r, describe_refresh(r))
+        if args.action == 'remove':
+            if not args.source: sys.exit('usage: tubes history remove --source NAME')
+            r = history.remove_source(args.source); return out(args, r, f"  forgot {r['source']}\n" + describe_refresh(r['refresh']))
+    except (history.ImportProblem, history.NotFound, OSError) as e: sys.exit(str(e))
+    items = history.sources()
+    if not items and not args.json: print('  (no history yet: ./tubes history import watch-history.json --source NAME)'); return 0
+    return out(args, items, '\n'.join(f"  {s['source']:20} {s['watches']:>7} watches  {s['channels']:>6} channels  {s['first'][:10]} to {s['last'][:10]}" for s in items))
+
+
 def cmd_fetch(args):
     v = library.video(args.video)
     if v is None: sys.exit(f'{args.video} is not in the library (./tubes add {args.video} first?)')
@@ -106,6 +131,9 @@ def main(argv=None):
     a = sub.add_parser('add', help='add a channel (followed, then synced) or one video: a link, an id or an @handle'); a.add_argument('input'); a.add_argument('--no-sync', action='store_true', help='add a channel without fetching its videos yet'); a.add_argument('--json', action='store_true'); a.set_defaults(fn=cmd_add)
     r = sub.add_parser('remove', help='remove a channel and its videos from the library'); r.add_argument('channel'); r.add_argument('--json', action='store_true'); r.set_defaults(fn=cmd_remove)
     h = sub.add_parser('channels', help='list the channels in the library'); h.add_argument('--json', action='store_true'); h.set_defaults(fn=cmd_channels)
+    w = sub.add_parser('history', help='import a Google Takeout watch history (suggestions are made from it), list the imported ones, remove one, or refresh the suggestions')
+    w.add_argument('action', nargs='?', choices=('list', 'import', 'remove', 'refresh'), default='list'); w.add_argument('file', nargs='?'); w.add_argument('--source', help='a name for the history, say the account it came from')
+    w.add_argument('--no-lookup', action='store_true', help='do not ask YouTube about the channels'); w.add_argument('--json', action='store_true'); w.set_defaults(fn=cmd_history)
     f = sub.add_parser('fetch', help='fetch one video into the cache now (waits until it is done)'); f.add_argument('video'); f.add_argument('--json', action='store_true'); f.set_defaults(fn=cmd_fetch)
     c = sub.add_parser('cache', help='show the cache: use, limit and every copy with its score'); c.add_argument('--json', action='store_true'); c.set_defaults(fn=cmd_cache)
     e = sub.add_parser('evict', help='trim the cache when it is over 95%% of its limit'); e.add_argument('--dry-run', action='store_true'); e.add_argument('--json', action='store_true'); e.set_defaults(fn=cmd_evict)
