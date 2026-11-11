@@ -14,8 +14,14 @@ carry them, so they sort and compare as text on both engines.
   copies             one row per video that has (or is getting) a copy in the cache folder: fetching, ready or failed, its size, whether it is
                      pinned, and the title and channel the library gave when it was fetched (kept, so a copy still has a name after its video
                      leaves the library). No foreign key to videos for the same reason.
-  plays              one row per play, for the eviction score and, later, for predicting what to fetch next."""
-from sqlalchemy import BigInteger, Index, String, Text, false, true
+  plays              one row per play, for the eviction score and, later, for predicting what to fetch next.
+  watches            a viewing history brought in from elsewhere (a Google Takeout watch history, history.py), one row per watch, under the
+                     `source` it was imported as: what suggestions are made from. Not plays: they never touch the eviction score.
+  suggestions        one row per channel in the history: how often and how lately it was watched (`score` fades a watch by its age), its
+                     group, YouTube's topics for it, and whether it was dismissed (kept when the history is imported again).
+  suggestion_groups  groups of channels watched in the same sittings, found from the history; `name` is made up from its channels until
+                     someone names it (`named`), and a regrouping keeps a group's id and name for the group that overlaps it most."""
+from sqlalchemy import BigInteger, Float, Index, String, Text, false, true
 from sqlalchemy.orm import Mapped, mapped_column
 
 from omarchy_db import make_base
@@ -88,3 +94,44 @@ class Play(Base):
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
     video_id: Mapped[str] = mapped_column(String(64))
     at: Mapped[str] = mapped_column(String(40))
+
+
+class Watch(Base):
+    __tablename__ = 'watches'
+    __table_args__ = (Index('ix_watches_source', 'source', 'at'), Index('ix_watches_channel', 'channel_id', 'at'))
+    id: Mapped[int] = mapped_column(primary_key=True, init=False)
+    source: Mapped[str] = mapped_column(String(64))
+    at: Mapped[str] = mapped_column(String(40))
+    video_id: Mapped[str] = mapped_column(String(64))
+    title: Mapped[str | None] = mapped_column(Text, default=None)
+    channel_id: Mapped[str | None] = mapped_column(String(64), default=None)       # None when the video has gone (the history names no channel then)
+    channel_title: Mapped[str | None] = mapped_column(Text, default=None)
+
+
+class Suggestion(Base):
+    __tablename__ = 'suggestions'
+    __table_args__ = (Index('ix_suggestions_score', 'score', 'channel_id'), Index('ix_suggestions_group', 'group_id', 'score'))
+    channel_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    title: Mapped[str]
+    watches: Mapped[int] = mapped_column(server_default='0', default=0)
+    videos: Mapped[int] = mapped_column(server_default='0', default=0)          # different videos watched
+    first: Mapped[str | None] = mapped_column(String(40), default=None)
+    last: Mapped[str | None] = mapped_column(String(40), default=None)
+    score: Mapped[float] = mapped_column(Float, server_default='0', default=0.0)
+    group_id: Mapped[int | None] = mapped_column(default=None)
+    thumbnail: Mapped[str | None] = mapped_column(default=None)
+    handle: Mapped[str | None] = mapped_column(default=None)
+    subscribers: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    total_videos: Mapped[int | None] = mapped_column(BigInteger, default=None)
+    topics: Mapped[str | None] = mapped_column(Text, default=None)               # YouTube's topic names, joined by '|'
+    made_for_kids: Mapped[bool | None] = mapped_column(default=None)
+    looked_up: Mapped[str | None] = mapped_column(String(40), default=None)      # when YouTube was last asked about the channel
+    missing: Mapped[bool] = mapped_column(server_default=false(), default=False) # YouTube has no such channel any more: it cannot be followed
+    dismissed: Mapped[str | None] = mapped_column(String(40), default=None)
+
+
+class SuggestionGroup(Base):
+    __tablename__ = 'suggestion_groups'
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    name: Mapped[str]
+    named: Mapped[bool] = mapped_column(server_default=false(), default=False)
