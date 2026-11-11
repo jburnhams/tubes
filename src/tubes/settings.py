@@ -12,8 +12,11 @@
   half_life_days   how fast a play's weight fades in the eviction score (default 30: a play counts half as much 30 days later).
   protect_days     how long a fetched video that nobody has played yet is kept from eviction (default 7).
   ytdlp, ffmpeg    the commands to run (default `yt-dlp` and `ffmpeg` from PATH).
+  history_url      a database that keeps a viewing history (an SQLAlchemy URL, such as `postgresql+psycopg:///mydb`; default empty: none).
+  history_table    the table or view in it to read, optionally with its schema (`schema.table`), with the columns account, at, video_id,
+                   title, channel_id and channel_name (history.py `sync_database`). `tubes history sync` copies it in, one source per account.
 
-The environment variables TUBES_DATA, TUBES_CACHE, TUBES_YTDLP and TUBES_FFMPEG override the file (handy for tests and one-off runs). The YouTube key
+The environment variables TUBES_DATA, TUBES_CACHE, TUBES_YTDLP, TUBES_FFMPEG, TUBES_HISTORY_URL and TUBES_HISTORY_TABLE override the file (handy for tests and one-off runs). The YouTube key
 (YOUTUBE_API_KEY) is only ever in the environment."""
 import json, os
 
@@ -32,6 +35,8 @@ SPEC = {
     'protect_days': (7.0, float, None),
     'ytdlp': ('yt-dlp', str, 'TUBES_YTDLP'),
     'ffmpeg': ('ffmpeg', str, 'TUBES_FFMPEG'),
+    'history_url': ('', str, 'TUBES_HISTORY_URL'),
+    'history_table': ('', str, 'TUBES_HISTORY_TABLE'),
 }
 KNOWN = tuple(SPEC)
 POSITIVE = ('cache_limit_gb', 'max_height', 'half_life_days')
