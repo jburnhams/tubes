@@ -77,6 +77,24 @@ def add(text, now=None):
     return dict(kind='channel', channel=library.channel(row['id']))
 
 
+def add_videos(ids, now=None):
+    """Add these videos (say, the ones of a channel watched before, from history.py) without following anything: each one's channel comes in
+    unfollowed if the library does not have it. Returns `{added, already, missing}`: new to the library, held already (refreshed), and those
+    YouTube no longer has (private or removed)."""
+    ids = list(dict.fromkeys(ids)); now = now or cache.stamp()
+    if not ids: return dict(added=0, already=0, missing=0)
+    rows = [youtube.video_row(item, now) for item in youtube.videos(ids)]
+    with db.connect() as con:
+        have = {r[0] for r in con.execute(f"SELECT id FROM videos WHERE id IN ({', '.join('?' * len(ids))})", tuple(ids))}
+        known = {r[0] for r in con.execute('SELECT id FROM channels')}
+    new_channels = sorted({r['channel_id'] for r in rows} - known - {''})
+    channels = [youtube.channel_row(item, now) for item in youtube.channels(new_channels, youtube.CHANNEL_PARTS)] if new_channels else []
+    with db.connect() as con:
+        for c in channels: save_channel(con, c, follow=False)
+        save_videos(con, rows)
+    return dict(added=sum(1 for r in rows if r['id'] not in have), already=sum(1 for r in rows if r['id'] in have), missing=len(ids) - len(rows))
+
+
 def remove(channel_id):
     """Remove a channel and its videos (their cached copies stay until evicted); returns how many videos went."""
     with db.connect() as con:
@@ -230,12 +248,13 @@ def sync(channel_ids=None, now=None, on_channel=None, progress=None):
 
 class Job:
     """One sync at a time in a background thread, for the web server: `start(ids)` (None: every followed channel), `state()` for the page
-    that polls it. Starting while one runs is refused (`Busy`)."""
+    that polls it. Starting while one runs is refused (`Busy`); `follow_up(ids)` instead adds channels to the running sync, which reads them
+    after the ones it has (a channel added or started again while a sync runs, so following several in a row fetches each)."""
 
     class Busy(RuntimeError): pass
 
     def __init__(self):
-        self.lock, self.thread = threading.Lock(), None
+        self.lock, self.thread, self.queued = threading.Lock(), None, []
         self.s = dict(running=False, total=0, done=0, current=None, added=0, gone=0, errors=[], started=None, finished=None)
 
     def state(self):
@@ -249,6 +268,15 @@ class Job:
         self.thread = threading.Thread(target=self._run, args=(channel_ids,), daemon=True, name='tubes-sync'); self.thread.start()
         return self.state()
 
+    def follow_up(self, channel_ids):
+        """Sync these channels after the running sync's own, or start a sync of them if none runs."""
+        with self.lock:
+            if self.s['running']:
+                new = [c for c in channel_ids if c not in self.queued]
+                self.queued += new; self.s['total'] += len(new)
+                return dict(self.s, errors=list(self.s['errors']))
+        return self.start(list(channel_ids))
+
     def _run(self, channel_ids):
         base = [0]
 
@@ -261,12 +289,17 @@ class Job:
             with self.lock: self.s['added'] = base[0] + added
 
         try:
-            r = sync(channel_ids, on_channel=on_channel, progress=progress)
-            with self.lock: self.s.update(errors=r['errors'], added=r['added'], gone=(r['recheck'] or {}).get('gone', 0))
+            while True:
+                with self.lock: before = self.s['added']
+                r = sync(channel_ids, on_channel=on_channel, progress=progress)
+                with self.lock:
+                    self.s.update(errors=self.s['errors'] + r['errors'], added=before + r['added'], gone=self.s['gone'] + (r['recheck'] or {}).get('gone', 0))
+                    channel_ids, self.queued = self.queued, []
+                if not channel_ids: break
         except Exception as e:                                                   # the database went away, say: the page must still stop waiting
             with self.lock: self.s['errors'].append(dict(channel=None, title=None, error=f'The sync stopped: {e}'))
         finally:
-            with self.lock: self.s.update(running=False, current=None, done=self.s['total'], finished=cache.stamp())
+            with self.lock: self.queued = []; self.s.update(running=False, current=None, done=self.s['total'], finished=cache.stamp())
 
     def wait(self, timeout=None):
         if self.thread: self.thread.join(timeout)

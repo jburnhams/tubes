@@ -85,13 +85,14 @@ def test_manage_the_library(client, fake_youtube):
     r = client.post('/api/library', json=dict(input='https://www.youtube.com/@workshop')).json()
     assert r['kind'] == 'channel' and r['channel']['title'] == 'Workshop' and r['sync']['running'] is True and r['sync']['total'] == 1
     assert client.post('/api/library/sync', json=dict(channels=[A])).status_code == 409      # one at a time
-    r = client.post('/api/library', json=dict(input='UCbbbbbbbbbbbbbbbbbbbbbb')).json()     # added while the first runs: synced by the next one
-    assert r['sync']['running'] is True and r['sync']['total'] == 1
+    r = client.post('/api/library', json=dict(input='UCbbbbbbbbbbbbbbbbbbbbbb')).json()     # added while the first runs: the running sync takes it next
+    assert r['sync']['running'] is True and r['sync']['total'] == 2
+    assert client.post('/api/library', json=dict(input='UCbbbbbbbbbbbbbbbbbbbbbb')).json()['sync']['total'] == 2   # queued once
     fake_youtube.hold.set(); job.wait(30)
     s = client.get('/api/library/sync').json()
-    assert (s['running'], s['done'], s['added'], s['errors']) == (False, 1, 55, [])
+    assert (s['running'], s['done'], s['added'], s['errors']) == (False, 2, 57, [])
     assert client.post('/api/library/sync').json()['total'] == 2; job.wait(30)
-    assert client.get('/api/library/sync').json()['added'] == 2 and client.get('/api/library').json()['synced'] is not None
+    assert client.get('/api/library/sync').json()['added'] == 0 and client.get('/api/library').json()['synced'] is not None
     c = client.get(f'/api/channels/{A}').json()
     assert (c['videos'], c['complete'], c['follow'], c['total_videos']) == (55, True, True, 55)
     v = client.post('/api/library', json=dict(input='https://youtu.be/aaaa0000003')).json()
@@ -102,7 +103,7 @@ def test_manage_the_library(client, fake_youtube):
     fake_youtube.hold.clear()
     r = client.post(f'/api/channels/{A}/restart').json()
     assert r['videos'] == 55 and r['sync']['running'] is True
-    assert client.post(f'/api/channels/{A}/restart').json()['sync']['running'] is True       # one is running: the restart waits for the next
+    assert client.post(f'/api/channels/{A}/restart').json()['sync']['total'] == 2            # one is running: the restart follows it
     fake_youtube.hold.set(); job.wait(30)
     assert client.get(f'/api/channels/{A}').json()['videos'] == 55
     assert client.delete(f'/api/channels/{A}').json() == dict(channel=A, videos=55)
@@ -180,3 +181,51 @@ def test_the_watching_side_reports_missing_videos(client, fake_youtube, monkeypa
     monkeypatch.delenv('YOUTUBE_API_KEY')
     r = client.post('/api/videos/check', json=dict(ids=[vid(A, 1)]))
     assert r.status_code == 503 and 'YOUTUBE_API_KEY' in r.json()['detail']
+
+
+def test_suggestions(client, fake_youtube, monkeypatch):
+    from takeout import as_json, chan, watch
+    from fake_youtube import vid
+    a, b = chan('a'), chan('b')
+    fake_youtube.channel(a, 'Channel a', topics=['Music'], videos=3).channel(b, 'Channel b')
+    ws = [watch(f'2026-01-0{d}T10:0{m}:00Z', vid(c, d % 3), f'Video {d}', c, f'Channel {c[2]}') for d in range(1, 7) for m, c in enumerate((a, b))]
+    assert client.get('/api/suggestions/summary').json()['open'] == 0
+    assert client.post('/api/suggestions/import', json=dict(source='one', text='nope')).status_code == 400
+    r = client.post('/api/suggestions/import', json=dict(source='one', text=as_json(ws))).json()
+    assert (r['watches'], r['refresh']['groups'], r['refresh']['looked_up']) == (12, 1, 2)
+    s = client.get('/api/suggestions/summary').json()
+    assert (s['open'], s['topics'], [g['channels'] for g in s['groups']]) == (2, [dict(name='Music', channels=1)], [2])
+    assert [i['channel_id'] for i in client.get('/api/suggestions', params=dict(topic='Music')).json()['items']] == [a]
+    assert client.get('/api/suggestions', params=dict(group='x')).status_code == 404
+    gid = s['groups'][0]['id']
+    assert client.put(f'/api/suggestions/groups/{gid}', json=dict(name='Both')).json()['name'] == 'Both'
+    assert client.put('/api/suggestions/groups/99', json=dict(name='x')).status_code == 404
+    assert client.put(f'/api/suggestions/{b}', json=dict(dismissed=True)).json()['dismissed'] is not None
+    assert client.get('/api/suggestions', params=dict(dismissed=True)).json()['total'] == 1
+    assert client.put('/api/suggestions/UCnone', json=dict(dismissed=True)).status_code == 404
+    assert client.post(f'/api/suggestions/{a}/videos').json() == dict(added=3, already=0, missing=0)
+    assert client.get(f'/api/channels/{a}').json()['follow'] is False
+    assert client.post('/api/suggestions/UCnone/videos').status_code == 404
+    assert client.post('/api/suggestions/refresh').json()['summary']['open'] == 1
+    assert client.delete('/api/suggestions/sources/one').json()['refresh']['channels'] == 0
+    assert client.delete('/api/suggestions/sources/one').status_code == 404
+    monkeypatch.delenv('YOUTUBE_API_KEY')
+    assert client.post(f'/api/suggestions/{a}/videos').status_code == 503
+
+
+def test_history_stats_and_refresh_from_a_history_database(client, tmp_path, monkeypatch):
+    import sqlite3
+    path = tmp_path / 'kept.db'
+    with sqlite3.connect(path) as con:
+        con.execute('CREATE TABLE kept (account TEXT, at TEXT, video_id TEXT, title TEXT, channel_id TEXT, channel_name TEXT)')
+        con.executemany('INSERT INTO kept VALUES (?, ?, ?, ?, ?, ?)', [('main', f'2026-01-0{d}T10:00:00Z', f'v000000000{d}', f'V{d}', 'UC' + 'a' * 22, 'Channel a') for d in range(1, 6)])
+    assert client.get('/api/suggestions/summary').json()['database'] is False
+    monkeypatch.setenv('TUBES_HISTORY_URL', f'sqlite:///{path}'); monkeypatch.setenv('TUBES_HISTORY_TABLE', 'kept')
+    r = client.post('/api/suggestions/refresh').json()
+    assert (r['channels'], r['summary']['database'], [s['source'] for s in r['summary']['sources']]) == (1, True, ['main'])
+    h = client.get('/api/history', params=dict(start='2026-01-02T00:00:00+00:00', end='2026-01-04T00:00:00+00:00', source='main')).json()
+    assert (h['watches'], h['by'], [p['period'] for p in h['periods']], h['channels_top'][0]['watches'], h['sources'][0]['watches']) == (2, 'day', ['2026-01-02', '2026-01-03'], 2, 5)
+    monkeypatch.setenv('TUBES_HISTORY_TABLE', 'nothere')
+    assert client.post('/api/suggestions/refresh').status_code == 502
+    monkeypatch.setenv('TUBES_HISTORY_TABLE', 'bad name')
+    assert client.post('/api/suggestions/refresh').status_code == 400
