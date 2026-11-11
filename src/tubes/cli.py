@@ -78,6 +78,9 @@ def cmd_history(args):
             if not args.file or not args.source: sys.exit('usage: tubes history import FILE --source NAME')
             r = history.import_file(args.file, args.source, lookup=not args.no_lookup)
             return out(args, r, f"  {r['source']}: {r['watches']} watch(es) from {r['first'][:10]} to {r['last'][:10]}\n" + describe_refresh(r['refresh']))
+        if args.action == 'sync':
+            r = history.sync_database(lookup=not args.no_lookup)
+            return out(args, r, '\n'.join([f'  {k}: {n} watch(es)' for k, n in r['sources'].items()] + [describe_refresh(r['refresh'])]))
         if args.action == 'refresh':
             r = history.refresh(lookup=not args.no_lookup); return out(args, r, describe_refresh(r))
         if args.action == 'remove':
@@ -131,8 +134,8 @@ def main(argv=None):
     a = sub.add_parser('add', help='add a channel (followed, then synced) or one video: a link, an id or an @handle'); a.add_argument('input'); a.add_argument('--no-sync', action='store_true', help='add a channel without fetching its videos yet'); a.add_argument('--json', action='store_true'); a.set_defaults(fn=cmd_add)
     r = sub.add_parser('remove', help='remove a channel and its videos from the library'); r.add_argument('channel'); r.add_argument('--json', action='store_true'); r.set_defaults(fn=cmd_remove)
     h = sub.add_parser('channels', help='list the channels in the library'); h.add_argument('--json', action='store_true'); h.set_defaults(fn=cmd_channels)
-    w = sub.add_parser('history', help='import a Google Takeout watch history (suggestions are made from it), list the imported ones, remove one, or refresh the suggestions')
-    w.add_argument('action', nargs='?', choices=('list', 'import', 'remove', 'refresh'), default='list'); w.add_argument('file', nargs='?'); w.add_argument('--source', help='a name for the history, say the account it came from')
+    w = sub.add_parser('history', help='import a Google Takeout watch history (suggestions are made from it), sync the one in the history database (history_url, history_table), list them, remove one, or refresh the suggestions')
+    w.add_argument('action', nargs='?', choices=('list', 'import', 'sync', 'remove', 'refresh'), default='list'); w.add_argument('file', nargs='?'); w.add_argument('--source', help='a name for the history, say the account it came from')
     w.add_argument('--no-lookup', action='store_true', help='do not ask YouTube about the channels'); w.add_argument('--json', action='store_true'); w.set_defaults(fn=cmd_history)
     f = sub.add_parser('fetch', help='fetch one video into the cache now (waits until it is done)'); f.add_argument('video'); f.add_argument('--json', action='store_true'); f.set_defaults(fn=cmd_fetch)
     c = sub.add_parser('cache', help='show the cache: use, limit and every copy with its score'); c.add_argument('--json', action='store_true'); c.set_defaults(fn=cmd_cache)

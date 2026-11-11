@@ -5,6 +5,10 @@ is read into `watches` under a `source` name (say, one per account), replacing w
 again is safe. Only watches are kept: ads ("From Google Ads"), searches, surveys and the like are left out. Takeout writes the HTML in the
 account's language; the English wording ("Watched", UK and US dates) is what is read, and a JSON export reads the same in any case.
 
+Or a history is read from another database that keeps one (settings `history_url` and `history_table`): `sync_database` copies a table
+or view with the columns account, at (a timestamp, or an ISO string), video_id, title, channel_id and channel_name, one source per account
+(replacing it, as an import does), then refreshes. Sources that are not in that table (Takeout imports) are left alone.
+
 Suggestions: `refresh` turns the history into one row per channel (`suggestions`): how many times and how lately it was watched, and a
 score that adds up its watches with each one counting half as much every HALF_LIFE_DAYS, so a channel watched a lot years ago and one
 watched a lot this month both rank. Then it groups channels by the sittings they were watched in: watches less than SITTING_GAP apart are one
@@ -21,7 +25,7 @@ The list leaves out channels the library follows (following one is accepting it)
 kept when the history is imported again."""
 import collections, datetime, html, itertools, json, math, re
 
-from tubes import cache, db, youtube
+from tubes import cache, db, settings, youtube
 
 HALF_LIFE_DAYS = 365.0
 SITTING_GAP = datetime.timedelta(minutes=30)
@@ -116,11 +120,51 @@ def import_text(text, source, now=None, lookup=True):
     if not source or len(source) > 64: raise ImportProblem('Name the history (up to 64 characters), say after the account it came from.')
     rows = parse(text)
     if not rows: raise ImportProblem('That watch history has no watches in it.')
+    _replace(source, rows)
+    ats = sorted(r['at'] for r in rows)
+    return dict(source=source, watches=len(rows), first=ats[0], last=ats[-1], refresh=refresh(now, lookup=lookup))
+
+
+def _replace(source, rows):
     with db.connect() as con:
         con.execute('DELETE FROM watches WHERE source = ?', (source,))
         con.executemany('INSERT INTO watches (source, at, video_id, title, channel_id, channel_title) VALUES (:source, :at, :video_id, :title, :channel_id, :channel_title)', [dict(r, source=source) for r in rows])
-    ats = sorted(r['at'] for r in rows)
-    return dict(source=source, watches=len(rows), first=ats[0], last=ats[-1], refresh=refresh(now, lookup=lookup))
+
+
+TABLE = re.compile(r'^[A-Za-z_]\w*(\.[A-Za-z_]\w*)?$')
+
+
+def _utc(v):
+    if isinstance(v, datetime.datetime): t = v if v.tzinfo else v.replace(tzinfo=datetime.timezone.utc)
+    else:
+        try: t = datetime.datetime.fromisoformat(str(v).replace('Z', '+00:00'))
+        except ValueError: return None
+        t = t if t.tzinfo else t.replace(tzinfo=datetime.timezone.utc)
+    return t.astimezone(datetime.timezone.utc).isoformat(timespec='seconds')
+
+
+def database_configured():
+    return bool(settings.get('history_url') and settings.get('history_table'))
+
+
+def sync_database(url=None, table=None, now=None, lookup=True):
+    """Copy the history kept in another database in (see the module's notes). Returns `{sources: {account: watches}, refresh}`."""
+    import sqlalchemy
+    url, table = url or settings.get('history_url'), table or settings.get('history_table')
+    if not url or not table: raise ImportProblem('No history database is set: set history_url and history_table (tubes set).')
+    if not TABLE.match(table): raise ImportProblem(f'{table} is not a table name (name or schema.name).')
+    engine = sqlalchemy.create_engine(url)
+    try:
+        with engine.connect() as con:
+            got = con.execute(sqlalchemy.text(f'SELECT account, at, video_id, title, channel_id, channel_name FROM {table} WHERE video_id IS NOT NULL')).fetchall()
+    except sqlalchemy.exc.SQLAlchemyError as e: raise ImportProblem(f'The history database could not be read: {str(e).splitlines()[0]}') from None
+    finally: engine.dispose()
+    per = collections.defaultdict(list)
+    for account, at, vid, title, cid, cname in got:
+        at = _utc(at)
+        if at and account: per[str(account)[:64]].append(dict(at=at, video_id=str(vid)[:64], title=title, channel_id=cid or None, channel_title=cname if cid else None))
+    for source, rows in per.items(): _replace(source, rows)
+    return dict(sources={k: len(v) for k, v in sorted(per.items())}, refresh=refresh(now, lookup=lookup))
 
 
 def import_file(path, source, now=None, lookup=True):
@@ -298,7 +342,7 @@ def summary():
     return dict(sources=sources(), groups=sorted(groups, key=lambda g: (-g['channels'], g['id'])), ungrouped=per_group.get(None, 0),
                 topics=[dict(name=t, channels=n) for t, n in sorted(topics.items(), key=lambda x: (-x[1], x[0]))],
                 kids=sum(1 for r in open_ if r['made_for_kids']), open=len(open_), dismissed=sum(1 for r in rows if r['dismissed'] and not r['followed']),
-                followed=sum(1 for r in rows if r['followed']), refreshed=refreshed[0] if refreshed else None, configured=youtube.configured())
+                followed=sum(1 for r in rows if r['followed']), refreshed=refreshed[0] if refreshed else None, configured=youtube.configured(), database=database_configured())
 
 
 def suggestion(channel_id):
@@ -328,3 +372,30 @@ def watched_videos(channel_id):
     """The different videos of this channel in the history, most recently watched first."""
     with db.connect() as con:
         return [r[0] for r in con.execute('SELECT video_id FROM watches WHERE channel_id = ? GROUP BY video_id ORDER BY MAX(at) DESC, video_id', (channel_id,))]
+
+
+TOP = 25
+
+
+def stats(start=None, end=None, source=None, top=TOP):
+    """What was watched between `start` and `end` (ISO times; either may be open), in one source or all: `{watches, videos, channels, first,
+    last, by, periods, channels_top, videos_top}`. `periods` counts watches per month (`by` 'month'), or per day when the span is 92 days or
+    less (`by` 'day'). Videos that have gone (no channel in the history) count as watches, but are left out of the top channels."""
+    def where(t=''):
+        parts, args = ['1 = 1'], []
+        for sql, v in ((f'{t}at >= ?', start), (f'{t}at < ?', end), (f'{t}source = ?', source)):
+            if v: parts.append(sql); args.append(v)
+        return ' AND '.join(parts), tuple(args)
+    w, args = where()
+    with db.connect() as con:
+        n = db.row(con.execute(f'SELECT COUNT(*) AS watches, COUNT(DISTINCT video_id) AS videos, COUNT(DISTINCT channel_id) AS channels, MIN(at) AS first, MAX(at) AS last FROM watches WHERE {w}', args))
+        span = (datetime.datetime.fromisoformat(n['last']) - datetime.datetime.fromisoformat(n['first'])).days if n['first'] else 0
+        by, size = ('day', 10) if span <= 92 else ('month', 7)
+        periods = [dict(period=r[0], watches=r[1]) for r in con.execute(f'SELECT SUBSTR(at, 1, {size}) AS p, COUNT(*) FROM watches WHERE {w} GROUP BY SUBSTR(at, 1, {size}) ORDER BY p', args)]
+        channels = db.rows(con.execute(f"""SELECT w.channel_id, MAX(w.channel_title) AS title, COUNT(*) AS watches, COUNT(DISTINCT w.video_id) AS videos, MAX(w.at) AS last,
+                                           MAX(CASE WHEN c.follow = ? THEN 1 ELSE 0 END) AS followed FROM watches w LEFT JOIN channels c ON c.id = w.channel_id
+                                           WHERE {where('w.')[0]} AND w.channel_id IS NOT NULL GROUP BY w.channel_id ORDER BY watches DESC, last DESC, w.channel_id LIMIT ?""", (True, *args, top)))
+        videos = db.rows(con.execute(f"""SELECT video_id, MAX(title) AS title, MAX(channel_id) AS channel_id, MAX(channel_title) AS channel, COUNT(*) AS watches, MAX(at) AS last
+                                         FROM watches WHERE {w} GROUP BY video_id ORDER BY watches DESC, last DESC, video_id LIMIT ?""", (*args, top)))
+    for c in channels: c['followed'] = bool(c['followed'])
+    return dict(n, by=by, periods=periods, channels_top=channels, videos_top=videos)

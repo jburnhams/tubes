@@ -210,3 +210,21 @@ def test_suggestions(client, fake_youtube, monkeypatch):
     assert client.delete('/api/suggestions/sources/one').status_code == 404
     monkeypatch.delenv('YOUTUBE_API_KEY')
     assert client.post(f'/api/suggestions/{a}/videos').status_code == 503
+
+
+def test_history_stats_and_refresh_from_a_history_database(client, tmp_path, monkeypatch):
+    import sqlite3
+    path = tmp_path / 'kept.db'
+    with sqlite3.connect(path) as con:
+        con.execute('CREATE TABLE kept (account TEXT, at TEXT, video_id TEXT, title TEXT, channel_id TEXT, channel_name TEXT)')
+        con.executemany('INSERT INTO kept VALUES (?, ?, ?, ?, ?, ?)', [('main', f'2026-01-0{d}T10:00:00Z', f'v000000000{d}', f'V{d}', 'UC' + 'a' * 22, 'Channel a') for d in range(1, 6)])
+    assert client.get('/api/suggestions/summary').json()['database'] is False
+    monkeypatch.setenv('TUBES_HISTORY_URL', f'sqlite:///{path}'); monkeypatch.setenv('TUBES_HISTORY_TABLE', 'kept')
+    r = client.post('/api/suggestions/refresh').json()
+    assert (r['channels'], r['summary']['database'], [s['source'] for s in r['summary']['sources']]) == (1, True, ['main'])
+    h = client.get('/api/history', params=dict(start='2026-01-02T00:00:00+00:00', end='2026-01-04T00:00:00+00:00', source='main')).json()
+    assert (h['watches'], h['by'], [p['period'] for p in h['periods']], h['channels_top'][0]['watches'], h['sources'][0]['watches']) == (2, 'day', ['2026-01-02', '2026-01-03'], 2, 5)
+    monkeypatch.setenv('TUBES_HISTORY_TABLE', 'nothere')
+    assert client.post('/api/suggestions/refresh').status_code == 502
+    monkeypatch.setenv('TUBES_HISTORY_TABLE', 'bad name')
+    assert client.post('/api/suggestions/refresh').status_code == 400

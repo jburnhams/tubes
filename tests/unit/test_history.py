@@ -188,3 +188,55 @@ def test_the_list_filters_and_leaves_out_what_is_followed(fake_youtube):
 def test_watched_videos_newest_first():
     load([watch(at(1), 'old00000001', 'Old', A, 'Channel a'), watch(at(3), 'new00000001', 'New', A, 'Channel a'), watch(at(2), 'old00000001', 'Old', A, 'Channel a'), watch(at(4), 'other000001', 'Other', B, 'Channel b')])
     assert history.watched_videos(A) == ['new00000001', 'old00000001']
+
+
+# A history kept in another database.
+
+def history_db(tmp_path, rows):
+    """A SQLite database with a `kept` table as a history database would have it; returns its URL."""
+    import sqlite3
+    path = tmp_path / 'kept.db'
+    with sqlite3.connect(path) as con:
+        con.execute('CREATE TABLE kept (account TEXT, at TEXT, video_id TEXT, title TEXT, channel_id TEXT, channel_name TEXT)')
+        con.executemany('INSERT INTO kept VALUES (?, ?, ?, ?, ?, ?)', rows)
+    return f'sqlite:///{path}'
+
+
+def test_sync_database_copies_each_account_in_and_leaves_imports_alone(tmp_path, monkeypatch):
+    load([watch(at(1), 'imported001', 'Imported', A, 'Channel a')], source='takeout')
+    url = history_db(tmp_path, [('main', '2026-01-01T10:00:00Z', 'v0000000001', 'One', B, 'Channel b'), ('main', '2026-01-02 10:00:00', 'v0000000002', 'Two', None, 'ignored'),
+                                ('second', '2026-01-03T10:00:00+01:00', 'v0000000003', 'Three', B, 'Channel b'), ('second', 'not a time', 'v0000000004', 'Bad', B, 'Channel b'), (None, '2026-01-01T00:00:00Z', 'v0000000005', 'No account', B, 'x')])
+    assert history.database_configured() is False
+    with pytest.raises(history.ImportProblem, match='No history database is set'): history.sync_database()
+    monkeypatch.setenv('TUBES_HISTORY_URL', url); monkeypatch.setenv('TUBES_HISTORY_TABLE', 'kept')
+    assert history.database_configured() is True
+    r = history.sync_database(now=NOW, lookup=False)
+    assert r['sources'] == dict(main=2, second=1) and r['refresh']['channels'] == 2
+    with db.connect() as con: rows = [tuple(x) for x in con.execute('SELECT source, at, video_id, channel_id, channel_title FROM watches ORDER BY at, source')]
+    assert rows == [('main', '2026-01-01T10:00:00+00:00', 'v0000000001', B, 'Channel b'), ('main', '2026-01-02T10:00:00+00:00', 'v0000000002', None, None),
+                    ('takeout', at(1), 'imported001', A, 'Channel a'), ('second', '2026-01-03T09:00:00+00:00', 'v0000000003', B, 'Channel b')]
+    with pytest.raises(history.ImportProblem, match='not a table name'): history.sync_database(table='kept; DROP TABLE x')
+    with pytest.raises(history.ImportProblem, match='could not be read'): history.sync_database(table='missing.kept')
+
+
+def test_utc_times():
+    assert history._utc(datetime.datetime(2026, 1, 1, 10)) == '2026-01-01T10:00:00+00:00'
+    assert history._utc(datetime.datetime(2026, 1, 1, 10, tzinfo=datetime.timezone(datetime.timedelta(hours=2)))) == '2026-01-01T08:00:00+00:00'
+    assert history._utc('soon') is None
+
+
+# What was watched when.
+
+def test_stats_count_rank_and_bucket():
+    ws = [watch(at(d), f'v{d % 3:010d}', f'Video {d % 3}', A if d % 3 else B, f'Channel {"a" if d % 3 else "b"}') for d in range(0, 200, 5)]
+    load(ws + [watch(at(7), 'gone0000001', 'Gone', None)], source='one')
+    load([watch(at(3), 'w0000000001', 'Other', C, 'Channel c')], source='two')
+    s = history.stats()
+    assert (s['watches'], s['videos'], s['channels'], s['first'], s['by']) == (42, 5, 3, at(0), 'month')
+    assert s['periods'][0] == dict(period='2026-01', watches=9) and sum(p['watches'] for p in s['periods']) == 42
+    assert [(c['channel_id'], c['watches'], c['videos'], c['followed']) for c in s['channels_top']] == [(A, 26, 2, False), (B, 14, 1, False), (C, 1, 1, False)]
+    assert [(v['video_id'], v['watches'], v['channel_id']) for v in s['videos_top'][:1]] == [('v0000000000', 14, B)] and sorted(v['watches'] for v in s['videos_top']) == [1, 1, 13, 13, 14]
+    d = history.stats(at(0), at(30), 'one', top=1)
+    assert (d['by'], d['watches'], len(d['channels_top']), len(d['videos_top'])) == ('day', 7, 1, 1) and d['periods'][0] == dict(period=at(0)[:10], watches=1)
+    e = history.stats(at(500))
+    assert (e['watches'], e['first'], e['periods'], e['channels_top'], e['by']) == (0, None, [], [], 'day')

@@ -117,3 +117,16 @@ def test_history_import_list_refresh_and_remove(capsys, tmp_path, fake_youtube):
     with pytest.raises(SystemExit, match='No such file'): cli.main(['history', 'import', str(tmp_path / 'none.json'), '--source', 'x'])
     (tmp_path / 'c.txt').write_text('hello', encoding='utf8')
     with pytest.raises(SystemExit, match='not a Google Takeout watch history'): cli.main(['history', 'import', str(tmp_path / 'c.txt'), '--source', 'x'])
+
+
+def test_history_sync_from_a_history_database(capsys, tmp_path, monkeypatch):
+    import sqlite3
+    path = tmp_path / 'kept.db'
+    with sqlite3.connect(path) as con:
+        con.execute('CREATE TABLE kept (account TEXT, at TEXT, video_id TEXT, title TEXT, channel_id TEXT, channel_name TEXT)')
+        con.execute("INSERT INTO kept VALUES ('main', '2026-01-01T10:00:00Z', 'v0000000001', 'One', 'UCaaaaaaaaaaaaaaaaaaaaaa', 'Channel a')")
+    with pytest.raises(SystemExit, match='No history database is set'): cli.main(['history', 'sync'])
+    assert cli.main(['set', 'history_url', f'sqlite:///{path}']) == 0 and cli.main(['set', 'history_table', 'kept']) == 0
+    capsys.readouterr()
+    assert cli.main(['history', 'sync', '--no-lookup']) == 0
+    assert capsys.readouterr().out == '  main: 1 watch(es)\n  1 channel(s) in the history, 0 in 0 group(s)\n'

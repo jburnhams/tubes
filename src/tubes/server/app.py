@@ -26,8 +26,9 @@ API (JSON):
   DELETE /api/cache/{id}                   delete a copy now
   POST /api/cache/evict {dry_run}          run eviction
   GET  /api/suggestions?group=&topic=&kids=&q=&dismissed=&limit=   channels from the imported watch history, best first: {items, total}
-  GET  /api/suggestions/summary            the histories, groups, topics and counts around that list
-  POST /api/suggestions/refresh            remake the suggestions from the history and ask YouTube about new channels
+  GET  /api/suggestions/summary            the histories, groups, topics and counts around that list (`database`: a history database is set)
+  POST /api/suggestions/refresh            read the history database again if one is set, remake the suggestions, ask YouTube about new channels
+  GET  /api/history?start=&end=&source=    what was watched then: counts, watches per day or month, top channels and videos
   POST /api/suggestions/import {source, text}   import a Takeout watch history (its file's text) under a name, then refresh
   DELETE /api/suggestions/sources/{source}  forget an imported history
   PUT  /api/suggestions/groups/{id} {name}  name a group (empty: back to the made-up name)
@@ -100,6 +101,7 @@ def create_app():
 
     def guard(fn, *a, **kw):
         try: return fn(*a, **kw)
+        except history.ImportProblem as e: raise HTTPException(502 if 'could not be read' in str(e) else 400, str(e))
         except (settings.SettingError, fetcher.FetchError, ValueError) as e: raise HTTPException(400, str(e))
         except (catalogue.NotFound, history.NotFound) as e: raise HTTPException(404, str(e))
         except catalogue.Job.Busy as e: raise HTTPException(409, str(e))
@@ -225,7 +227,13 @@ def create_app():
     def get_suggestions_summary(): return history.summary()
 
     @app.post('/api/suggestions/refresh')
-    def post_suggestions_refresh(): return dict(history.refresh(), summary=history.summary())
+    def post_suggestions_refresh():
+        r = guard(history.sync_database)['refresh'] if history.database_configured() else history.refresh()
+        return dict(r, summary=history.summary())
+
+    @app.get('/api/history')
+    def get_history(start: str | None = None, end: str | None = None, source: str | None = None, top: int = Query(history.TOP, ge=1, le=200)):
+        return dict(history.stats(start, end, source, top), sources=history.sources())
 
     @app.post('/api/suggestions/import')
     def post_suggestions_import(b: ImportIn): return guard(history.import_text, b.text, b.source)
