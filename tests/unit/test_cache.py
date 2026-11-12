@@ -155,6 +155,8 @@ def test_a_fetching_copy_is_never_served_as_ended():
     assert '#EXT-X-ENDLIST' not in held and 'seg_00000.m4s' in held and 'seg_00001.m4s' not in held and held.count('#EXTINF') == 1   # its last segment may be short: held back
     write_playlist('aaaaaaaaaaa', 3, False); assert 'seg_00002.m4s' in cache.served_playlist('aaaaaaaaaaa')       # still growing: all of it
     write_playlist('aaaaaaaaaaa', 0, True); assert '#EXT-X-ENDLIST' not in cache.served_playlist('aaaaaaaaaaa')
+    write_playlist('aaaaaaaaaaa', 1, True)        # an attempt that ended after one segment: nothing to play yet, so the player is not started on an empty playlist
+    assert '#EXTINF' not in cache.served_playlist('aaaaaaaaaaa') and (cache.status('aaaaaaaaaaa')['segments'], cache.status('aaaaaaaaaaa')['playable']) == (0, False)
     write_playlist('aaaaaaaaaaa', 2, True)
     assert cache.status('aaaaaaaaaaa')['complete'] is False and cache.read_playlist('aaaaaaaaaaa')['complete'] is True
     cache.finish('aaaaaaaaaaa', cache.stamp())

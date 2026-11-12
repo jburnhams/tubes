@@ -49,18 +49,23 @@ def read_playlist(video_id):
     try:
         with open(os.path.join(folder(video_id), PLAYLIST), encoding='utf8') as f: text = f.read()
     except OSError: return dict(segments=0, seconds=0.0, complete=False)
-    lengths = [float(m) for m in re.findall(r'^#EXTINF:([\d.]+)', text, re.M)]
-    return dict(segments=len(lengths), seconds=round(sum(lengths), 3), complete='#EXT-X-ENDLIST' in text)
+    return summary(text)
 
 
-def served_playlist(video_id):
+def summary(text):
+    """`{segments, seconds, complete}` of a playlist's text."""
+    lengths = [float(m) for m in re.findall(r'^#EXTINF:([\d.]+)', text or '', re.M)]
+    return dict(segments=len(lengths), seconds=round(sum(lengths), 3), complete='#EXT-X-ENDLIST' in (text or ''))
+
+
+def served_playlist(video_id, e=None):
     """The playlist as the player is given it, or None when there is none: while the copy is fetching, without `#EXT-X-ENDLIST` (nor the segment before it). A download
     that ends short also ends its playlist, and the fetcher then runs it again (fetcher.attempts) into the same names; a player that read the
     end would stop following and never see the rest."""
     try:
         with open(os.path.join(folder(video_id), PLAYLIST), encoding='utf8') as f: text = f.read()
     except OSError: return None
-    e = entry(video_id)
+    e = e or entry(video_id)
     if not (e and e['state'] == 'fetching') or '#EXT-X-ENDLIST' not in text: return text
     # An attempt that ended: its last segment may be cut short (the stream stopped mid-segment), and a retry rewrites it whole under the same
     # name, so a player given the short one would keep it and jump a gap. Until the copy is ready, that segment is held back as well.
@@ -80,8 +85,9 @@ def status(video_id):
     """The state of a video's copy for the player: `{state, segments, seconds, complete, playable, error, formats}`. `state` is none, fetching, ready or failed."""
     e = entry(video_id)
     if e is None: return dict(state='none', segments=0, seconds=0.0, complete=False, playable=False, error=None, formats=None)
-    p = read_playlist(video_id) if e['state'] != 'failed' else dict(segments=0, seconds=0.0, complete=False)
-    if e['state'] == 'fetching': p['complete'] = False        # a failed attempt's playlist ends too, and the fetcher may yet run the download again
+    if e['state'] == 'failed': p = dict(segments=0, seconds=0.0, complete=False)
+    elif e['state'] == 'fetching': p = summary(served_playlist(video_id, e))     # what the player is given: an ended attempt's end and last segment held back (a retry may follow)
+    else: p = read_playlist(video_id)
     return dict(state=e['state'], **p, playable=p['segments'] > 0, error=e['error'], formats=e['formats'])
 
 
