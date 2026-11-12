@@ -28,7 +28,7 @@ The list leaves out channels the library follows (following one is accepting it)
 kept when the history is imported again."""
 import collections, datetime, html, itertools, json, math, re
 
-from tubes import cache, db, iplayer, quota, related, settings, youtube
+from tubes import cache, db, iplayer, iplayer_suggest, quota, related, settings, youtube
 
 HALF_LIFE_DAYS = 365.0
 SITTING_GAP = datetime.timedelta(minutes=30)
@@ -340,7 +340,8 @@ def suggestions(group=None, topic=None, kids=None, q=None, dismissed=False, limi
     with db.connect() as con:
         total = con.execute(f'SELECT COUNT(*) FROM suggestions s LEFT JOIN channels c ON c.id = s.channel_id WHERE {where}', tuple(args)).fetchone()[0]
         rows = db.rows(con.execute(f'SELECT {COLUMNS} FROM suggestions s LEFT JOIN channels c ON c.id = s.channel_id WHERE {where} ORDER BY {PASTED_ORDER if pasted else ORDERS[order]} LIMIT ?', tuple(args) + (limit,)))
-    by = related.pointers([r['channel_id'] for r in rows if r['suggested_by']])
+    by = related.pointers([r['channel_id'] for r in rows if r['suggested_by'] and r['platform'] == 'youtube'])
+    by.update(iplayer_suggest.pointers([r['channel_id'] for r in rows if r['suggested_by'] and r['platform'] == 'iplayer']))
     return dict(items=[_item(r, by) for r in rows], total=total)
 
 
@@ -367,7 +368,7 @@ def suggestion(channel_id):
     with db.connect() as con:
         r = db.row(con.execute(f'SELECT {COLUMNS} FROM suggestions s LEFT JOIN channels c ON c.id = s.channel_id WHERE s.channel_id = ?', (channel_id,)))
     if r is None: raise NotFound(f'There is no suggestion {channel_id}.')
-    return _item(r, related.pointers([channel_id]) if r['suggested_by'] else None)
+    return _item(r, ((iplayer_suggest if r['platform'] == 'iplayer' else related).pointers([channel_id])) if r['suggested_by'] else None)
 
 
 def dismiss(channel_id, dismissed=True, now=None):
