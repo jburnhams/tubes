@@ -40,7 +40,7 @@ FILTERS = dict(min_seconds=None, max_seconds=None, streams='current', region=Non
 # captions: 'any', or 'only' those with captions the uploader added (a video it is not known for, such as an iPlayer episode, is kept)
 STREAMS = ('current', 'all')
 CHOICES = dict(streams=STREAMS, unknown_language=('show', 'hide'), captions=('any', 'only'))
-LANGUAGE = "LOWER(COALESCE(v.language, c.language))"            # a video's spoken language, else its channel's (needs the channels joined as c)
+LANGUAGE = "COALESCE(LOWER(COALESCE(v.language, c.language)), '')"   # a video's spoken language, else its channel's, '' when neither says (never NULL, so NOT works; needs the channels joined as c)
 
 
 def filters():
@@ -63,7 +63,7 @@ def _chosen(f):
     if f.get('languages'):
         each = []
         for code in f['languages']: each.append(f'{LANGUAGE} = ? OR {LANGUAGE} LIKE ?'); args += [code, code + '-%']
-        if f.get('unknown_language', 'show') == 'show': each.append(f'{LANGUAGE} IS NULL')
+        if f.get('unknown_language', 'show') == 'show': each.append(f"{LANGUAGE} = ''")
         parts.append('(' + ' OR '.join(each) + ')')
     if f.get('captions') == 'only': parts.append('(v.captions IS NULL OR v.captions = ?)'); args.append(True)
     return ('(' + ' AND '.join(parts) + ')' if parts else '(1 = 1)'), args
@@ -77,7 +77,7 @@ def languages(now=None):
                                WHERE {AVAILABLE} AND {NOT_STREAMING} GROUP BY {LANGUAGE}""", [_now(now)]).fetchall()
     counts = {}
     for code, n in rows:
-        base = code.split('-')[0] if code else None
+        base = code.split('-')[0] or None
         counts[base] = counts.get(base, 0) + n
     return [dict(code=c, videos=n) for c, n in sorted(counts.items(), key=lambda x: (-x[1], x[0] or ''))]
 

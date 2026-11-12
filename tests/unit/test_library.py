@@ -119,6 +119,7 @@ def test_filters_by_region_language_and_captions_and_come_back():
     with db.connect() as con: con.execute("UPDATE channels SET language = NULL")
     assert ids() == ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ddddddddddd']                                     # not known: shown
     catalogue.save_filters(dict(unknown_language='hide')); assert ids() == ['aaaaaaaaaaa', 'bbbbbbbbbbb']
+    assert library.status()['filtered'] == 2 and [(c['videos'], c['hidden']) for c in library.channels()] == [(0, 2), (2, 0)]     # ddd counted as left out, not lost
     catalogue.save_filters(dict(languages=[], captions='only')); assert ids() == ['aaaaaaaaaaa', 'ccccccccccc', 'ddddddddddd']   # unknown_language needs languages; captions not known: kept
     catalogue.save_filters(dict(captions='any')); assert len(ids()) == 4 and library.status()['filtered'] == 0
 
