@@ -69,6 +69,7 @@ class Video(Base):
     added: Mapped[str | None] = mapped_column(String(40), default=None)
     gone: Mapped[str | None] = mapped_column(String(40), default=None)          # when YouTube was first found not to have it (catalogue.recheck); hidden while set
     checked: Mapped[str | None] = mapped_column(String(40), default=None)       # when the recheck last asked YouTube about it
+    live: Mapped[str | None] = mapped_column(String(16), default=None)          # live, upcoming or was (a past stream): hidden while set, see youtube.live
     platform: Mapped[str] = mapped_column(String(16), server_default='youtube', default='youtube')
     expires: Mapped[str | None] = mapped_column(String(40), default=None)       # iPlayer: when it stops being offered; hidden after that unless it is cached
     series: Mapped[str | None] = mapped_column(Text, default=None)              # iPlayer: the series' title, such as `Series 2`

@@ -40,7 +40,15 @@ def test_rows_from_resources():
     row = youtube.channel_row(ch, 'now')
     assert (row['subscribers'], row['total_videos'], row['views'], row['uploads'], row['description'], row['added']) == (None, 3, None, None, None, 'now')
     v = youtube.video_row(dict(id='abcdefghijk', snippet={}, contentDetails={}, statistics={}), 'now')
-    assert (v['title'], v['published'], v['duration'], v['channel_id']) == ('abcdefghijk', 'now', None, '')
+    assert (v['title'], v['published'], v['duration'], v['channel_id'], v['live']) == ('abcdefghijk', 'now', None, '', None)
+
+
+def test_live_streams_now_scheduled_and_past():
+    live = lambda content, details=None: youtube.live(dict(id='x', snippet=dict(liveBroadcastContent=content), **({'liveStreamingDetails': details} if details is not None else {})))
+    assert live('live', dict(actualStartTime='t')) == 'live' and live('upcoming', dict(scheduledStartTime='t')) == 'upcoming'
+    assert live('none', dict(actualStartTime='t', actualEndTime='u')) == 'was'                              # ended: YouTube says none, but keeps the details
+    assert live('none') is None and live(None) is None and youtube.live(dict(id='x')) is None
+    assert 'liveStreamingDetails' in youtube.VIDEO_PARTS
 
 
 def test_call_sends_the_key_and_referer(monkeypatch, fake_urlopen):

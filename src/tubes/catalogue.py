@@ -18,6 +18,11 @@ for a while comes back, and a wrong guess from yt-dlp's wording costs no more th
 finds missing (a thumbnail that fails or is YouTube's placeholder, a fetch that fails) through POST /api/videos/check: `report` rechecks
 those at once, so a report is never taken on trust, and skips any asked about in the last REPORT_GAP.
 
+Live streams, scheduled ones and past ones (`live`, see youtube.live) are hidden the same way: a past stream's recording is often cut or
+taken down soon after, a running one cannot be fetched whole and a scheduled one cannot be played at all. The mark comes with the video's
+details, so the sync sets it as a video is added and the recheck sets it on videos added before it existed (`tubes recheck --all` does the
+whole library at once, a unit per 50 videos).
+
 iPlayer programmes and episodes (iplayer.py) are kept the same way, as channels and videos with `platform` 'iplayer'. iPlayer has no quota,
 so a sync of a programme reads every page of its episodes (200 a page) and refreshes them all, catching new ones, changed titles and new
 expiry dates in one pass; an episode no longer listed is marked `gone`. One whose `expires` has passed is hidden by library.py on its own,
@@ -33,7 +38,7 @@ from tubes import cache, db, iplayer, library, youtube
 RECHECK = 2500                                                                   # videos per recheck: 50 quota units of the 10,000 a day
 REPORT_GAP = datetime.timedelta(minutes=10)                                      # a reported video asked about this recently is not asked again (a page of broken thumbnails, reloaded)
 CHANNEL_FIELDS = ('platform', 'title', 'handle', 'thumbnail', 'description', 'published', 'country', 'subscribers', 'total_videos', 'views', 'uploads')
-VIDEO_FIELDS = ('platform', 'channel_id', 'title', 'published', 'duration', 'thumbnail', 'views', 'description', 'likes', 'comments', 'definition', 'expires', 'series', 'episode')
+VIDEO_FIELDS = ('platform', 'channel_id', 'title', 'published', 'duration', 'thumbnail', 'views', 'description', 'likes', 'comments', 'definition', 'live', 'expires', 'series', 'episode')
 ERRORS = (youtube.YoutubeError, iplayer.IplayerError)                          # what a sync notes against a channel and goes on from
 
 

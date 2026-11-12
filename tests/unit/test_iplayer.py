@@ -67,7 +67,7 @@ def test_rows(fake_iplayer):
     e = ep_id(P, 2)
     v = iplayer.video_row(iplayer.episode(e), 'now')
     assert v == dict(id=e, platform='iplayer', channel_id=P, title='Chapter 2', published='2026-01-02T19:30:00+00:00', duration=6.0, thumbnail=f'https://img.test/ic/1280x720/{e}.jpg',
-                     views=None, description='Chapter 2, told', likes=None, comments=None, definition='hd', expires='2099-01-01T00:00:00+00:00', series='Series 1', episode=2, added='now')
+                     views=None, description='Chapter 2, told', likes=None, comments=None, definition='hd', live=None, expires='2099-01-01T00:00:00+00:00', series='Series 1', episode=2, added='now')
     film = iplayer.video_row(iplayer.episode(fake_iplayer.one_off('p0000009', 'A Film')), 'now')
     assert (film['channel_id'], film['title'], film['definition'], film['duration'], film['published']) == ('bbc_two', 'A Film', 'sd', 5400, 'now')
     assert iplayer.network_row(fake_iplayer.episodes['p0000009'], 'now')['title'] == 'BBC Two'

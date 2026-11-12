@@ -56,6 +56,17 @@ def test_add_sync_channels_and_remove(capsys, fake_youtube, monkeypatch):
     with pytest.raises(SystemExit, match='YOUTUBE_API_KEY is not in the environment'): cli.main(['sync'])
 
 
+def test_recheck(capsys, fake_youtube, monkeypatch):
+    A = 'UCaaaaaaaaaaaaaaaaaaaaaa'
+    fake_youtube.channel(A, 'Workshop', videos=5); catalogue.add(A); catalogue.sync_channel(A)
+    del fake_youtube.videos[next(iter(fake_youtube.videos))]
+    assert cli.main(['recheck', '--limit', '2']) == 0 and '2 video(s) rechecked' in capsys.readouterr().out
+    assert cli.main(['recheck', '--all', '--json']) == 0 and json.loads(capsys.readouterr().out)['checked'] == 5
+    assert cli.main(['recheck']) == 0 and '5 video(s) rechecked: 0 gone from YouTube and hidden, 0 back' in capsys.readouterr().out
+    monkeypatch.delenv('YOUTUBE_API_KEY')
+    with pytest.raises(SystemExit, match='cannot be rechecked'): cli.main(['recheck'])
+
+
 def test_fetch_cache_and_evict(capsys, monkeypatch):
     seed()
     def fake_start(vid, title, channel, background=True):

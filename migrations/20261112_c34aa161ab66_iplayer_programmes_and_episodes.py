@@ -1,7 +1,7 @@
 """iplayer programmes and episodes
 
 Revision ID: c34aa161ab66
-Revises: b83b3b6c2b11
+Revises: 50b4bdf677b1
 Create Date: 2026-11-12 04:10:34.873979
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'c34aa161ab66'
-down_revision: Union[str, Sequence[str], None] = 'b83b3b6c2b11'
+down_revision: Union[str, Sequence[str], None] = '50b4bdf677b1'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

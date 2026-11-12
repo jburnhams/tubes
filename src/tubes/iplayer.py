@@ -142,7 +142,7 @@ def video_row(episode, now):
     return dict(id=episode['id'], platform='iplayer', channel_id=channel_of(episode), title=title, published=published,
                 duration=seconds((v.get('duration') or {}).get('value')), thumbnail=image(im.get('standard')), views=None,
                 description=syn.get('large') or syn.get('medium') or syn.get('small') or syn.get('editorial'), likes=None, comments=None,
-                definition=('hd' if v.get('hd') else 'sd') if v else None, expires=stamp(avail.get('end')), series=series, episode=number, added=now)
+                definition=('hd' if v.get('hd') else 'sd') if v else None, live=None, expires=stamp(avail.get('end')), series=series, episode=number, added=now)
 
 
 def programme(pid):
