@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
-import { streams, videos } from '../../src/mocks/fixtures'
-import { channelsLoading, playFails, playLoading, shuffleError, videoLoading } from '../../src/mocks/handlers'
+import { episodes, streams, videos } from '../../src/mocks/fixtures'
+import { channelsLoading, playFails, playLoading, shuffleError, videoLoading, withProgramme } from '../../src/mocks/handlers'
 import { openApp, screen, waitFor, within } from '../utils/render'
 import { mock, server } from '../utils/server'
 
@@ -121,5 +121,25 @@ describe('Watch', () => {
     server.use(http.get(`*/api/videos/${id}`, () => new HttpResponse(null, { status: 503 })))
     openApp(`/watch/${id}`)
     expect(await screen.findByText(/\(503\)/)).toBeInTheDocument()
+  })
+})
+
+describe('Watch an iPlayer episode', () => {
+  const e = episodes[0]
+
+  it('says how long iPlayer offers it, with the programme in episodes', async () => {
+    server.use(...withProgramme)
+    openApp(`/watch/${e.id}`)
+    expect(await screen.findByRole('heading', { level: 1, name: 'Chapter 3' })).toBeInTheDocument()
+    expect(screen.getByText('Until 1 Jan 2099')).toBeInTheDocument()
+    expect(screen.getByText(/^S2 E3 · /, { selector: 'dd' })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: /Harbour Lights\s*6 episodes/ })).toBeInTheDocument()
+  })
+
+  it('says when iPlayer no longer offers it', async () => {
+    server.use(http.get(`*/api/videos/${e.id}`, () => HttpResponse.json({ ...e, gone: '2026-11-01T00:00:00Z', plays: 0, last_played: null })), ...withProgramme)
+    openApp(`/watch/${e.id}`)
+    expect(await screen.findByText(/^No longer offered/)).toBeInTheDocument()
+    expect(screen.queryByText('On YouTube')).not.toBeInTheDocument()
   })
 })

@@ -22,6 +22,7 @@ def ep_id(pid, n):
 class FakeIplayer:
     def __init__(self):
         self.programmes, self.episodes, self.order, self.calls = {}, {}, {}, []
+        self.categories = {'films': ('Films', []), 'documentaries': ('Documentaries', [])}     # id -> (title, the programme or one-off ids it lists, in order)
         self.region, self.fhd, self.media_dir, self.lock = None, True, None, threading.Lock()
         fake = self
 
@@ -63,9 +64,11 @@ class FakeIplayer:
             self.order[pid].insert(0, eid); self.programmes[pid]['count'] = len(self.order[pid])
         return eid
 
-    def one_off(self, eid, title):
-        """A film: its own top-level programme, so it has no programme to follow; kept under its network (BBC Two)."""
-        self.episodes[eid] = dict(id=eid, type='episode', title=title, subtitle='', original_title=title, tleo_id=eid, tleo_type='episode',
+    def one_off(self, eid, title, categories=()):
+        """A one-off (a film): its own top-level programme, so it has no programme to follow; kept under its network (BBC Two), or under a
+        followed category's channel when it is in `films`. Listed in each of its `categories` (newest first)."""
+        for c in categories: self.categories[c][1].insert(0, eid)
+        self.episodes[eid] = dict(id=eid, type='episode', title=title, subtitle='', original_title=title, tleo_id=eid, tleo_type='episode', categories=list(categories),
                                   master_brand=dict(id='bbc_two', titles=dict(large='BBC Two')), synopses=dict(small=f'{title} in short'),
                                   images=dict(type='image', standard=f'https://img.test/ic/{{recipe}}/{eid}.jpg'),
                                   versions=[dict(id='v' + eid[1:], kind='original', hd=False, duration=dict(value='PT1H30M'), availability=dict(end='2099-01-01T00:00:00Z'))])
@@ -80,6 +83,15 @@ class FakeIplayer:
     # The answers.
 
     def answer(self, path, q, base):
+        if path == '/ibl/v1/categories':
+            return 200, 'application/json', dict(categories=[dict(id=k, title=t, type='category', kind='genre') for k, (t, _) in self.categories.items()])
+        m = re.match(r'^/ibl/v1/categories/([^/]+)/programmes$', path)
+        if m:
+            if m[1] not in self.categories: return 404, 'application/json', dict(error=dict(details='Not found', http_response_code=404))
+            ids = [i for i in self.categories[m[1]][1] if i in self.episodes or i in self.programmes]; size, page = int(q.get('per_page', 20)), int(q.get('page', 1))
+            els = [dict(id=i, type='programme_large', tleo_type='episode', count=1, initial_children=[self.episodes[i]]) if i in self.episodes
+                   else dict(self.programmes[i], initial_children=[]) for i in ids[(page - 1) * size:page * size]]
+            return 200, 'application/json', dict(category_programmes=dict(count=len(ids), page=page, per_page=size, elements=els))
         if path == '/ibl/v1/new-search':                                     # fuzzy, as iPlayer's is: any word of the query in a title
             words = [w for w in q.get('q', '').lower().split() if w]
             hit = lambda t: any(w in t.lower() for w in words)
