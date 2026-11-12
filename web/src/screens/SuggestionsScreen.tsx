@@ -292,7 +292,7 @@ function Answers({ items, total, dismissedView, summary, order }: { items: Sugge
           <>
           <div className="grid gap-2 sm:flex sm:items-start sm:gap-3">
             <div className="flex min-w-0 flex-1 items-start gap-3">
-            <Thumbnail src={s.thumbnail} alt="" missing="None" className="w-12 shrink-0 rounded-full" />
+            <Thumbnail src={s.thumbnail} alt="" missing="None" eager={rows.indexOf(s) < 3} className="w-12 shrink-0 rounded-full" />  {/* the first few at once: below the paste box on a phone they sat on the lazy-load edge, loading or not by timing */}
             <div className="grid min-w-0 flex-1 gap-1">
               <a href={withBase(s.link)} target="_blank" rel="noreferrer" className="truncate type-body font-medium hover:underline">{s.title}</a>
               <p className="type-body-sm text-muted-foreground tabular-nums">{describeWatched(s)}</p>
