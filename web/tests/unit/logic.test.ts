@@ -16,7 +16,7 @@ import { describeSuggestions, describeWatched, filterOf, groupChoices, placeOf }
 import { historyUrl, suggestionsUrl } from '../../src/api'
 import { describeHistory, fillPeriods, periodLabel, rangeChoices, rangeOf } from '../../src/screens/HistoryScreen'
 import { channelHistory, historyStats } from '../../src/mocks/fixtures'
-import { describeWatching, libraryState, placeLine } from '../../src/screens/ChannelDetail'
+import { describeWatching, elsewhere, libraryState, placeLine } from '../../src/screens/ChannelDetail'
 import { historySources, suggestions } from '../../src/mocks/fixtures'
 import { suggestionSummary } from '../../src/mocks/handlers'
 
@@ -286,5 +286,7 @@ describe('channel panel', () => {
     expect(placeLine({ group: { id: 1, name: 'G', named: true }, suggestion: { ...suggestions[0], topics: [] } })).toBe('Group: G')
     expect(placeLine({ group: null, suggestion: suggestions[0] })).toBe('Hobby, Vehicle')
     expect(libraryState(o).word).toBe('Not in the library')
+    expect(elsewhere(o)).toEqual({ href: 'https://www.youtube.com/channel/UCx', label: 'Open on YouTube' })
+    expect(elsewhere({ channel_id: 'b0000001', library: { ...channels[0], id: 'b0000001', platform: 'iplayer' } })).toEqual({ href: 'https://www.bbc.co.uk/iplayer/episodes/b0000001', label: 'Open on iPlayer' })
   })
 })

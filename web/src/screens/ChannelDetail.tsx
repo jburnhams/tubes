@@ -31,6 +31,13 @@ export function describeWatching(o: ChannelOverview): string {
   return `Watched ${format.count(h.watches, 'time')} (${format.count(h.videos, 'video')}) from ${format.date(h.first!)} to ${format.date(h.last!)}${accounts}.`
 }
 
+/** Where the channel lives outside Tubes: its iPlayer programme page, or its YouTube channel. */
+export function elsewhere(o: Pick<ChannelOverview, 'channel_id' | 'library'>): { href: string; label: string } {
+  return o.library?.platform === 'iplayer'
+    ? { href: `https://www.bbc.co.uk/iplayer/episodes/${encodeURIComponent(o.channel_id)}`, label: 'Open on iPlayer' }
+    : { href: `https://www.youtube.com/channel/${encodeURIComponent(o.channel_id)}`, label: 'Open on YouTube' }
+}
+
 /** Its suggestion group and YouTube's topics for it, or '' when it has neither. */
 export function placeLine(o: Pick<ChannelOverview, 'group' | 'suggestion'>): string {
   return [o.group ? `Group: ${o.group.name}` : '', o.suggestion?.topics.join(', ') ?? ''].filter(Boolean).join(' · ')
@@ -95,7 +102,7 @@ function Detail({ o, onDismiss }: { o: ChannelOverview; onDismiss?: () => void }
         {o.configured && !followed && h.watches > 0 && <Button size="sm" variant="outline" disabled={addWatched.phase === 'pending'} onClick={() => void addWatched.run()}>Add watched videos</Button>}
         {s && !followed && <Button size="sm" variant="outline" disabled={dismiss.phase === 'pending'} onClick={() => (onDismiss ? onDismiss() : void dismiss.run(!s.dismissed))}>{s.dismissed ? 'Restore suggestion' : 'Dismiss suggestion'}</Button>}
         {o.library && <Link to={`/channels/${encodeURIComponent(o.channel_id)}`} className="type-body-sm underline-offset-2 hover:underline">Open in Tubes</Link>}
-        <a href={withBase(`https://www.youtube.com/channel/${encodeURIComponent(o.channel_id)}`)} target="_blank" rel="noreferrer" className="type-body-sm underline-offset-2 hover:underline">Open on YouTube</a>
+        <a href={withBase(elsewhere(o).href)} target="_blank" rel="noreferrer" className="type-body-sm underline-offset-2 hover:underline">{elsewhere(o).label}</a>
       </div>
       {failure && <p role="alert" className="type-body-sm text-danger">{failure.error}</p>}
       {said && !failure && <p role="status" className="type-body-sm">{said}</p>}

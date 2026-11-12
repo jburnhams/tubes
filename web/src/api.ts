@@ -36,6 +36,8 @@ export interface LibraryStatus {
 
 export interface Channel {
   id: string
+  /** Where it comes from: 'youtube', or 'iplayer' for a BBC iPlayer programme. */
+  platform?: string
   title: string
   handle: string | null
   thumbnail: string | null
