@@ -1,5 +1,11 @@
 # Progress log
 
+## 2026-11-12: live streams hidden
+
+- Asked for: leave live videos out, since a past stream often stops playing soon after (its recording cut or taken down). Videos that are streaming now, scheduled, or were a live broadcast are marked in a new `videos.live` column (`live`, `upcoming`, `was`) and left out of every list, search, shuffle and count, like `gone`; a link to one still opens. The mark comes from the Data API: `snippet.liveBroadcastContent` says live or upcoming, and a stream that has ended says `none` but keeps its `liveStreamingDetails`, which is now asked for with the other parts (no extra quota: a `videos` call costs one unit whatever the parts).
+- The API cannot tell a premiere (a recording first played as if live) from a stream, so premieres are hidden too. If that hides too much, the column says which kind each one was and the rule can be narrowed.
+- Existing videos get the mark from the rolling recheck (2,500 per sync, the whole library in about three days), or at once from `tubes recheck --all` (about 1,000 units for 47,000 videos). Admin > Library's finding counts the hidden streams; a channel's hidden count includes them.
+
 ## 2026-11-11: suggestions from a watch history
 
 - Asked for: populate the library from the owner's YouTube watch history (Google Takeout), keeping Tubes generic: a browsable list ranked by how much and how lately each channel was watched, easy to accept or reject, grouped if possible, and whatever the Data API can add.

@@ -130,6 +130,17 @@ def test_recheck_hides_what_youtube_lost_and_brings_back_what_returns(fake_youtu
     assert catalogue.recheck() == dict(checked=0, gone=0, back=0)
 
 
+def test_live_streams_are_marked_as_they_are_added_and_by_the_recheck(fake_youtube):
+    fake_youtube.channel(A, 'Workshop', videos=3)
+    fake_youtube.videos[vid(A, 0)]['snippet']['liveBroadcastContent'] = 'upcoming'
+    catalogue.add(A); catalogue.sync_channel(A)
+    assert library.video(vid(A, 0))['live'] == 'upcoming' and library.status()['live'] == 1
+    fake_youtube.videos[vid(A, 0)]['snippet']['liveBroadcastContent'] = 'none'; fake_youtube.videos[vid(A, 0)]['liveStreamingDetails'] = dict(actualEndTime='t')
+    fake_youtube.videos[vid(A, 1)]['liveStreamingDetails'] = dict(actualEndTime='t')                # a past stream added before the mark existed
+    assert catalogue.recheck(0)['checked'] == 3
+    assert [library.video(vid(A, n))['live'] for n in range(3)] == ['was', 'was', None] and library.status()['videos'] == 1
+
+
 def test_a_sync_of_everything_ends_with_a_recheck(fake_youtube):
     fake_youtube.channel(A, 'Workshop', videos=3); catalogue.add(A); catalogue.sync()
     del fake_youtube.videos[vid(A, 0)]

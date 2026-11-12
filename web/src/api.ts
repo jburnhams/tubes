@@ -28,6 +28,8 @@ export interface LibraryStatus {
   /** Videos that can be watched; `hidden` are those YouTube no longer has (deleted or made private), left out of every list. */
   videos: number
   hidden: number
+  /** Live streams (running, scheduled or past), hidden from every list too because a past one's recording often goes. Absent from older servers. */
+  live?: number
   /** The YouTube key is in the server's environment, so channels can be added and synced. */
   configured: boolean
 }
@@ -39,7 +41,7 @@ export interface Channel {
   thumbnail: string | null
   /** When this channel was last synced. */
   synced: string | null
-  /** Videos held here that can be watched, and those hidden because YouTube no longer has them. */
+  /** Videos held here that can be watched, and those hidden because YouTube no longer has them or they are live streams. */
   videos: number
   hidden?: number
   latest: string | null

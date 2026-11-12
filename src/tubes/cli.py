@@ -43,6 +43,14 @@ def cmd_sync(args):
     return 1 if r['errors'] else 0
 
 
+def cmd_recheck(args):
+    """Ask YouTube about the videos checked longest ago (or every one): hides the ones it no longer has and marks live streams, which the
+    rolling recheck after each sync would otherwise reach over a few days."""
+    if not youtube.configured(): sys.exit('YOUTUBE_API_KEY is not in the environment, so the library cannot be rechecked.')
+    r = catalogue.recheck(limit=0 if args.all else args.limit)
+    out(args, r, f"  {r['checked']} video(s) rechecked: {r['gone']} gone from YouTube and hidden, {r['back']} back"); return 0
+
+
 def cmd_add(args):
     try: r = catalogue.add(args.input)
     except (ValueError, catalogue.NotFound, youtube.YoutubeError) as e: sys.exit(str(e))
@@ -131,6 +139,7 @@ def main(argv=None):
     p = argparse.ArgumentParser(prog='tubes'); sub = p.add_subparsers(dest='cmd', required=True)
     sub.add_parser('doctor', help='check the environment').set_defaults(fn=doctor)
     y = sub.add_parser('sync', help="fetch new videos from YouTube for every followed channel (or the ones named)"); y.add_argument('channel', nargs='*'); y.add_argument('--json', action='store_true'); y.set_defaults(fn=cmd_sync)
+    k = sub.add_parser('recheck', help='ask YouTube about the videos checked longest ago: hide those it no longer has, and live streams'); k.add_argument('--limit', type=int, default=None, help='how many (default: as many as a sync rechecks)'); k.add_argument('--all', action='store_true', help='every video in the library (a quota unit per 50)'); k.add_argument('--json', action='store_true'); k.set_defaults(fn=cmd_recheck)
     a = sub.add_parser('add', help='add a channel (followed, then synced) or one video: a link, an id or an @handle'); a.add_argument('input'); a.add_argument('--no-sync', action='store_true', help='add a channel without fetching its videos yet'); a.add_argument('--json', action='store_true'); a.set_defaults(fn=cmd_add)
     r = sub.add_parser('remove', help='remove a channel and its videos from the library'); r.add_argument('channel'); r.add_argument('--json', action='store_true'); r.set_defaults(fn=cmd_remove)
     h = sub.add_parser('channels', help='list the channels in the library'); h.add_argument('--json', action='store_true'); h.set_defaults(fn=cmd_channels)
