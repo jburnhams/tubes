@@ -3,7 +3,7 @@ from tubes import cache, db, library
 
 
 def test_status_before_any_sync(monkeypatch):
-    assert library.status() == dict(synced=None, channels=0, videos=0, hidden=0, configured=False)
+    assert library.status() == dict(synced=None, channels=0, videos=0, hidden=0, live=0, configured=False)
     monkeypatch.setenv('YOUTUBE_API_KEY', 'k')
     assert library.status()['configured'] is True
 
@@ -52,3 +52,13 @@ def test_videos_gone_from_youtube_are_hidden_but_still_open():
     assert [v['id'] for v in library.videos(search='shelf')['videos']] == ['bbbbbbbbbbb'] and len(library.shuffle(10)) == 2
     assert [(c['videos'], c['hidden'], c['latest']) for c in library.channels()] == [(1, 1, '2026-01-01T00:00:00Z'), (1, 1, '2026-01-02T00:00:00Z')]
     assert (library.status()['videos'], library.status()['hidden']) == (2, 2) and library.video('aaaaaaaaaaa')['gone'] == 'then'
+
+
+def test_live_streams_are_hidden_but_still_open():
+    seed()
+    with db.connect() as con:
+        con.execute("UPDATE videos SET live = 'was' WHERE id = 'aaaaaaaaaaa'"); con.execute("UPDATE videos SET live = 'upcoming', gone = 'then' WHERE id = 'ccccccccccc'")
+    assert [v['id'] for v in library.videos()['videos']] == ['bbbbbbbbbbb', 'ddddddddddd'] and len(library.shuffle(10)) == 2
+    assert [(c['videos'], c['hidden']) for c in library.channels()] == [(1, 1), (1, 1)]
+    assert {k: library.status()[k] for k in ('videos', 'hidden', 'live')} == dict(videos=2, hidden=1, live=1)      # a gone stream counts once, as gone
+    assert library.video('aaaaaaaaaaa')['live'] == 'was'

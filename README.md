@@ -26,6 +26,7 @@ Tubes keeps its own tables (the library, cache copies, plays) in a database thro
 | `tubes doctor` | checks yt-dlp, ffmpeg, the database, the YouTube key and when the library was last synced |
 | `tubes add <link, id or @handle>` | follows a channel and syncs it (`--no-sync` to wait), or adds one video |
 | `tubes sync [channel ...]` | fetches new videos for every followed channel (or the ones named); a first sync reads back to the channel's first upload |
+| `tubes recheck [--limit N \| --all]` | asks YouTube about the videos checked longest ago, hiding those it no longer has and live streams (each sync does 2,500; `--all` costs a unit per 50 videos) |
 | `tubes channels` / `tubes remove <channel>` | lists the channels with their state / removes one and its videos |
 | `tubes fetch <id>` | fetches one video into the cache now |
 | `tubes cache` / `tubes evict [--dry-run]` | shows the cache with each copy's score / trims it |

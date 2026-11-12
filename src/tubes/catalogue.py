@@ -18,6 +18,11 @@ for a while comes back, and a wrong guess from yt-dlp's wording costs no more th
 finds missing (a thumbnail that fails or is YouTube's placeholder, a fetch that fails) through POST /api/videos/check: `report` rechecks
 those at once, so a report is never taken on trust, and skips any asked about in the last REPORT_GAP.
 
+Live streams, scheduled ones and past ones (`live`, see youtube.live) are hidden the same way: a past stream's recording is often cut or
+taken down soon after, a running one cannot be fetched whole and a scheduled one cannot be played at all. The mark comes with the video's
+details, so the sync sets it as a video is added and the recheck sets it on videos added before it existed (`tubes recheck --all` does the
+whole library at once, a unit per 50 videos).
+
 `Job` runs a sync of several channels in a background thread for the web server, one at a time, and reports how far it has got; the timer
 runs `tubes sync` (cli.py), which calls `sync` directly."""
 import datetime, threading
@@ -27,7 +32,7 @@ from tubes import cache, db, library, youtube
 RECHECK = 2500                                                                   # videos per recheck: 50 quota units of the 10,000 a day
 REPORT_GAP = datetime.timedelta(minutes=10)                                      # a reported video asked about this recently is not asked again (a page of broken thumbnails, reloaded)
 CHANNEL_FIELDS = ('title', 'handle', 'thumbnail', 'description', 'published', 'country', 'subscribers', 'total_videos', 'views', 'uploads')
-VIDEO_FIELDS = ('channel_id', 'title', 'published', 'duration', 'thumbnail', 'views', 'description', 'likes', 'comments', 'definition')
+VIDEO_FIELDS = ('channel_id', 'title', 'published', 'duration', 'thumbnail', 'views', 'description', 'likes', 'comments', 'definition', 'live')
 
 
 class NotFound(LookupError):

@@ -31,7 +31,8 @@ export function describeLibrary(channels: Channel[], status: LibraryStatus): str
   const back = behind ? ` ${format.count(behind, 'channel is', 'channels are')} still being read back to the first upload.` : ''
   const when = status.synced ? ` Every channel was last synced on ${format.dateTime(status.synced)}.` : ' Not every channel has been synced yet.'
   const hidden = status.hidden ? ` ${format.count(status.hidden, 'video is', 'videos are')} hidden because YouTube no longer has them.` : ''
-  return head + back + when + hidden
+  const live = status.live ? ` ${format.count(status.live, 'live stream is', 'live streams are')} hidden too, since their recordings often go.` : ''
+  return head + back + when + hidden + live
 }
 
 /** How far the sync has got, or how the last one went. Undefined before any sync since the server started. */

@@ -12,7 +12,7 @@ import json, os, re, urllib.error, urllib.parse, urllib.request
 
 API = 'https://www.googleapis.com/youtube/v3'
 TIMEOUT = 30
-VIDEO_PARTS = 'snippet,contentDetails,statistics'
+VIDEO_PARTS = 'snippet,contentDetails,statistics,liveStreamingDetails'           # parts cost no quota of their own: still one unit per 50
 CHANNEL_PARTS = 'snippet,statistics,contentDetails'
 LOOKUP_PARTS = 'snippet,statistics,status,topicDetails'                         # what a suggestion shows of a channel (history.py)
 VIDEO_ID = re.compile(r'^[A-Za-z0-9_-]{11}$')
@@ -108,7 +108,16 @@ def video_row(item, now):
     sn, cd, st = item.get('snippet') or {}, item.get('contentDetails') or {}, item.get('statistics') or {}
     return dict(id=item['id'], channel_id=sn.get('channelId') or '', title=sn.get('title') or item['id'], published=sn.get('publishedAt') or now,
                 duration=seconds(cd.get('duration')), thumbnail=best_thumbnail(sn.get('thumbnails')), views=_int(st.get('viewCount')),
-                description=sn.get('description') or None, likes=_int(st.get('likeCount')), comments=_int(st.get('commentCount')), definition=cd.get('definition'), added=now)
+                description=sn.get('description') or None, likes=_int(st.get('likeCount')), comments=_int(st.get('commentCount')), definition=cd.get('definition'), live=live(item), added=now)
+
+
+def live(item):
+    """'live' (streaming now), 'upcoming' (scheduled) or 'was' (a past stream or premiere) for a video that was a live broadcast, else None.
+    YouTube's `liveBroadcastContent` goes back to 'none' when a stream ends, but the resource keeps its `liveStreamingDetails`, so that is
+    what marks a past one. The Data API cannot tell a premiere (a recording played once as if live) from a stream, so both count."""
+    state = (item.get('snippet') or {}).get('liveBroadcastContent')
+    if state in ('live', 'upcoming'): return state
+    return 'was' if item.get('liveStreamingDetails') else None
 
 
 def channel(kind, value):
