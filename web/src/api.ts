@@ -179,7 +179,7 @@ export interface HistorySource {
   last: string
 }
 
-/** `GET /api/suggestions`: a channel from the watch history the library could take in. */
+/** `GET /api/suggestions`: a channel the library could take in, from the watch history or pointed at by related channels. */
 export interface Suggestion {
   channel_id: string
   title: string
@@ -203,6 +203,12 @@ export interface Suggestion {
   dismissed: string | null
   /** The library holds some of its videos without following it. */
   in_library: boolean
+  /** How many of the followed channels and the history's most watched ones point at it (their watch pages list its videos, or they feature it). */
+  suggested_by: number
+  /** Those pointers added up, each by the share of its watch pages that listed this channel: the suggested order's tie-break. */
+  related_score: number
+  /** Up to three of the channels pointing at it, the strongest first. */
+  suggested_from: string[]
 }
 
 export interface SuggestionPage { items: Suggestion[]; total: number }
@@ -223,10 +229,18 @@ export interface SuggestionSummary {
   configured: boolean
   /** A history database is set on the server: Regroup reads it again first. */
   database?: boolean
+  /** Open channels a related channel points at, and open channels with no watches (only pointed at). */
+  suggested: number
+  unwatched: number
+  /** How far asking YouTube about related channels has got (`tubes related` on the server's timer, each channel again after a week). */
+  related: RelatedStatus
 }
 
+/** Of the followed and most watched channels (`sources`), how many YouTube was asked about, how many are due again, and how many failed last time. */
+export interface RelatedStatus { sources: number; asked: number; due: number; failed: number; last: string | null }
+
 /** What the list is filtered by; each lives in the page's URL. */
-export interface SuggestionFilter { group?: string; topic?: string; kids?: string; dismissed?: boolean }
+export interface SuggestionFilter { group?: string; topic?: string; kids?: string; dismissed?: boolean; order?: string }
 
 export function suggestionsUrl(f: SuggestionFilter): string {
   const q = new URLSearchParams()
@@ -234,6 +248,7 @@ export function suggestionsUrl(f: SuggestionFilter): string {
   if (f.topic) q.set('topic', f.topic)
   if (f.kids === 'yes' || f.kids === 'no') q.set('kids', String(f.kids === 'yes'))
   if (f.dismissed) q.set('dismissed', 'true')
+  if (f.order === 'suggested') q.set('order', 'suggested')
   const s = q.toString()
   return s ? `${paths.suggestions}?${s}` : paths.suggestions
 }
@@ -338,7 +353,7 @@ export const keys = {
   cache: ['cache'],
   suggestions: ['suggestions'],
   history: (f: HistoryFilter) => ['suggestions', 'history', f.start ?? '', f.end ?? '', f.source ?? ''],
-  suggestionList: (f: SuggestionFilter) => ['suggestions', 'list', f.group ?? '', f.topic ?? '', f.kids ?? '', f.dismissed ? 'dismissed' : 'open'],
+  suggestionList: (f: SuggestionFilter) => ['suggestions', 'list', f.group ?? '', f.topic ?? '', f.kids ?? '', f.dismissed ? 'dismissed' : 'open', f.order === 'suggested' ? 'suggested' : 'watched'],
   suggestionSummary: ['suggestions', 'summary'],
 } as const
 

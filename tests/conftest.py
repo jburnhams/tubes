@@ -4,7 +4,7 @@ import os, socket, sys
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'utils'))
-TUNING = ('TUBES_YOUTUBE_API', 'YOUTUBE_API_KEY', 'YOUTUBE_API_REFERER', 'TUBES_CACHE', 'TUBES_YTDLP', 'TUBES_FFMPEG', 'OMARCHY_DB_URL', 'FAKE_YTDLP_SECONDS', 'FAKE_YTDLP_FAIL')
+TUNING = ('TUBES_YOUTUBE_API', 'TUBES_YOUTUBE_WEB', 'YOUTUBE_API_KEY', 'YOUTUBE_API_REFERER', 'TUBES_CACHE', 'TUBES_YTDLP', 'TUBES_FFMPEG', 'OMARCHY_DB_URL', 'FAKE_YTDLP_SECONDS', 'FAKE_YTDLP_FAIL')
 FAKE_YTDLP = os.path.join(os.path.dirname(__file__), 'utils', 'fake_ytdlp.py')
 
 
@@ -91,7 +91,7 @@ def fake_youtube(monkeypatch):
     it with `fake_youtube.channel(id, title, handle=..., videos=n)` and `.uploads(id, n)`, then check `.calls`."""
     from fake_youtube import KEY, FakeYoutube
     y = FakeYoutube()
-    monkeypatch.setenv('TUBES_YOUTUBE_API', y.api); monkeypatch.setenv('YOUTUBE_API_KEY', KEY)
+    monkeypatch.setenv('TUBES_YOUTUBE_API', y.api); monkeypatch.setenv('TUBES_YOUTUBE_WEB', y.web); monkeypatch.setenv('YOUTUBE_API_KEY', KEY)
     yield y
     y.close()
 

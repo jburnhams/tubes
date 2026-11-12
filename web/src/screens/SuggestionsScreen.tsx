@@ -1,16 +1,21 @@
-// The one question: "Which channels from the watch history should the library take in?" The
-// finding answers it in a sentence (how many channels are left to consider, from which histories,
-// how many were followed or dismissed so far), or says how to bring a history in. Then, in the order
-// a person asks next: narrow the list (a group of channels watched in the same sittings, one of
-// YouTube's topics, what a channel says of its audience, or the dismissed ones), name the group
-// being looked at, and work through the list.
+// The one question: "Which channels should the library take in?", from the watch history and from
+// what the followed and most watched channels point at (their watch pages list its videos next, or
+// they feature it: related.py on the server, asked again weekly). The finding answers it in a
+// sentence (how many channels are left to consider, from which histories, how many related channels
+// point at, how many were followed or dismissed so far), or says how to bring a history in. Then, in
+// the order a person asks next: narrow the list (a group of channels watched in the same sittings,
+// one of YouTube's topics, what a channel says of its audience, or the dismissed ones), order it
+// (most watched, or pointed at by the most of your channels: the same channels coming up again and
+// again is the clustering), name the group being looked at, and work through the list.
 //
 // The list is a queue worked from the keyboard (useActiveItem + ActiveList, j/k to move): f follows
 // the active channel (all its uploads, synced at once, as Library's Add does), a adds only the videos
 // of it that were watched, d dismisses it. Following takes it off the list (it is in the library
 // now; Library's Remove undoes it); dismissing goes through useUndoable, so Undo brings it back for
 // a few seconds, and the dismissed tab restores one later. Best score first: watches added up,
-// each counting half as much a year on, so old favourites and new ones both rank.
+// each counting half as much a year on, so old favourites and new ones both rank. A channel only
+// pointed at has no watches, so "Add watched videos" is not offered for it; each row says which of
+// your channels point at it.
 //
 // A history comes in through the form at the foot (a Takeout watch-history.json or .html under a
 // name), or `tubes history import` on the server; the server groups the channels and asks YouTube
@@ -26,23 +31,51 @@ const views = [
   { value: 'dismissed', label: 'Dismissed' },
 ]
 
+/** Whether there is anything to show: a history, or channels related ones point at (open or dismissed). */
+export function hasSuggestions(s: SuggestionSummary): boolean {
+  return s.sources.length > 0 || s.open > 0 || s.dismissed > 0
+}
+
 /** The page's finding. */
 export function describeSuggestions(s: SuggestionSummary): string {
-  if (!s.sources.length) return 'No watch history yet. Import a Google Takeout watch history below, and the channels in it are suggested here, most watched first.'
+  if (!hasSuggestions(s)) return 'No watch history yet. Import a Google Takeout watch history below, and the channels in it are suggested here, most watched first.' + (s.related.sources ? ' Channels your followed ones point at are added as YouTube is asked about them.' : '')
   const watches = s.sources.reduce((n, x) => n + x.watches, 0)
-  const from = s.sources.length === 1 ? `the ${s.sources[0].source} history` : `${format.count(s.sources.length, 'history', 'histories')} (${s.sources.map(x => x.source).join(', ')})`
-  const head = s.open ? `${format.count(s.open, 'channel')} from ${from} to consider, out of ${format.count(watches, 'watch', 'watches')}.` : `Every channel from ${from} has been followed or dismissed.`
+  const from = !s.sources.length ? 'related channels' : s.sources.length === 1 ? `the ${s.sources[0].source} history` : `${format.count(s.sources.length, 'history', 'histories')} (${s.sources.map(x => x.source).join(', ')})`
+  const out = s.sources.length ? `, out of ${format.count(watches, 'watch', 'watches')}` : ''
+  const head = s.open ? `${format.count(s.open, 'channel')} from ${from} to consider${out}.` : `Every channel from ${from} has been followed or dismissed.`
   const done = [s.followed && `${format.integer(s.followed)} followed`, s.dismissed && `${format.integer(s.dismissed)} dismissed`].filter(Boolean)
   const key = s.configured ? '' : ' Following and adding need the server’s YouTube key (YOUTUBE_API_KEY).'
-  return head + (done.length ? ` So far ${done.join(' and ')}.` : '') + key
+  const related = describeRelated(s)
+  return head + (related ? ` ${related}` : '') + (done.length ? ` So far ${done.join(' and ')}.` : '') + key
+}
+
+/** What the finding says of related channels: how many open ones they point at, and how far asking YouTube has got. */
+export function describeRelated(s: SuggestionSummary): string {
+  const r = s.related
+  if (!r.sources || (r.asked && !s.open)) return ''
+  if (!r.asked) return `YouTube has not been asked yet which channels the ${format.count(r.sources, 'followed or most watched channel')} point at; the server asks every few hours.`
+  const never = s.sources.length && s.unwatched ? ` (${format.integer(s.unwatched)} never watched)` : ''
+  const pointed = s.sources.length ? `${format.integer(s.suggested)} of them are pointed at by related channels${never}` : `What ${format.count(r.asked, 'followed or most watched channel')} point at`
+  const failed = r.failed ? ` ${format.count(r.failed, 'channel')} could not be read last time.` : ''
+  return `${pointed}, asked about ${r.last ? `last on ${format.date(r.last)}` : 'this week'}.${failed}`
 }
 
 /** A suggestion's line under its title: how much and how lately it was watched. */
 export function describeWatched(x: Suggestion): string {
-  const parts = [format.count(x.watches, 'watch', 'watches'), format.count(x.videos, 'video')]
+  const parts = x.watches ? [format.count(x.watches, 'watch', 'watches'), format.count(x.videos, 'video')] : ['Never watched']
   if (x.last) parts.push(`last ${format.date(x.last)}`)
   if (x.total_videos != null) parts.push(`${format.integer(x.total_videos)} on YouTube`)
   return parts.join(' · ')
+}
+
+/** Which of your channels point at a suggestion, the strongest first: "Pointed at by A, B and 3 more", or '' for none. */
+export function describeSuggestedBy(x: Suggestion): string {
+  if (!x.suggested_by) return ''
+  const names = x.suggested_from.slice(0, x.suggested_by)
+  const more = x.suggested_by - names.length
+  if (!names.length) return `Pointed at by ${format.count(x.suggested_by, 'related channel')}`
+  const list = more ? `${names.join(', ')} and ${format.integer(more)} more` : names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0]
+  return `Pointed at by ${list}`
 }
 
 /** Where a suggestion sits: its group's name and YouTube's topics for it, or '' for neither. */
@@ -66,7 +99,7 @@ export function groupChoices(s: SuggestionSummary): { value: string; label: stri
 
 /** The filter the page's URL holds. */
 export function filterOf(params: URLSearchParams): SuggestionFilter {
-  return { group: params.get('group') ?? undefined, topic: params.get('topic') ?? undefined, kids: params.get('kids') ?? undefined, dismissed: params.get('view') === 'dismissed' }
+  return { group: params.get('group') ?? undefined, topic: params.get('topic') ?? undefined, kids: params.get('kids') ?? undefined, dismissed: params.get('view') === 'dismissed', order: params.get('order') === 'suggested' ? 'suggested' : undefined }
 }
 
 export function SuggestionsScreen() {
@@ -84,20 +117,20 @@ export function SuggestionsScreen() {
     <>
       <PageHeader
         title="Suggestions"
-        scope="Channels from the watch history"
+        scope="Channels from the watch history and related channels"
         finding={ready ? { text: describeSuggestions(summary.data) } : undefined}
         actions={ready && summary.data.sources.length ? (
           <AsyncButton variant="outline" phase={refresh.phase} error={refresh.error} labels={{ idle: 'Regroup', pending: 'Regrouping…', done: 'Regrouped' }} onClick={() => void refresh.run()} />
         ) : undefined}
       />
       {note && <p role="status" className="flex flex-wrap items-center gap-2 type-body-sm"><Status tone="warning">YouTube not asked</Status>{note}</p>}
-      <DataView state={summary} isEmpty={s => s.sources.length === 0} skeleton={<ListSkeleton />} empty={<ImportForm first />}>
+      <DataView state={summary} isEmpty={s => !hasSuggestions(s)} skeleton={<ListSkeleton />} empty={<ImportForm first />}>
         {s => (
           <div className="grid gap-12">
             <Tabs param="view" items={views} label="Suggestions">
               {() => <Chooser summary={s} />}
             </Tabs>
-            <ImportForm />
+            <ImportForm first={!s.sources.length} />
           </div>
         )}
       </DataView>
@@ -131,6 +164,12 @@ function Chooser({ summary }: { summary: SuggestionSummary }) {
             <option value="">Anyone</option>
             <option value="yes">{`Made for kids (${format.integer(summary.kids)})`}</option>
             <option value="no">Not made for kids</option>
+          </NativeSelect>
+        </Field>
+        <Field label="Order" className="min-w-48">
+          <NativeSelect value={filter.order ?? ''} onChange={e => set('order', e.target.value)}>
+            <option value="">Most watched</option>
+            <option value="suggested">Most pointed at by your channels</option>
           </NativeSelect>
         </Field>
       </div>
@@ -171,12 +210,12 @@ function Queue({ filter, summary }: { filter: SuggestionFilter; summary: Suggest
         ? <EmptyState title="Nothing dismissed">Channels dismissed from the list wait here, in case one is wanted after all.</EmptyState>
         : <EmptyState title="Nothing left to consider here">Every channel that matches is followed or dismissed. Choose another group or topic, or look through the dismissed ones.</EmptyState>}
     >
-      {p => <Answers items={p.items} total={p.total} dismissedView={!!filter.dismissed} summary={summary} />}
+      {p => <Answers items={p.items} total={p.total} dismissedView={!!filter.dismissed} summary={summary} order={filter.order === 'suggested' ? 'most pointed at first' : 'best first'} />}
     </DataView>
   )
 }
 
-function Answers({ items, total, dismissedView, summary }: { items: Suggestion[]; total: number; dismissedView: boolean; summary: SuggestionSummary }) {
+function Answers({ items, total, dismissedView, summary, order }: { items: Suggestion[]; total: number; dismissedView: boolean; summary: SuggestionSummary; order: string }) {
   const queryClient = useQueryClient()
   const undoable = useUndoable()
   const [said, setSaid] = useState<string>()
@@ -211,7 +250,7 @@ function Answers({ items, total, dismissedView, summary }: { items: Suggestion[]
   const writing = !active.activeItem || !configured || dismissedView || follow.phase === 'pending' || addWatched.phase === 'pending'
   const answers: Shortcut[] = [
     { keys: ['f'], label: 'Follow', run: () => void follow.run(x), disabled: writing },
-    { keys: ['a'], label: 'Add watched videos', run: () => void addWatched.run(x), disabled: writing },
+    { keys: ['a'], label: 'Add watched videos', run: () => void addWatched.run(x), disabled: writing || !active.activeItem?.watches },
     { keys: ['d'], label: dismissedView ? 'Restore' : 'Dismiss', run: () => dismiss(x), disabled: !active.activeItem },
   ]
   const shortcuts = [...active.shortcuts, ...answers]
@@ -222,13 +261,13 @@ function Answers({ items, total, dismissedView, summary }: { items: Suggestion[]
     <section aria-labelledby="channels" className="grid gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <h2 id="channels" className="type-heading">{dismissedView ? 'Dismissed channels' : 'Channels to consider'}</h2>
-        <p className="type-body-sm text-muted-foreground">{total > items.length ? `The first ${format.integer(items.length)} of ${format.integer(total)}, best first.` : `${format.count(total, 'channel')}, best first.`}</p>
+        <p className="type-body-sm text-muted-foreground">{total > items.length ? `The first ${format.integer(items.length)} of ${format.integer(total)}, ${order}.` : `${format.count(total, 'channel')}, ${order}.`}</p>
       </div>
       <KeysLegend shortcuts={shortcuts} />
       {failure && <p role="alert" className="type-body-sm text-danger">{failure.error}</p>}
       {said && !failure && <p role="status" className="type-body-sm">{said}</p>}
       <ActiveList
-        label={dismissedView ? 'Dismissed channels, best first' : 'Channels to consider, best first'}
+        label={dismissedView ? `Dismissed channels, ${order}` : `Channels to consider, ${order}`}
         active={active}
         empty={<EmptyState title="That was the last one here">Choose another group or topic to keep going.</EmptyState>}
       >
@@ -239,6 +278,7 @@ function Answers({ items, total, dismissedView, summary }: { items: Suggestion[]
             <div className="grid min-w-0 flex-1 gap-1">
               <a href={withBase(`https://www.youtube.com/channel/${encodeURIComponent(s.channel_id)}`)} target="_blank" rel="noreferrer" className="truncate type-body font-medium hover:underline">{s.title}</a>
               <p className="type-body-sm text-muted-foreground tabular-nums">{describeWatched(s)}</p>
+              {describeSuggestedBy(s) && <p className="type-body-sm text-muted-foreground">{describeSuggestedBy(s)}</p>}
               <p className="flex flex-wrap items-center gap-2 type-caption text-muted-foreground">
                 {placeOf(s, groups) && <span>{placeOf(s, groups)}</span>}
                 {s.made_for_kids && <Status tone="neutral">Made for kids</Status>}
@@ -248,7 +288,7 @@ function Answers({ items, total, dismissedView, summary }: { items: Suggestion[]
             </div>
             <span className="flex flex-wrap gap-1 sm:shrink-0 sm:justify-end">
               {configured && !dismissedView && <RowAction label="Follow" subject={s.title} onClick={() => void follow.run(s)} />}
-              {configured && !dismissedView && <RowAction label="Add watched videos" subject={s.title} onClick={() => void addWatched.run(s)} />}
+              {configured && !dismissedView && s.watches > 0 && <RowAction label="Add watched videos" subject={s.title} onClick={() => void addWatched.run(s)} />}
               <RowAction label={dismissedView ? 'Restore' : 'Dismiss'} subject={s.title} onClick={() => dismiss(s)} />
             </span>
           </div>

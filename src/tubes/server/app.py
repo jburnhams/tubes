@@ -25,7 +25,8 @@ API (JSON):
   PUT  /api/cache/{id} {pinned}            pin or unpin a copy
   DELETE /api/cache/{id}                   delete a copy now
   POST /api/cache/evict {dry_run}          run eviction
-  GET  /api/suggestions?group=&topic=&kids=&q=&dismissed=&limit=   channels from the imported watch history, best first: {items, total}
+  GET  /api/suggestions?group=&topic=&kids=&q=&dismissed=&order=&limit=   channels from the watch history and those related channels point at
+                                           (order=watched, best score first, or suggested, most pointed at first): {items, total}
   GET  /api/suggestions/summary            the histories, groups, topics and counts around that list (`database`: a history database is set)
   POST /api/suggestions/refresh            read the history database again if one is set, remake the suggestions, ask YouTube about new channels
   GET  /api/history?start=&end=&source=    what was watched then: counts, watches per day or month, top channels and videos
@@ -217,8 +218,8 @@ def create_app():
     def post_evict(b: EvictIn): return cache.evict(cache.utcnow(), dry_run=b.dry_run)
 
     @app.get('/api/suggestions')
-    def get_suggestions(group: str | None = None, topic: str | None = None, kids: bool | None = None, q: str | None = None, dismissed: bool = False, limit: int = Query(history.LIST_LIMIT, ge=1, le=1000)):
-        return guard(history.suggestions, group, topic, kids, q, dismissed, limit)
+    def get_suggestions(group: str | None = None, topic: str | None = None, kids: bool | None = None, q: str | None = None, dismissed: bool = False, limit: int = Query(history.LIST_LIMIT, ge=1, le=1000), order: str = 'watched'):
+        return guard(history.suggestions, group, topic, kids, q, dismissed, limit, order)
 
     @app.get('/api/suggestions/summary')
     def get_suggestions_summary(): return history.summary()

@@ -1,9 +1,9 @@
 """Command line. `doctor` checks the environment; `add`, `remove`, `sync` and `channels` manage the library from YouTube; `history` imports a
-watch history that suggestions are made from; `fetch`, `cache`, `evict` the cache; `set` the settings; `serve` starts the web server.
-A timer on the server runs `tubes sync; tubes evict` every few hours (docs/deploy.md)."""
+watch history that suggestions are made from; `related` asks YouTube which channels the followed and watched ones point at; `fetch`, `cache`, `evict` the cache; `set` the settings; `serve` starts the web server.
+A timer on the server runs `tubes sync; tubes related; tubes evict` every few hours (docs/deploy.md)."""
 import argparse, importlib, json, os, sys
 
-from tubes import __version__, cache, catalogue, fetcher, history, library, oslib, settings, youtube, ytdlp
+from tubes import __version__, cache, catalogue, fetcher, history, library, oslib, related, settings, youtube, ytdlp
 
 CHECKS = (('fastapi', 'fastapi'), ('uvicorn', 'uvicorn'), ('pydantic', 'pydantic'))
 
@@ -92,6 +92,25 @@ def cmd_history(args):
     return out(args, items, '\n'.join(f"  {s['source']:20} {s['watches']:>7} watches  {s['channels']:>6} channels  {s['first'][:10]} to {s['last'][:10]}" for s in items))
 
 
+def cmd_related(args):
+    """Ask YouTube about the channels that are due (all with --all), count up what they point at, then look up the new ones' details.
+    Exits non-zero only when every one asked failed (YouTube changed its page, or cannot be reached)."""
+    def say(n, total, cid, got):
+        what = got['error'] or f"{len(got['links'])} channel(s) from {got['videos']} page(s)"
+        print(f'  {n:>4}/{total} {cid:26} {what}', flush=True)
+    r = related.refresh(limit=None if args.all or not args.limit else args.limit, force=args.all, progress=say if args.verbose and not args.json else None)
+    r['looked_up'] = r['lookup_error'] = None
+    if youtube.configured():
+        try: r['looked_up'] = history.look_up()['looked_up']
+        except youtube.YoutubeError as e: r['lookup_error'] = str(e)
+    lines = [f"  {e['channel']:26} FAILED  {e['error']}" for e in r['errors'][:20]]
+    lines.append(f"  asked about {r['asked']} channel(s) ({r['failed']} failed), {r['due']} still due; {r['suggested']} channel(s) suggested by them, {r['added']} new")
+    if r['looked_up']: lines.append(f"  YouTube asked about {r['looked_up']} channel(s)")
+    if r['lookup_error']: lines.append(f"  YouTube could not be asked about the channels: {r['lookup_error']}")
+    out(args, r, '\n'.join(lines))
+    return 1 if r['asked'] and r['failed'] == r['asked'] else 0
+
+
 def cmd_fetch(args):
     v = library.video(args.video)
     if v is None: sys.exit(f'{args.video} is not in the library (./tubes add {args.video} first?)')
@@ -137,6 +156,9 @@ def main(argv=None):
     w = sub.add_parser('history', help='import a Google Takeout watch history (suggestions are made from it), sync the one in the history database (history_url, history_table), list them, remove one, or refresh the suggestions')
     w.add_argument('action', nargs='?', choices=('list', 'import', 'sync', 'remove', 'refresh'), default='list'); w.add_argument('file', nargs='?'); w.add_argument('--source', help='a name for the history, say the account it came from')
     w.add_argument('--no-lookup', action='store_true', help='do not ask YouTube about the channels'); w.add_argument('--json', action='store_true'); w.set_defaults(fn=cmd_history)
+    q = sub.add_parser('related', help="ask YouTube which channels the followed and most watched ones point at (each again after a week), and suggest them")
+    q.add_argument('--limit', type=int, default=related.RUN_LIMIT, help=f'ask about at most this many channels (default {related.RUN_LIMIT}; 0 for no limit)'); q.add_argument('--all', action='store_true', help='ask about every one now, due or not')
+    q.add_argument('-v', '--verbose', action='store_true', help='a line per channel as it is asked'); q.add_argument('--json', action='store_true'); q.set_defaults(fn=cmd_related)
     f = sub.add_parser('fetch', help='fetch one video into the cache now (waits until it is done)'); f.add_argument('video'); f.add_argument('--json', action='store_true'); f.set_defaults(fn=cmd_fetch)
     c = sub.add_parser('cache', help='show the cache: use, limit and every copy with its score'); c.add_argument('--json', action='store_true'); c.set_defaults(fn=cmd_cache)
     e = sub.add_parser('evict', help='trim the cache when it is over 95%% of its limit'); e.add_argument('--dry-run', action='store_true'); e.add_argument('--json', action='store_true'); e.set_defaults(fn=cmd_evict)

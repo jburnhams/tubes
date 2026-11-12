@@ -130,3 +130,28 @@ def test_history_sync_from_a_history_database(capsys, tmp_path, monkeypatch):
     capsys.readouterr()
     assert cli.main(['history', 'sync', '--no-lookup']) == 0
     assert capsys.readouterr().out == '  main: 1 watch(es)\n  1 channel(s) in the history, 0 in 0 group(s)\n'
+
+
+def test_related_asks_counts_and_says_what_failed(capsys, fake_youtube, monkeypatch):
+    from fake_youtube import vid
+    from tubes import related
+    monkeypatch.setattr(related, 'PAUSE', 0)
+    x, y, p = 'UC' + 'x' * 22, 'UC' + 'y' * 22, 'UC' + 'p' * 22
+    for c in (x, y): fake_youtube.channel(c, f'Channel {c[2]}', videos=2); catalogue.add(c)
+    catalogue.sync()
+    fake_youtube.watch_next(vid(x, 1), [(p, 'Channel p', '@p')]).watch_next(vid(x, 0), [(p, 'Channel p', '@p')])
+    fake_youtube.channel(p, 'Channel p', handle='@p')
+    assert cli.main(['related', '-v']) == 0
+    out = capsys.readouterr().out
+    assert f'     1/2 {x:26} 1 channel(s) from 2 page(s)' in out and f'     2/2 {y:26} The watch page of {vid(y, 1)} listed no videos.' in out
+    assert f'  {y:26} FAILED  The watch page of {vid(y, 1)} listed no videos.' in out
+    assert 'asked about 2 channel(s) (1 failed), 0 still due; 1 channel(s) suggested by them, 1 new' in out and 'YouTube asked about 1 channel(s)' in out
+    assert cli.main(['related', '--json']) == 0 and json.loads(capsys.readouterr().out)['asked'] == 0      # asked lately: not again
+    fake_youtube.web_down = True; fake_youtube.quota_left = 0
+    assert cli.main(['related', '--all', '--limit', '0']) == 1                                            # every one failed
+    assert 'asked about 2 channel(s) (2 failed)' in capsys.readouterr().out
+    fake_youtube.quota_left = None
+    monkeypatch.setattr(related, 'aggregate', lambda: dict(suggested=1, added=0))
+    with __import__('tubes').db.connect() as con: con.execute("UPDATE suggestions SET looked_up = NULL")
+    fake_youtube.quota_left = 0
+    assert cli.main(['related', '--limit', '1']) == 0 and 'YouTube could not be asked about the channels' in capsys.readouterr().out

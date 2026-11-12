@@ -8,7 +8,7 @@
 // `states: { error: [videosError] }` in the visual config.
 import { delay, http, HttpResponse } from 'msw'
 import { cursorOf, paths, type CacheItem, type Channel, type HistorySource, type Settings, type Stream, type Suggestion, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Video, type VideoPage } from '../api'
-import { cacheItems, channels, defaultSettings, historyDays, historySources, historyStats, library, libraryNew, longChannel, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
+import { cacheItems, channels, defaultSettings, historyDays, historySources, historyStats, library, libraryNew, longChannel, relatedStatus, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
 
 /** What the mock server holds. Writes change it, so a test can pin a copy and see it pinned. */
 export const mock = {
@@ -28,6 +28,7 @@ export const mock = {
   followed: [] as string[],
   groups: [...suggestionGroups] as SuggestionGroup[],
   sources: [...historySources] as HistorySource[],
+  related: { ...relatedStatus },
   /** Each import's {source, text}. */
   imports: [] as { source: string; text: string }[],
 }
@@ -47,6 +48,7 @@ export function resetMock() {
   mock.followed = []
   mock.groups = [...suggestionGroups]
   mock.sources = [...historySources]
+  mock.related = { ...relatedStatus }
   mock.imports = []
 }
 
@@ -59,6 +61,7 @@ export function suggestionPage(url: string, list: Suggestion[]) {
     .filter(x => !p.get('group') || (p.get('group') === 'none' ? x.group_id === null : String(x.group_id) === p.get('group')))
     .filter(x => !p.get('topic') || x.topics.includes(p.get('topic')!))
     .filter(x => !p.get('kids') || (p.get('kids') === 'true' ? x.made_for_kids === true : x.made_for_kids !== true))
+    .sort(p.get('order') === 'suggested' ? (a, b) => b.suggested_by - a.suggested_by || b.related_score - a.related_score || b.score - a.score : (a, b) => b.score - a.score || b.related_score - a.related_score)
   return { items, total: items.length }
 }
 
@@ -78,6 +81,9 @@ export function suggestionSummary(): SuggestionSummary {
     followed: mock.followed.length,
     refreshed: '2026-11-08T09:00:00+00:00',
     configured: true,
+    suggested: open.filter(x => x.suggested_by).length,
+    unwatched: open.filter(x => !x.watches).length,
+    related: mock.related,
   }
 }
 
@@ -316,7 +322,14 @@ export const suggestionsError = http.get(at(paths.suggestions), down)
 export const summaryLoading = http.get(at(paths.suggestionsSummary), () => delay('infinite'))
 export const summaryError = http.get(at(paths.suggestionsSummary), down)
 /** No history imported yet: the page is the import form. */
-export const suggestionsFirstVisit = http.get(at(paths.suggestionsSummary), () => HttpResponse.json({ ...suggestionSummary(), sources: [], groups: [], topics: [], open: 0, ungrouped: 0, kids: 0 }))
+export const suggestionsFirstVisit = http.get(at(paths.suggestionsSummary), () => HttpResponse.json({ ...suggestionSummary(), sources: [], groups: [], topics: [], open: 0, dismissed: 0, ungrouped: 0, kids: 0, suggested: 0, unwatched: 0, related: { sources: 0, asked: 0, due: 0, failed: 0, last: null } }))
+/** No history imported, but the followed channels' related channels are in: only those are suggested. */
+export const suggestionsRelatedOnly = [
+  http.get(at(paths.suggestionsSummary), () => HttpResponse.json({ ...suggestionSummary(), sources: [], groups: [], ungrouped: 2, open: 2, dismissed: 0, suggested: 2, unwatched: 2, kids: 0, topics: [{ name: 'Hobby', channels: 1 }], related: { sources: 19, asked: 19, due: 0, failed: 0, last: '2026-11-08T08:00:00+00:00' } })),
+  http.get(at(paths.suggestions), ({ request }) => HttpResponse.json(suggestionPage(request.url, mock.suggestions.filter(x => !x.watches).map(x => ({ ...x, group_id: null }))))),
+]
+/** YouTube has not been asked about related channels yet. */
+export const relatedNotAsked = http.get(at(paths.suggestionsSummary), () => HttpResponse.json({ ...suggestionSummary(), suggested: 0, unwatched: 0, related: { sources: 24, asked: 0, due: 24, failed: 0, last: null } }))
 /** The server has no YouTube key: nothing can be followed or added. */
 export const suggestionsNoKey = http.get(at(paths.suggestionsSummary), () => HttpResponse.json({ ...suggestionSummary(), configured: false }))
 export const followFails = http.post(at(paths.library), () => refused('YouTube refused the request (403: the key has used its quota for today (it resets at midnight Pacific time)).', 502))

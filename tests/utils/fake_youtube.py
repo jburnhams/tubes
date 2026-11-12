@@ -7,7 +7,12 @@ TUBES_YOUTUBE_API at it and sets a key:
 Uploads are paged 50 at a time with opaque page tokens, as YouTube does. `calls` lists each request as (endpoint, params); `quota_left`
 counts down one per call and answers 403 quotaExceeded at 0; `referer` makes every call without that Referer header fail as a
 referrer-restricted key does; `hold` (a threading.Event) keeps every playlistItems call waiting until it is set, so a test can act while a
-sync is part way."""
+sync is part way.
+
+It also stands in for what related.py reads: `featuring(cid, [ids], title=)` gives a channel a multipleChannels section (channelSections,
+one quota unit), and `watch_next(video, [(channel id, name, handle), ...])` sets what a video's watch page lists next (the web client's
+POST /youtubei/v1/next, in the lockupViewModel shape YouTube sends in 2026; TUBES_YOUTUBE_WEB points at `web`). A video with no list set
+answers with an empty column; `web_down` answers every watch page 503."""
 import json, threading, urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -23,6 +28,7 @@ class FakeYoutube:
     def __init__(self):
         self.channels, self.videos, self.playlists, self.calls = {}, {}, {}, []
         self.quota_left, self.referer, self.hold, self.lock = None, None, None, threading.Lock()
+        self.sections, self.next, self.web_down, self.pages = {}, {}, False, []
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -39,10 +45,18 @@ class FakeYoutube:
                         if fake.quota_left <= 0: return self.error(403, 'The request cannot be completed because you have exceeded your quota.', 'quotaExceeded')
                         fake.quota_left -= 1
                 if endpoint == 'playlistItems' and fake.hold: fake.hold.wait(30)
-                handler = dict(channels=fake.answer_channels, playlistItems=fake.answer_playlist, videos=fake.answer_videos).get(endpoint)
+                handler = dict(channels=fake.answer_channels, playlistItems=fake.answer_playlist, videos=fake.answer_videos, channelSections=fake.answer_sections).get(endpoint)
                 if not handler: return self.error(404, 'Not Found', 'notFound')
                 status, body = handler(q)
                 self.send_json(status, body)
+
+            def do_POST(self):
+                u = urllib.parse.urlparse(self.path)
+                body = json.loads(self.rfile.read(int(self.headers.get('Content-Length') or 0)) or b'{}')
+                with fake.lock: fake.pages.append(body.get('videoId'))
+                if u.path != '/youtubei/v1/next': return self.send_json(404, {})
+                if fake.web_down: return self.send_json(503, {})
+                self.send_json(200, fake.answer_next(body.get('videoId')))
 
             def error(self, code, message, reason):
                 self.send_json(code, dict(error=dict(code=code, message=message, errors=[dict(message=message, reason=reason)])))
@@ -52,7 +66,8 @@ class FakeYoutube:
 
         self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
-        self.api = f'http://127.0.0.1:{self.server.server_port}/youtube/v3'
+        self.web = f'http://127.0.0.1:{self.server.server_port}'
+        self.api = f'{self.web}/youtube/v3'
 
     # What YouTube holds.
 
@@ -82,7 +97,28 @@ class FakeYoutube:
                               contentDetails=dict(duration=duration, definition='hd'), statistics=dict(viewCount='12', likeCount='3', commentCount='1'))
         return self
 
-    # The three calls.
+    def featuring(self, cid, ids, title='Our friends'):
+        self.sections.setdefault(cid, []).append(dict(kind='youtube#channelSection', id=f'{cid}.{len(self.sections.get(cid, []))}', snippet=dict(type='multiplechannels', title=title, channelId=cid), contentDetails=dict(channels=list(ids))))
+        return self
+
+    def watch_next(self, video, listed):
+        """What `video`'s watch page lists next: (channel id, channel name, handle) per listed video, in order."""
+        self.next[video] = list(listed); return self
+
+    # The calls.
+
+    def answer_sections(self, q):
+        return 200, dict(kind='youtube#channelSectionListResponse', items=[dict(kind='youtube#channelSection', id=f"{q.get('channelId')}.s", snippet=dict(type='singlePlaylist', title='Popular uploads'))] + self.sections.get(q.get('channelId'), []))
+
+    def answer_next(self, video):
+        def lockup(n, cid, name, handle):
+            browse = dict(browseId=cid, canonicalBaseUrl=f'/{handle}' if handle else f'/channel/{cid}')
+            return dict(lockupViewModel=dict(contentId=f'{video[:6]}{n:05d}', contentType='LOCKUP_CONTENT_TYPE_VIDEO', metadata=dict(lockupMetadataViewModel=dict(
+                title=dict(content=f'Listed {n}'),
+                image=dict(decoratedAvatarViewModel=dict(rendererContext=dict(commandContext=dict(onTap=dict(innertubeCommand=dict(browseEndpoint=browse))))))),
+                metadata=dict(contentMetadataViewModel=dict(metadataRows=[dict(metadataParts=[dict(text=dict(content=name))]), dict(metadataParts=[dict(text=dict(content='1K views'))])])))))
+        results = [dict(reelShelfRenderer=dict(title=dict(runs=[dict(text='Shorts')])))] + [lockup(n, *x) for n, x in enumerate(self.next.get(video, []))]
+        return dict(contents=dict(twoColumnWatchNextResults=dict(results={}, secondaryResults=dict(secondaryResults=dict(results=results + [dict(continuationItemRenderer={})])))))
 
     def answer_channels(self, q):
         if 'forHandle' in q:

@@ -20,7 +20,11 @@ carry them, so they sort and compare as text on both engines.
   suggestions        one row per channel in the history: how often and how lately it was watched (`score` fades a watch by its age), its
                      group, YouTube's topics for it, and whether it was dismissed (kept when the history is imported again).
   suggestion_groups  groups of channels watched in the same sittings, found from the history; `name` is made up from its channels until
-                     someone names it (`named`), and a regrouping keeps a group's id and name for the group that overlaps it most."""
+                     someone names it (`named`), and a regrouping keeps a group's id and name for the group that overlaps it most.
+                     A channel can also be here only because channels the library follows or the history watches point at it
+                     (`suggested_by`, related.py): then it has no watches.
+  related_sources    one row per channel YouTube was asked about for related channels (related.py), and when; asked again after a week.
+  related_links      what each of those pointed at: channels whose videos its watch pages list next (`hits`), or that it features itself."""
 from sqlalchemy import BigInteger, Float, Index, String, Text, false, true
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -128,6 +132,27 @@ class Suggestion(Base):
     looked_up: Mapped[str | None] = mapped_column(String(40), default=None)      # when YouTube was last asked about the channel
     missing: Mapped[bool] = mapped_column(server_default=false(), default=False) # YouTube has no such channel any more: it cannot be followed
     dismissed: Mapped[str | None] = mapped_column(String(40), default=None)
+    suggested_by: Mapped[int] = mapped_column(server_default='0', default=0)     # how many of the library's and the history's channels point at it (related.py)
+    related_score: Mapped[float] = mapped_column(Float, server_default='0', default=0.0)
+
+
+class RelatedSource(Base):
+    __tablename__ = 'related_sources'
+    channel_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    fetched: Mapped[str] = mapped_column(String(40))                             # when YouTube was last asked (whether or not it answered)
+    videos: Mapped[int] = mapped_column(server_default='0', default=0)          # watch pages read for it that answered
+    error: Mapped[str | None] = mapped_column(Text, default=None)                # why the last ask failed; it is asked again sooner
+
+
+class RelatedLink(Base):
+    __tablename__ = 'related_links'
+    __table_args__ = (Index('ix_related_links_channel', 'channel_id'),)
+    source_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    channel_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    title: Mapped[str | None] = mapped_column(Text, default=None)
+    handle: Mapped[str | None] = mapped_column(default=None)
+    hits: Mapped[int] = mapped_column(server_default='0', default=0)            # how many of the source's watch pages listed one of its videos
+    featured: Mapped[bool] = mapped_column(server_default=false(), default=False)   # the source lists it among its own channels (channelSections)
 
 
 class SuggestionGroup(Base):
