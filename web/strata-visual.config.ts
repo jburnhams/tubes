@@ -11,8 +11,19 @@
 //
 // `npm run test:visual` builds both and compares; `npm run test:visual:update` writes new
 // baselines. Look at a diff in tests/visual/output/ before accepting it.
+import type { Page } from 'playwright'
 import { defineVisualConfig } from 'strata-react/visual'
 import { handlers, streamIn } from './src/mocks/handlers'
+
+/** Waits for the player's first frame, then holds it there: paused at 0:00. */
+const firstFrame = async (page: Page) => {
+  await page.locator('video').evaluate(async (v: HTMLVideoElement) => {
+    if (v.readyState < 2) await new Promise(done => v.addEventListener('loadeddata', done, { once: true }))
+    v.pause()
+    v.currentTime = 0
+    await new Promise(done => v.addEventListener('seeked', done, { once: true }))
+  })
+}
 
 export default defineVisualConfig({
   // "3 weeks ago" under every video is worked out from now, so the clock is frozen a little after the sample library's last sync.
@@ -30,8 +41,17 @@ export default defineVisualConfig({
       // A channel is shot with its one page: the next page is asked for on its own as the end scrolls near, so which rows are in
       // view would depend on timing. Paging is tested in jsdom (tests/integration/ChannelScreen).
       { name: 'channel', path: '/channels/UCworkshop00000000000001' },
-      // The waiting frame, not a playing video: what a <video> draws depends on how far it got.
-      { name: 'watch', path: '/watch/wo000000000', states: { fetching: streamIn('fetching'), failed: streamIn('failed') } },
+      // The waiting frames, and the player itself: every copy is the two-second test card (src/mocks/testcard.ts), held paused on its
+      // first frame so the picture, the time and the controls are the same in every run.
+      {
+        name: 'watch',
+        path: '/watch/wo000000000',
+        states: {
+          playing: { setup: firstFrame },
+          fetching: streamIn('fetching'),
+          failed: streamIn('failed'),
+        },
+      },
       // The admin area, in Strata's look.
       {
         name: 'admin-cache',
