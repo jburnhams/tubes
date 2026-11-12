@@ -46,6 +46,7 @@ class FetchError(RuntimeError):
 class Job:
     def __init__(self, video_id):
         self.video_id, self.procs, self.cancelled, self.thread = video_id, [], False, None
+        self.log_from = 0          # where this attempt's lines start in fetch.log (attempts); its reason is read from there only
 
     def stop(self, cancel=True):
         self.cancelled = self.cancelled or cancel
@@ -212,6 +213,8 @@ def attempts(job, run):
     overwrites the files in place while the player keeps playing what had arrived. Both runs write to the one fetch.log, the failure noted."""
     attempt = 1
     while True:
+        try: job.log_from = os.path.getsize(os.path.join(cache.folder(job.video_id), LOG))
+        except OSError: job.log_from = 0
         error = run()
         if not error or job.cancelled or attempt >= ATTEMPTS: return error
         with open(os.path.join(cache.folder(job.video_id), LOG), 'a', encoding='utf8') as log: log.write(f'[tubes] attempt {attempt} failed: {error}; trying again\n')
@@ -254,7 +257,7 @@ def outcome(job, codes, stalled, duration):
     if stalled: return f'Nothing arrived for {STALL_SECONDS} s, so the fetch was stopped.'
     if job.cancelled: return 'The fetch was stopped.'
     if any(codes):
-        with open(os.path.join(out, LOG), encoding='utf8', errors='replace') as f: why = ytdlp.last_error(f.read())
+        with open(os.path.join(out, LOG), 'rb') as f: f.seek(job.log_from); why = ytdlp.last_error(f.read().decode('utf8', 'replace'))     # this attempt's lines: an earlier one's ERROR would win
         return why or f'The fetch failed (exit codes {codes}).'
     pl = cache.read_playlist(job.video_id)
     if not pl['complete'] or pl['segments'] == 0: return 'The fetch ended before the video was complete.'

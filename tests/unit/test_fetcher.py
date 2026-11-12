@@ -198,6 +198,22 @@ def run_pipeline(monkeypatch, codes=(0, 0, 0), log=b'', stalled=False, cancelled
     return fetcher.pipeline(job, '/c/probe.json', '399', '140', duration), made
 
 
+def test_a_retry_is_judged_by_its_own_log_lines(monkeypatch):
+    seed(); cache.begin('aaaaaaaaaaa', cache.stamp())
+    logs = [b'ERROR: unable to write data: [Errno 32] Broken pipe\n', b'[https @ 0x1] HTTP error 403 Forbidden\n']
+    made = []
+    def popen(cmd, **kw):
+        made.append(Proc(cmd, 1 if len(made) % 3 == 0 else 0, **kw))
+        if len(made) % 3 == 0:
+            with open(os.path.join(cache.folder('aaaaaaaaaaa'), fetcher.LOG), 'ab') as f: f.write(logs.pop(0))
+        return made[-1]
+    monkeypatch.setattr(subprocess, 'Popen', popen); monkeypatch.setattr(fetcher, 'watch', lambda j: False)
+    job = fetcher.Job('aaaaaaaaaaa')
+    assert fetcher.attempts(job, lambda: fetcher.pipeline(job, '/c/probe.json', '399', '140', 8)) == '[https @ 0x1] HTTP error 403 Forbidden'
+    with open(os.path.join(cache.folder('aaaaaaaaaaa'), fetcher.LOG), encoding='utf8') as f: assert 'Broken pipe' in f.read()     # both runs stay in the log
+    assert len(made) == 6 and logs == []
+
+
 def test_pipeline_wires_two_downloads_into_ffmpeg(monkeypatch):
     result, made = run_pipeline(monkeypatch)
     assert result is None
