@@ -57,8 +57,22 @@ export interface LibraryStatus {
   hidden: number
   /** Streams live now or scheduled, hidden from every list until they end (a past one is shown). Absent from older servers. */
   live?: number
+  /** Videos Admin's filters (Settings, Shown videos) leave out: too short, too long, or past streams. Absent from older servers. */
+  filtered?: number
   /** The YouTube key is in the server's environment, so YouTube channels can be added and synced. iPlayer programmes need no key. */
   configured: boolean
+}
+
+/** Which streams the watching side leaves out: 'current' those live now or scheduled (they cannot be played), 'all' past streams and premieres too. */
+export type StreamFilter = 'current' | 'all'
+
+/** `GET /api/library/shown`: which videos the watching side shows, kept in the server's database. Lengths in seconds, null for no limit. */
+export interface ShownFilters {
+  min_seconds: number | null
+  max_seconds: number | null
+  streams: StreamFilter
+  /** How many videos these leave out now. */
+  filtered: number
 }
 
 /** Where a channel or video comes from. A BBC iPlayer programme is kept as a channel and its episodes as videos. Absent from older servers (YouTube). */
@@ -392,6 +406,7 @@ export const paths = {
   system: '/api/system',
   settings: '/api/settings',
   library: '/api/library',
+  shown: '/api/library/shown',
   sync: '/api/library/sync',
   channels: '/api/channels',
   channel: (id: string) => `/api/channels/${encodeURIComponent(id)}`,
@@ -427,6 +442,7 @@ export const keys = {
   channels: ['channels'],
   sync: ['sync'],
   library: ['library'],
+  shown: ['library', 'shown'],
   channel: (id: string) => ['channels', id],
   videos: ['videos'],
   list: (filter: VideoFilter) => ['videos', 'list', filter.channel ?? '', filter.q?.trim() ?? ''],
@@ -470,6 +486,8 @@ export const api = {
   settings: () => fetchJson<Settings>(withBase(paths.settings)),
   saveSettings: (s: Partial<Settings>) => callJson<Settings>(withBase(paths.settings), send('PUT', s)),
   library: () => fetchJson<LibraryStatus>(withBase(paths.library)),
+  shown: () => fetchJson<ShownFilters>(withBase(paths.shown)),
+  saveShown: (f: Partial<Omit<ShownFilters, 'filtered'>>) => callJson<ShownFilters>(withBase(paths.shown), send('PUT', f)),
   add: (input: string) => callJson<Added>(withBase(paths.library), send('POST', { input })),
   syncJob: () => fetchJson<SyncJob>(withBase(paths.sync)),
   /** Sync these channels, or every followed one. */

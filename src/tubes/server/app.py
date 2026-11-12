@@ -10,8 +10,9 @@ API (JSON):
   GET  /api/skipping                      [{id, label, detail, mode}]: every kind of segment, with what the player does in it (settings skip_<id>)
   GET  /api/videos/{id}/segments          {segments: [{category, start, end, action}], categories: [{id, label, detail, mode}], error}: what can be skipped
   GET  /api/settings, PUT /api/settings    every setting (settings.py); PUT takes any subset, a null resets one
-  GET  /api/library                       {synced, channels, videos, configured}: when every followed channel was last synced, and whether the YouTube key is set
+  GET  /api/library                       {synced, channels, videos, hidden, live, filtered, configured}: when every followed channel was last synced, and whether the YouTube key is set
   POST /api/library {input}                add a channel (followed; its sync starts at once, or after the running sync's channels) or one video from a link, id or @handle; an iPlayer programme or episode link works the same way: {kind, channel|video, sync}
+  GET  /api/library/shown, PUT            which videos the watching side shows (library.filters): {min_seconds, max_seconds, streams, filtered}; PUT takes any subset, null for no limit; filtered is how many they leave out
   GET  /api/library/sync                   the background sync: {running, total, done, current, added, errors, started, finished}
   POST /api/library/sync {channels}        start one for these channel ids (default: every followed channel); 409 while one runs
   GET  /api/channels, GET /api/channels/{id}   channels with their video counts and sync state
@@ -148,6 +149,12 @@ def create_app():
         if r['kind'] == 'channel':                                   # a new channel's videos arrive at once, as when storage's Sync was pressed after adding it
             r['sync'] = job.follow_up([r['channel']['id']])          # after the running sync's own channels, if one runs
         return r
+
+    @app.get('/api/library/shown')
+    def get_shown(): return dict(library.filters(), filtered=library.status()['filtered'])
+
+    @app.put('/api/library/shown')
+    def put_shown(changes: dict): guard(catalogue.save_filters, changes); return get_shown()
 
     @app.get('/api/library/sync')
     def get_sync(): return job.state()

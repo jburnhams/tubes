@@ -1,5 +1,13 @@
 # Progress log
 
+## 2026-11-12: Admin chooses which videos are shown
+
+- Asked for: config in Admin to keep videos off the watching side by length (shortest, longest) and by live status. Admin > Settings has a Shown videos tab (`?tab=shown`): shortest and longest length in minutes (empty for no limit) and a Live streams choice, either leave out streams live now or scheduled (the old fixed rule, the default) or every stream, past ones and premieres too. Showing a stream that is live now is not offered: a running one cannot be fetched whole and a scheduled one cannot be played.
+- Kept in the database, in `meta` under `shown` as JSON (no migration), read by `library.filters()` and written by `catalogue.save_filters()`, which checks every value (lengths 0 or more, shortest not past longest, streams `current` or `all`) and saves nothing if one is wrong. `GET/PUT /api/library/shown` → `{min_seconds, max_seconds, streams, filtered}`.
+- The rule is in `library.shown()`, which replaced the `SHOWN` constant, so every list, count, search and shuffle goes through it, iPlayer expiry included. A video whose length is not known is kept by the length limits. `video(id)` still finds a left-out video, so a link opens. With past streams left out, `recheck_past` gets none to ask about. `GET /api/library` adds `filtered` (left out by the filters, apart from gone and live ones); the Library page's finding says it when it is not 0.
+- Merging main after the Skipping tab (PR #67) and the thumbnail repair (PR #66): both had added a migration after `9992af3c9c62`, leaving two Alembic heads on main, so `upgrade head` refused and every database test failed. `4b8e2d6f1a90` joins them and changes nothing. Settings now has four tabs (General, Skipping, Shown videos, Appearance).
+- Visual: every Settings baseline changed (the new tab in the tab bar); new stories (Shown videos, set, loading, error) and route states (`shown`, `shown-invalid`). Written in Chromium 1243 (the pinned 1254 could not be downloaded here); every other shot matched within tolerance.
+
 ## 2026-11-12: blank thumbnails on the home page
 
 - Found on the home server: 86 of the newest 200 videos had a blank card, and 6,000 of 195,741 YouTube videos (3%, but most of the newest) stored a thumbnail that answers 404. The Data API now lists `fhddefault` (1920×1080), `qhddefault` and `uhddefault` for many new uploads and streams, `best_thumbnail` kept the largest listed, and i.ytimg.com does not serve those sizes (tried as jpg, webp and with `?v=`); `maxresdefault` was there for every one tried. The report a failed thumbnail sends (`/api/videos/check`) found each video still on YouTube, as it is, so the card stayed blank. iPlayer images were all fine.
