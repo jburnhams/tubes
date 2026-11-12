@@ -2,10 +2,10 @@
 // each channel) over a grid of the newest videos in the library, read a page at a time as the page
 // scrolls. Before the library has any videos, it says where to add a channel.
 import { Link } from 'react-router'
-import { useLoad } from 'strata-react'
+import { DataView, useLoad } from 'strata-react'
 import { api, keys } from '../api'
 import { GridSkeleton, More, VideoGrid } from './cards'
-import { Nothing, Shown } from './Shown'
+import { Nothing, trouble } from './Shown'
 import { useVideos } from './useVideos'
 
 function Chips() {
@@ -25,14 +25,14 @@ export function HomeScreen() {
     <>
       <h1 className="sr-only">Home</h1>
       <Chips />
-      <Shown
+      <DataView error={trouble}
         state={list}
         skeleton={<GridSkeleton />}
         isEmpty={vs => vs.length === 0}
         empty={<Nothing title="No videos yet">Videos appear here once a channel is in the library. <Link to="/admin/library" className="text-tube-focus">Add one in Admin</Link>.</Nothing>}
       >
         {vs => <><VideoGrid videos={vs} label="Newest videos" /><More list={list} skeleton={<GridSkeleton cards={4} />} /></>}
-      </Shown>
+      </DataView>
     </>
   )
 }

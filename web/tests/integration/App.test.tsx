@@ -7,7 +7,7 @@ describe('the watching frame', () => {
     const rail = screen.getByRole('navigation', { name: 'Main' })
     expect(within(rail).getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page')
     const listed = await within(rail).findByRole('region', { name: 'Channels' })
-    expect(within(listed).getAllByRole('link').map(l => l.querySelector('span:not([aria-hidden])')?.textContent)).toEqual(['Kitchen Science', 'Night Sky', 'Rivers and Coasts', 'Workshop Notes'])
+    expect(within(listed).getAllByRole('link').map(l => l.lastElementChild?.textContent)).toEqual(['Kitchen Science', 'Night Sky', 'Rivers and Coasts', 'Workshop Notes'])
 
     await user.click(within(rail).getByRole('link', { name: 'Channels' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Channels' })).toBeInTheDocument()

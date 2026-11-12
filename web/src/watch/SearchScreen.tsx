@@ -1,22 +1,23 @@
 // The one question: "Which videos have these words in their title?" The words are in the URL
 // (?q=), so a search can be linked and reloaded. Results are wide rows, newest first, a page at a time.
 import { useSearchParams } from 'react-router'
+import { DataView } from 'strata-react'
 import { More, RowsSkeleton, VideoRow, useChannelsById } from './cards'
-import { Nothing, Shown } from './Shown'
+import { Nothing, trouble } from './Shown'
 import { useVideos } from './useVideos'
 
 function Results({ q }: { q: string }) {
   const list = useVideos({ q })
   const byId = useChannelsById()
   return (
-    <Shown state={list} skeleton={<RowsSkeleton />} isEmpty={vs => vs.length === 0} empty={<Nothing title="No titles match">Try fewer words, or a different spelling. Words can be in any order.</Nothing>}>
+    <DataView error={trouble} state={list} skeleton={<RowsSkeleton />} isEmpty={vs => vs.length === 0} empty={<Nothing title="No titles match">Try fewer words, or a different spelling. Words can be in any order.</Nothing>}>
       {vs => (
         <>
           <ul aria-label={`Videos matching “${q}”`} className="grid gap-4">{vs.map(v => <VideoRow key={v.id} v={v} channel={byId.get(v.channel_id)} />)}</ul>
           <More list={list} skeleton={<RowsSkeleton rows={2} />} />
         </>
       )}
-    </Shown>
+    </DataView>
   )
 }
 

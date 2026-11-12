@@ -16,7 +16,7 @@ Vitest 5, Testing Library, user-event, MSW, and strata-react's test helpers (`st
 - No arbitrary sleeps: `findBy*`, `waitFor`, or fake timers (`vi.useFakeTimers({ shouldAdvanceTime: true })` and `openApp(route, { user: { advanceTimers: vi.advanceTimersByTime } })` to run out the undo window).
 - Never mock a module or stub `fetch`: put the server into the state with MSW.
 - Copy from strata-react's `format` (the admin area) joins counts with a non-breaking space: match `/^6\svideos$/`, not a typed `"6 videos"`. The watching side writes its own (`watch/format.ts`) with ordinary spaces.
-- jsdom has neither MediaSource nor native HLS, so the Watch tests see the player say so; hls.js itself is tested through `attach()` with a fake class (`unit/logic.test.ts`). A long list is paged with `installFakeIntersectionObserver().scrollToEnd()`.
+- jsdom has neither MediaSource nor native HLS, so the Watch tests see Strata's `MediaPlayer` say so ("Could not load this video", with Try again); the engine set-up in `player.ts` is tested through strata-react's `createHlsAttacher` with a fake hls.js class (`unit/logic.test.ts`). The skip tests find the `<video>` by its label ("<title>, video") and drive it with `timeupdate` and `durationchange`. A long list is paged with `installFakeIntersectionObserver().scrollToEnd()`.
 - A bug found while testing: write `it.todo` or `it.fails`, comment it as a finding, and don't change app behaviour in a test-only change.
 
 ## Visual tests

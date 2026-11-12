@@ -1,5 +1,14 @@
 # Progress log
 
+## 2026-11-12: strata-react 1.0.35, and the watching side on Strata's components
+
+- Asked for: move the whole web app to the latest strata-react and use its components on the watching side too, keeping its look; then (same evening) use Strata's own `MediaPlayer` look for the player and improve it in Strata, ask Strata for skippable segments on the seek bar, and use Strata's dependency stack.
+- Upgrade 0.1.17 → 1.0.35: the admin tests query `DataTable` as a `grid` (sortable headers are the `columnheader`s), choice groups as `radiogroup`s; the visual config clicks Strata's own checkboxes (`force`, the input is hidden). 66 admin baselines moved, all from changes `UPGRADING.md` lists (checkboxes and radios drawn from tokens, the theme stored per shot so light shots show Light chosen, `<1%` shares, row heights); every watching-side baseline still matches.
+- The look kept by theming, not by classes: `.tube` on the viewer shell sets Strata's roles (`--muted` the chip, `--foreground` the ink, `--radius-control` round, `--radius-surface` the tube radius, `--font-sans` Roboto, `--control-h` the pill's height). With it `DataView` (every read; `trouble` draws a failed one), Strata's `Button` (the pill), `Thumbnail` (avatars, with the letter as `fallback`) and `useInView` (the next-page watcher) replaced the hand-built pieces and the screenshots did not change.
+- Player: Strata's `MediaPlayer` (its controls on a desktop, the browser's on a touch screen), the stream through `strata-react/hls` (up to three quiet recoveries, Try again restarting where playback was), `growing` with the copy's progress while it is fetched. The skip overlays sit over the picture, and the segment strip stays under the player until strata-react #207 lands. hls.js is asked for the start of a growing playlist through an engine subclass (`fromTheStart`), since Strata's attacher asks for the live edge (#208).
+- Dependencies: lucide-react 1.72 and TypeScript as Strata has it (`typescript7` for `npm run typecheck`, `typescript` the TS 6 API for Storybook).
+- Asked of strata-react: #207 (segments on the seek bar, auto or ask skip), #208 (HLS start position and words), #209 (Thumbnail load/fail hooks or a list of sources: video pictures still use their own `<img>`), #210 (LoadMore rows, type steps and button padding as roles), #211 (MediaPlayer's state and an overlay place for the app).
+
 ## 2026-11-12: a failed download is tried once more
 
 - Asked for: a video failed with "unable to write data: [Errno 32] Broken pipe" and played on Play again, so retry by itself.

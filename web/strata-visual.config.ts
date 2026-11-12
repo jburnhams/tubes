@@ -67,8 +67,8 @@ export default defineVisualConfig({
           ready: [],
           chosen: {
             setup: async page => {
-              await page.getByRole('checkbox', { name: 'Select Night Sky' }).check()
-              await page.getByRole('checkbox', { name: 'Select Workshop Notes' }).check()
+              await page.getByRole('checkbox', { name: 'Select Night Sky' }).click({ force: true })
+              await page.getByRole('checkbox', { name: 'Select Workshop Notes' }).click({ force: true })
               await page.getByRole('button', { name: 'Sync 2' }).waitFor()
             },
           },

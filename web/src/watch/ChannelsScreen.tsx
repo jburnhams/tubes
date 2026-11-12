@@ -2,11 +2,11 @@
 // with its name and how many videos it has, each one link to its page. Channels are added on
 // Admin’s Library page, so the empty state says so.
 import { Link } from 'react-router'
-import { useLoad } from 'strata-react'
+import { DataView, useLoad } from 'strata-react'
 import { api, keys } from '../api'
 import { Avatar } from './cards'
 import { countFor } from './format'
-import { Nothing, Shown } from './Shown'
+import { Nothing, trouble } from './Shown'
 
 const grid = 'grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-5 2xl:grid-cols-6'
 
@@ -15,7 +15,7 @@ export function ChannelsScreen() {
   return (
     <>
       <h1 className="mb-6 text-tube-lg font-bold">Channels</h1>
-      <Shown
+      <DataView error={trouble}
         state={load}
         isEmpty={cs => cs.length === 0}
         skeleton={<div aria-hidden className={grid}>{Array.from({ length: 10 }, (_, i) => <div key={i} className="grid justify-items-center gap-3 motion-safe:animate-pulse"><div className="aspect-square w-3/4 rounded-full bg-tube-chip" /><div className="h-4 w-1/2 rounded-tube-sm bg-tube-chip" /></div>)}</div>}
@@ -36,7 +36,7 @@ export function ChannelsScreen() {
             ))}
           </ul>
         )}
-      </Shown>
+      </DataView>
     </>
   )
 }

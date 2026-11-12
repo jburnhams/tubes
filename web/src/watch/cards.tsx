@@ -4,9 +4,9 @@
 // and avatar are links too, for the mouse, but hidden from the keyboard and screen readers so each video is said once.
 // A thumbnail that fails tries YouTube's hqdefault size first, then reports its video as missing (missing.ts); a video the server then hides
 // leaves every list at once, as the server leaves it out of the next page it serves.
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
-import { useLoad, type InfiniteLoad } from 'strata-react'
+import { Thumbnail, useInView, useLoad, type InfiniteLoad } from 'strata-react'
 import { api, keys, type Channel, type Video } from '../api'
 import { runningTime, viewsAndAge } from './format'
 import { fallbackThumbnail, isPlaceholder, reportMissing, useHidden } from './missing'
@@ -18,12 +18,14 @@ export function useChannelsById(): Map<string, Channel> {
   return new Map(load.status === 'ready' ? load.data.map(c => [c.id, c]) : [])
 }
 
-/** A channel's round picture, or its first letter on grey when it has none. */
+/** A channel's round picture, or its first letter on grey when it has none (or it cannot be loaded): Strata's `Thumbnail`, square and round,
+ *  with the letter as its fallback. It loads at once: a channel's picture is small and on screen where it is drawn (the rail, a card). */
 export function Avatar({ channel, name, size = 'size-9' }: { channel?: Channel; name?: string | null; size?: string }) {
   const title = channel?.title ?? name ?? '?'
-  return channel?.thumbnail
-    ? <img src={channel.thumbnail} alt="" className={`${size} shrink-0 rounded-full bg-tube-chip object-cover`} />
-    : <span aria-hidden className={`${size} grid shrink-0 place-items-center rounded-full bg-tube-chip font-medium text-tube-quiet`}>{title.slice(0, 1).toUpperCase()}</span>
+  return (
+    <Thumbnail src={channel?.thumbnail ?? null} alt="" aspect={1} eager className={`${size} shrink-0 rounded-pill`}
+      fallback={<span className="grid size-full place-items-center font-medium text-tube-quiet">{title.slice(0, 1).toUpperCase()}</span>} />
+  )
 }
 
 const SAVED: Record<string, string> = { ready: 'Saved', fetching: 'Fetching' }
@@ -125,17 +127,12 @@ export function RowsSkeleton({ rows = 4, size = 'large' }: { rows?: number; size
  *  keeps a Show more button for whoever cannot scroll. Nothing after the last page. */
 export function More({ list, skeleton }: { list: InfiniteLoad<Video>; skeleton: ReactNode }) {
   const { hasMore, loadingMore, error, loadMore } = list.more
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    // Without IntersectionObserver (jsdom, a very old browser) Show more still works.
-    if (typeof IntersectionObserver === 'undefined' || !hasMore || error) return
-    const seen = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) loadMore() }, { rootMargin: '600px' })
-    seen.observe(ref.current!)
-    return () => seen.disconnect()
-  }, [hasMore, error, loadMore])
+  // Strata's watcher (the one its LoadMore uses): near the end, unless a page failed and waits for Try again.
+  const near = useInView({ active: hasMore && !error, rootMargin: '600px' })
+  useEffect(() => { if (near.inView && hasMore && !error && !loadingMore) loadMore() }, [near.inView, hasMore, error, loadingMore, loadMore])
   if (!hasMore) return null
   return (
-    <div ref={ref} className="mt-10 grid gap-6">
+    <div ref={near.ref} className="mt-10 grid gap-6">
       {loadingMore ? skeleton : error ? (
         <div role="alert" className="flex flex-wrap items-center justify-center gap-4 text-tube-sm text-tube-ink">{error}<Pill onClick={loadMore}>Try again</Pill></div>
       ) : (

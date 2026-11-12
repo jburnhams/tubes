@@ -2,12 +2,12 @@
 // many videos) over a Videos tab and a grid of its videos, newest first, a page at a time. A channel
 // the library no longer has (an old link) says so. An iPlayer programme reads the same, with its
 // episodes under a heading for each series as the list reaches it (newest first, so the latest series leads).
-import { HttpError, describeHttpError, useLoad } from 'strata-react'
+import { DataView, describeHttpError, HttpError, useLoad } from 'strata-react'
 import { useParams } from 'react-router'
 import { api, keys, type Channel, type Video } from '../api'
 import { Avatar, GridSkeleton, More, VideoGrid } from './cards'
 import { countFor } from './format'
-import { Nothing, Shown } from './Shown'
+import { Nothing, trouble } from './Shown'
 import { useVideos } from './useVideos'
 
 /** Consecutive runs of episodes in the same series, in list order: [[series, episodes], ...]. */
@@ -39,9 +39,9 @@ function Episodes({ c, vs }: { c: Channel; vs: Video[] }) {
 function Videos({ c }: { c: Channel }) {
   const list = useVideos({ channel: c.id })
   return (
-    <Shown state={list} skeleton={<GridSkeleton cards={8} />} isEmpty={vs => vs.length === 0} empty={<Nothing title={c.platform === 'iplayer' ? 'No episodes to watch' : 'No videos yet'}>{c.platform === 'iplayer' ? 'iPlayer offers none of its episodes just now. New ones arrive with the next sync.' : 'The library has this channel but none of its videos. They arrive with its next sync.'}</Nothing>}>
+    <DataView error={trouble} state={list} skeleton={<GridSkeleton cards={8} />} isEmpty={vs => vs.length === 0} empty={<Nothing title={c.platform === 'iplayer' ? 'No episodes to watch' : 'No videos yet'}>{c.platform === 'iplayer' ? 'iPlayer offers none of its episodes just now. New ones arrive with the next sync.' : 'The library has this channel but none of its videos. They arrive with its next sync.'}</Nothing>}>
       {vs => <>{c.platform === 'iplayer' ? <Episodes c={c} vs={vs} /> : <VideoGrid videos={vs} label={`Videos from ${c.title}`} showChannel={false} />}<More list={list} skeleton={<GridSkeleton cards={4} />} /></>}
-    </Shown>
+    </DataView>
   )
 }
 
@@ -53,7 +53,7 @@ export function ChannelScreen() {
   })
   return (
     <div className="mx-auto max-w-screen-2xl">
-      <Shown state={load} skeleton={<div aria-hidden className="flex items-center gap-6 py-4 motion-safe:animate-pulse"><div className="size-32 rounded-full bg-tube-chip" /><div className="grid flex-1 gap-3"><div className="h-8 w-64 rounded-tube-sm bg-tube-chip" /><div className="h-4 w-48 rounded-tube-sm bg-tube-chip" /></div></div>}>
+      <DataView error={trouble} state={load} isEmpty={() => false} empty={null} skeleton={<div aria-hidden className="flex items-center gap-6 py-4 motion-safe:animate-pulse"><div className="size-32 rounded-full bg-tube-chip" /><div className="grid flex-1 gap-3"><div className="h-8 w-64 rounded-tube-sm bg-tube-chip" /><div className="h-4 w-48 rounded-tube-sm bg-tube-chip" /></div></div>}>
         {c => (
           <>
             <header className="flex items-center gap-6 py-4">
@@ -69,7 +69,7 @@ export function ChannelScreen() {
             <Videos c={c} />
           </>
         )}
-      </Shown>
+      </DataView>
     </div>
   )
 }
