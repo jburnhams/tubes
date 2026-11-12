@@ -65,6 +65,11 @@ def test_last_error():
     assert ytdlp.last_error('a\nb\n') == 'b'
     assert ytdlp.last_error('ERROR: one\nERROR: two\ntrailing') == 'two'
     assert ytdlp.last_error('') == '' and ytdlp.last_error(None) == ''
+    # yt-dlp's broken pipe only says ffmpeg stopped reading: ffmpeg's own line (no ERROR: prefix) says why, and progress lines never do
+    pipe = 'ERROR: unable to write data: [Errno 32] Broken pipe'
+    assert ytdlp.last_error(f'[info] x: Downloading 1 format(s): 399\npipe:3: Invalid data found when processing input\n{pipe}\n[download] Destination: -') == 'pipe:3: Invalid data found when processing input'
+    assert ytdlp.last_error(f'ERROR: [youtube] x: HTTP Error 403: Forbidden\n{pipe}') == '[youtube] x: HTTP Error 403: Forbidden'
+    assert ytdlp.last_error(f'[download] Destination: -\n{pipe}\n[download] Download completed') == 'unable to write data: [Errno 32] Broken pipe'   # nothing better was said
 
 
 @pytest.mark.parametrize('message, gone', [

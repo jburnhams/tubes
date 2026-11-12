@@ -456,3 +456,50 @@ def test_an_iplayer_fetch_needs_no_pipes(monkeypatch):
     monkeypatch.setattr(iplayer, 'stream', lambda pid, h: dict(url='u', label='720p50 H.264 + AAC'))
     monkeypatch.setattr(fetcher, 'direct_pipeline', lambda job, url, d: write_playlist(job.video_id, 1, True))
     assert fetcher.start(E, background=False)['state'] == 'ready'
+
+
+def failing(monkeypatch, results):
+    """A fetch whose download runs give `results` in turn, each writing a line to the log; returns the runs."""
+    seed()
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: INFO); monkeypatch.setattr(cache, 'evict', lambda now: None)
+    runs = []
+    def fake_pipeline(job, *a):
+        runs.append(1)
+        with open(os.path.join(cache.folder(job.video_id), fetcher.LOG), 'a') as f: f.write(f'run {len(runs)}\n')
+        r = results[len(runs) - 1]
+        if r is None: write_playlist(job.video_id, 2, True)
+        return r
+    monkeypatch.setattr(fetcher, 'pipeline', fake_pipeline)
+    return runs
+
+
+def test_a_fetch_that_fails_twice_keeps_its_log_and_says_why_in_the_server_log(monkeypatch, capsys):
+    runs = failing(monkeypatch, ['Broken pipe', 'The fetch ended before the video was complete.'])
+    st = fetcher.start('aaaaaaaaaaa', background=False)
+    assert (st['state'], st['error'], len(runs)) == ('failed', 'The fetch ended before the video was complete.', 2)
+    with open(os.path.join(settings.data_dir(), fetcher.FAILED_LOGS, 'aaaaaaaaaaa.log')) as f: kept = f.read()
+    assert kept == 'run 1\n[tubes] attempt 1 failed: Broken pipe; trying again\nrun 2\n[tubes] failed: The fetch ended before the video was complete.\n'
+    assert not os.path.exists(cache.folder('aaaaaaaaaaa'))                           # the copy's own files still go
+    assert 'tubes: fetching aaaaaaaaaaa failed: The fetch ended before the video was complete.' in capsys.readouterr().err
+
+
+def test_a_probe_failure_has_no_log_to_keep(monkeypatch, capsys):
+    seed()
+    def refuse(url, signed_in=False): raise ytdlp.YtdlpError('Sign in to confirm you are not a bot')
+    monkeypatch.setattr(ytdlp, 'probe', refuse)
+    assert fetcher.start('aaaaaaaaaaa', background=False)['state'] == 'failed'
+    assert not os.path.exists(os.path.join(settings.data_dir(), fetcher.FAILED_LOGS, 'aaaaaaaaaaa.log')) and 'not a bot' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('error', ['Nothing arrived for 120 s, so the fetch was stopped.', '[youtube] x: Video unavailable. This video has been removed by the uploader',
+                                   '[youtube] x: The uploader has not made this video available in your country'])
+def test_stalls_and_youtube_saying_no_are_not_run_again(monkeypatch, error):
+    runs = failing(monkeypatch, [error, None])
+    assert fetcher.start('aaaaaaaaaaa', background=False)['error'] == error and runs == [1]
+
+
+def test_keeping_a_log_never_fails_the_fetch(monkeypatch, tmp_path):
+    fetcher.note('zzzzzzzzzzz', 'no folder')                                          # nothing to write into: ignored
+    cache.begin('aaaaaaaaaaa', cache.stamp()); fetcher.note('aaaaaaaaaaa', 'ran')
+    with open(os.path.join(settings.data_dir(), fetcher.FAILED_LOGS), 'w') as f: f.write('a file where the folder goes')
+    fetcher.keep_log('aaaaaaaaaaa', 'it broke')                                      # nowhere to keep it: the reason is still recorded
