@@ -76,9 +76,21 @@ def test_last_error():
     ("[youtube] Ab1-Cd2_Ef3: Sign in to confirm you're not a bot", False),
     ('[youtube] Ab1-Cd2_Ef3: Sign in to confirm your age. This video may be inappropriate for some users.', False),
     ('Only 4 s of 8 s arrived.', False), (None, False),
+    ('[youtube] Ab1-Cd2_Ef3: The uploader has not made this video available in your country', False),               # blocked here, not gone
+    ('[youtube] Ab1-Cd2_Ef3: Video unavailable. The uploader has not made this video available in your country', False),
 ])
 def test_says_gone(message, gone):
     assert ytdlp.says_gone(message) is gone
+
+
+@pytest.mark.parametrize('message, blocked', [
+    ('[youtube] Ab1-Cd2_Ef3: The uploader has not made this video available in your country', True),
+    ('[youtube] Ab1-Cd2_Ef3: Video unavailable. This video is not available in your country.', True),
+    ('[youtube] Ab1-Cd2_Ef3: Video unavailable. The uploader has not made this video available in your country', True),
+    ('[youtube] Ab1-Cd2_Ef3: Video unavailable', False), (None, False),
+])
+def test_says_blocked(message, blocked):
+    assert ytdlp.says_blocked(message) is blocked
 
 
 def fmt(fid, v=None, a=None, h=None, w=None, **kw):

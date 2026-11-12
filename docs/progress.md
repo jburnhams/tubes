@@ -1,5 +1,14 @@
 # Progress log
 
+## 2026-11-12: region, language and subtitle filters
+
+- Asked for: always avoid videos YouTube will not play here ("The uploader has not made this video available in your country"), optionally leave out non-English ones, and see whether subtitles and dubbing can be filtered too, for YouTube and iPlayer.
+- What the Data API gives, at no extra quota (the parts `videos.list` already asks for): `contentDetails.regionRestriction` (`allowed` or `blocked` country lists), `snippet.defaultAudioLanguage` / `defaultLanguage` (set by the uploader, often missing), and `contentDetails.caption` (whether the uploader added captions; YouTube's automatic captions are not counted). A channel's `snippet.defaultLanguage` comes with the channel. Not available: dubbed audio tracks (the Data API does not list them; yt-dlp sees them only when it probes a video to fetch it) and caption languages (`captions.list` costs 50 units a video). iPlayer: ibl says nothing per episode, so episodes are kept as English, playable only in GB, captions not known.
+- New columns (migration `666825b6420a`): `videos.language`, `captions`, `regions_allowed`, `regions_blocked`, `blocked`; `channels.language`. A sync stores them as videos are added; the rolling recheck fills in videos added before (about 15,000 a day), or `tubes recheck --all` does the whole library at once (a unit per 50 videos, about 1,000 for 47,000).
+- Blocked here: a fetch yt-dlp refuses with the not-in-your-country wording (`ytdlp.says_blocked`; it used to count as gone, since it can follow "Video unavailable", and the next recheck brought it back) marks the video `blocked` (`catalogue.mark_blocked`), hidden from every list whatever the filters say, until a fetch succeeds. A recheck leaves the mark: YouTube still has the video.
+- Filters (Admin > Settings > Shown videos, kept with the others in `meta.shown`): `region`, the server's country (two letters; a video whose `regions_allowed` leaves it out or `regions_blocked` names it is left out; empty does not check); `languages`, base codes (`en-GB` counts as `en`; a video without its own language goes by its channel's), with `unknown_language` show or hide for the rest; `captions` any or only (a video it is not known for, such as an iPlayer episode, is kept). `GET /api/library/shown` adds `language_counts` (the languages of the videos there are, before the filters), which the form lists as checkboxes with their counts.
+- Visual: the Shown videos baselines (stories and route states) grew taller with the three new sections; nothing else changed. Written in Chromium 1243, as before (the pinned 1254 is not available here).
+
 ## 2026-11-12: YouTube quota counted and shown
 
 - Asked for: track how much of the YouTube Data API's daily limit is used and left, and what used it, on its own admin page. Google has no API for a key's remaining quota (only its Cloud console shows it), so Tubes counts its own calls.

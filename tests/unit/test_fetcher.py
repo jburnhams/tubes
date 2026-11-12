@@ -98,6 +98,19 @@ def test_a_video_youtube_no_longer_has_is_hidden_until_a_fetch_finds_it(monkeypa
     assert fetcher.start('aaaaaaaaaaa', background=False)['state'] == 'ready' and library.video('aaaaaaaaaaa')['gone'] is None
 
 
+def test_a_video_not_offered_in_this_country_is_hidden_as_blocked_not_gone(monkeypatch):
+    seed()
+    def blocked(url, signed_in=False): raise ytdlp.YtdlpError('[youtube] aaaaaaaaaaa: The uploader has not made this video available in your country')
+    monkeypatch.setattr(ytdlp, 'probe', blocked)
+    assert fetcher.start('aaaaaaaaaaa', background=False)['state'] == 'failed'
+    v = library.video('aaaaaaaaaaa')
+    assert v['gone'] is None and 'aaaaaaaaaaa' not in [x['id'] for x in library.videos()['videos']]
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: INFO)
+    monkeypatch.setattr(fetcher, 'pipeline', lambda job, *a: write_playlist(job.video_id, 2, True))
+    monkeypatch.setattr(cache, 'evict', lambda now: None)
+    assert fetcher.start('aaaaaaaaaaa', background=False)['state'] == 'ready' and 'aaaaaaaaaaa' in [x['id'] for x in library.videos()['videos']]
+
+
 def test_a_cancelled_fetch_is_recorded_as_stopped(monkeypatch):
     seed()
     monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: INFO)

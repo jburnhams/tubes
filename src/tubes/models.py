@@ -54,6 +54,7 @@ class Channel(Base):
     description: Mapped[str | None] = mapped_column(Text, default=None)
     published: Mapped[str | None] = mapped_column(String(40), default=None)
     country: Mapped[str | None] = mapped_column(String(8), default=None)
+    language: Mapped[str | None] = mapped_column(String(16), default=None)       # the channel's default language (BCP-47, `en-GB`); a video without its own falls back to it
     subscribers: Mapped[int | None] = mapped_column(BigInteger, default=None)
     total_videos: Mapped[int | None] = mapped_column(BigInteger, default=None)
     views: Mapped[int | None] = mapped_column(BigInteger, default=None)
@@ -86,6 +87,11 @@ class Video(Base):
     expires: Mapped[str | None] = mapped_column(String(40), default=None)       # iPlayer: when it stops being offered; hidden after that unless it is cached
     series: Mapped[str | None] = mapped_column(Text, default=None)              # iPlayer: the series' title, such as `Series 2`
     episode: Mapped[int | None] = mapped_column(default=None)                   # iPlayer: its number within the series
+    language: Mapped[str | None] = mapped_column(String(16), default=None)      # spoken language (BCP-47, `en`, `en-GB`): YouTube's defaultAudioLanguage, else defaultLanguage
+    captions: Mapped[bool | None] = mapped_column(default=None)                 # YouTube: the uploader added captions (automatic ones are not counted); None when not known
+    regions_allowed: Mapped[str | None] = mapped_column(Text, default=None)     # comma-separated country codes it plays in only (YouTube's regionRestriction; `GB` for iPlayer)
+    regions_blocked: Mapped[str | None] = mapped_column(Text, default=None)     # comma-separated country codes it does not play in
+    blocked: Mapped[str | None] = mapped_column(String(40), default=None)       # when a fetch was refused as not available in this server's country; hidden while set
 
 
 class Meta(Base):

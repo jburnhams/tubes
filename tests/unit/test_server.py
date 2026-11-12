@@ -54,8 +54,8 @@ def test_system_and_settings(client, monkeypatch):
     assert client.put('/api/settings', json=dict(max_height=None)).json()['max_height'] == 1080
     assert client.put('/api/settings', json=dict(cache_dir='relative')).json() == dict(detail='cache_dir must be an absolute path')
     assert client.put('/api/settings', json=dict(colour='red')).json() == dict(detail="unknown setting 'colour'")
-    assert client.get('/api/library/shown').json() == dict(min_seconds=None, max_seconds=None, streams='current', filtered=0)
-    assert client.put('/api/library/shown', json=dict(min_seconds=120, streams='all')).json() == dict(min_seconds=120, max_seconds=None, streams='all', filtered=0)
+    assert client.get('/api/library/shown').json() == dict(min_seconds=None, max_seconds=None, streams='current', region=None, languages=[], unknown_language='show', captions='any', filtered=0, language_counts=[])
+    assert client.put('/api/library/shown', json=dict(min_seconds=120, streams='all')).json() == dict(min_seconds=120, max_seconds=None, streams='all', region=None, languages=[], unknown_language='show', captions='any', filtered=0, language_counts=[])
     r = client.put('/api/library/shown', json=dict(max_seconds=60)); assert r.status_code == 400 and r.json() == dict(detail='The shortest length must not be longer than the longest.')
     assert client.get('/api/library/shown').json()['max_seconds'] is None and client.get('/api/library').json()['filtered'] == 0
 
@@ -63,7 +63,7 @@ def test_system_and_settings(client, monkeypatch):
 def test_shown_filters_narrow_the_watching_side(client):
     seed()
     r = client.put('/api/library/shown', json=dict(max_seconds=300)).json()                                 # every seeded video is 10 minutes
-    assert r == dict(min_seconds=None, max_seconds=300, streams='current', filtered=4) and client.get('/api/videos').json()['videos'] == []
+    assert r == dict(min_seconds=None, max_seconds=300, streams='current', region=None, languages=[], unknown_language='show', captions='any', filtered=4, language_counts=[dict(code=None, videos=4)]) and client.get('/api/videos').json()['videos'] == []
     assert client.get('/api/videos/shuffle').json() == [] and client.get('/api/library').json()['filtered'] == 4
     assert client.get(f"/api/videos/{VIDEOS[0]['id']}").status_code == 200                                     # a link still opens
     assert len(client.put('/api/library/shown', json=dict(max_seconds=None)).json() and client.get('/api/videos').json()['videos']) == 4

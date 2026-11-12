@@ -71,8 +71,8 @@ def test_filters_hide_by_length_and_streams_and_come_back():
         con.execute("UPDATE videos SET duration = 45 WHERE id = 'aaaaaaaaaaa'"); con.execute("UPDATE videos SET duration = 7200 WHERE id = 'bbbbbbbbbbb'")
         con.execute("UPDATE videos SET duration = NULL, live = 'was' WHERE id = 'ccccccccccc'")                       # length not known: kept by the length limits
         con.execute("UPDATE videos SET gone = 'then', duration = 30 WHERE id = 'ddddddddddd'")                        # gone: counted as gone, not filtered
-    assert library.filters() == dict(min_seconds=None, max_seconds=None, streams='current')
-    assert catalogue.save_filters(dict(min_seconds=60, max_seconds=3600)) == dict(min_seconds=60, max_seconds=3600, streams='current')
+    assert library.filters() == dict(min_seconds=None, max_seconds=None, streams='current', region=None, languages=[], unknown_language='show', captions='any')
+    assert catalogue.save_filters(dict(min_seconds=60, max_seconds=3600)) == dict(min_seconds=60, max_seconds=3600, streams='current', region=None, languages=[], unknown_language='show', captions='any')
     assert [v['id'] for v in library.videos()['videos']] == ['ccccccccccc'] and [v['id'] for v in library.shuffle(10)] == ['ccccccccccc']
     assert [v['id'] for v in library.videos(search='shelf')['videos']] == []
     assert {k: library.status()[k] for k in ('videos', 'hidden', 'live', 'filtered')} == dict(videos=1, hidden=1, live=0, filtered=2)
@@ -87,10 +87,46 @@ def test_filters_hide_by_length_and_streams_and_come_back():
 def test_filters_refuse_what_cannot_be_used_and_save_nothing():
     for bad, why in [(dict(min_seconds=-1), 'A length must be a number of seconds, 0 or more.'), (dict(max_seconds='long'), 'A length must be a number of seconds, 0 or more.'),
                      (dict(min_seconds=True), 'A length must be a number of seconds, 0 or more.'), (dict(min_seconds=float('inf')), 'A length must be a number of seconds, 0 or more.'), (dict(max_seconds=float('nan')), 'A length must be a number of seconds, 0 or more.'), (dict(streams='none'), 'streams must be one of current, all.'),
-                     (dict(min_seconds=600, max_seconds=60), 'The shortest length must not be longer than the longest.'), (dict(colour='red'), 'There is no filter called colour.')]:
+                     (dict(min_seconds=600, max_seconds=60), 'The shortest length must not be longer than the longest.'), (dict(colour='red'), 'There is no filter called colour.'),
+                     (dict(region='Britain'), 'The country must be a two-letter code, such as GB, or empty.'), (dict(region=44), 'The country must be a two-letter code, such as GB, or empty.'),
+                     (dict(languages='en'), 'Languages must be a list of two- or three-letter codes, such as en.'), (dict(languages=['English']), 'Languages must be a list of two- or three-letter codes, such as en.'),
+                     (dict(unknown_language='maybe'), 'unknown_language must be one of show, hide.'), (dict(captions='some'), 'captions must be one of any, only.')]:
         try: catalogue.save_filters(bad); raise AssertionError(bad)
         except catalogue.FilterError as e: assert str(e) == why
     assert library.filters() == library.FILTERS
     catalogue.save_filters(dict(max_seconds=90.5)); assert library.filters()['max_seconds'] == 90.5
     with db.connect() as con: con.execute("UPDATE meta SET value = 'not json' WHERE key = 'shown'")
     assert library.filters() == library.FILTERS                                                                      # a broken row reads as the defaults
+
+
+def test_filters_by_region_language_and_captions_and_come_back():
+    seed()
+    with db.connect() as con:
+        con.execute("UPDATE channels SET language = 'fr' WHERE id = 'UCbbbbbbbbbbbbbbbbbbbbbb'")
+        con.execute("UPDATE videos SET language = 'en-GB', captions = ?, regions_blocked = 'DE,GB' WHERE id = 'aaaaaaaaaaa'", (True,))   # blocked here
+        con.execute("UPDATE videos SET language = 'EN', captions = ?, regions_allowed = 'US' WHERE id = 'bbbbbbbbbbb'", (False,))        # plays only in the US
+        con.execute("UPDATE videos SET language = 'de', captions = ? WHERE id = 'ccccccccccc'", (True,))                                   # its own over the channel's
+        # ddddddddddd: no language of its own, so its channel's (fr); captions not known
+    ids = lambda: sorted(v['id'] for v in library.videos()['videos'])
+    assert library.languages() == [dict(code='en', videos=2), dict(code='de', videos=1), dict(code='fr', videos=1)]
+    catalogue.save_filters(dict(region='gb')); assert library.filters()['region'] == 'GB'
+    assert ids() == ['ccccccccccc', 'ddddddddddd'] and library.status()['filtered'] == 2
+    catalogue.save_filters(dict(region='US')); assert len(ids()) == 4                                   # aaa is blocked only in DE and GB
+    catalogue.save_filters(dict(region='DE')); assert ids() == ['ccccccccccc', 'ddddddddddd']         # not `,DE,` inside `,GB,`: whole codes only
+    catalogue.save_filters(dict(region=None, languages=['EN', 'fr'])); assert library.filters()['languages'] == ['en', 'fr']
+    assert ids() == ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ddddddddddd']                                     # en-GB and EN count as en; ddd by its channel
+    assert [(c['videos'], c['hidden']) for c in library.channels()] == [(1, 1), (2, 0)]
+    with db.connect() as con: con.execute("UPDATE channels SET language = NULL")
+    assert ids() == ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ddddddddddd']                                     # not known: shown
+    catalogue.save_filters(dict(unknown_language='hide')); assert ids() == ['aaaaaaaaaaa', 'bbbbbbbbbbb']
+    catalogue.save_filters(dict(languages=[], captions='only')); assert ids() == ['aaaaaaaaaaa', 'ccccccccccc', 'ddddddddddd']   # unknown_language needs languages; captions not known: kept
+    catalogue.save_filters(dict(captions='any')); assert len(ids()) == 4 and library.status()['filtered'] == 0
+
+
+def test_a_video_refused_in_this_country_is_hidden_whatever_the_filters():
+    seed()
+    catalogue.mark_blocked('aaaaaaaaaaa', now='then'); catalogue.mark_blocked('aaaaaaaaaaa', now='later')
+    assert library.video('aaaaaaaaaaa')['id'] == 'aaaaaaaaaaa' and 'aaaaaaaaaaa' not in [v['id'] for v in library.videos()['videos']]
+    assert {k: library.status()[k] for k in ('videos', 'hidden', 'filtered')} == dict(videos=3, hidden=1, filtered=0)
+    with db.connect() as con: assert con.execute("SELECT blocked FROM videos WHERE id = 'aaaaaaaaaaa'").fetchone()[0] == 'then'
+    catalogue.mark_found('aaaaaaaaaaa'); assert len(library.videos()['videos']) == 4

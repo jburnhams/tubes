@@ -6,13 +6,13 @@ import { channels, library, libraryEmpty, syncJobs, longChannel, report, streams
 import { videoPage } from '../../src/mocks/handlers'
 import { attach, problemText, type HlsClass, type HlsInstance, type Media } from '../../src/player'
 import { describeCache, describeEvicted } from '../../src/screens/CacheScreen'
-import { describeShown, settingsProblems, shownProblems } from '../../src/screens/SettingsScreen'
+import { describeShown, languageName, settingsProblems, shownProblems } from '../../src/screens/SettingsScreen'
 import { describeSystem, usable } from '../../src/screens/SystemScreen'
 import { channelState, describeAdded, describeJob, describeLibrary } from '../../src/screens/LibraryScreen'
 import { ago, countFor, episodeLabel, iplayerText, leaving, videoCount, views, viewsAndAge } from '../../src/watch/format'
 import { bySeries } from '../../src/watch/ChannelScreen'
 import { at, modesOf, place, segmentKey, shown, skippedText, skipText } from '../../src/watch/skip'
-import { defaultSettings, kindsFor, sampleSegments } from '../../src/mocks/fixtures'
+import { defaultSettings, defaultShown, kindsFor, sampleSegments } from '../../src/mocks/fixtures'
 import { episodes } from '../../src/mocks/fixtures'
 import { fallbackThumbnail, isPlaceholder } from '../../src/watch/missing'
 import { savedText, settled, waitingText } from '../../src/watch/WatchScreen'
@@ -172,13 +172,17 @@ describe('the findings', () => {
     expect(describeSystem({ ...systemStatus, disk: { total: 100, used: 98, free: 2 } })).toMatch(/nearly full/)
   })
 
-  it('Shown videos checks its lengths and says what the filters leave out', () => {
-    expect(shownProblems({ min: '', max: '', streams: 'current' })).toEqual({ min: undefined, max: undefined })
-    expect(shownProblems({ min: '0', max: '90.5', streams: 'all' })).toEqual({ min: undefined, max: undefined })
-    expect(shownProblems({ min: 'short', max: '-1', streams: 'current' })).toEqual({ min: 'Enter the shortest length in minutes, or leave it empty for no limit.', max: 'Enter the longest length in minutes, or leave it empty for no limit.' })
-    expect(shownProblems({ min: '10', max: '5', streams: 'current' })).toEqual({ min: undefined, max: 'Make this at least the shortest length.' })
-    expect(describeShown({ min_seconds: null, max_seconds: null, streams: 'current', filtered: 0 })).toBe('These leave no video out now.')
-    expect(describeShown({ min_seconds: 180, max_seconds: null, streams: 'current', filtered: 1 })).toMatch(/^1\svideo is left out by these now\./)
+  it('Shown videos checks its lengths and country and says what the filters leave out', () => {
+    const rest = { region: '', languages: [] as string[], unknown: 'show' as const, captions: 'any' as const }
+    expect(shownProblems({ ...rest, min: '', max: '', streams: 'current' })).toEqual({ min: undefined, max: undefined })
+    expect(shownProblems({ ...rest, min: '0', max: '90.5', streams: 'all', region: ' gb ' })).toEqual({ min: undefined, max: undefined })
+    expect(shownProblems({ ...rest, min: '', max: '', streams: 'all', region: 'GBR' })).toEqual({ min: undefined, max: undefined, region: 'Enter the country as two letters, such as GB, or leave it empty.' })
+    expect(languageName('fr')).toBe('French')
+    expect(languageName('not a code')).toBe('not a code')
+    expect(shownProblems({ ...rest, min: 'short', max: '-1', streams: 'current' })).toEqual({ min: 'Enter the shortest length in minutes, or leave it empty for no limit.', max: 'Enter the longest length in minutes, or leave it empty for no limit.' })
+    expect(shownProblems({ ...rest, min: '10', max: '5', streams: 'current' })).toEqual({ min: undefined, max: 'Make this at least the shortest length.' })
+    expect(describeShown({ ...defaultShown, filtered: 0 })).toBe('These leave no video out now.')
+    expect(describeShown({ ...defaultShown, min_seconds: 180, filtered: 1 })).toMatch(/^1\svideo is left out by these now\./)
   })
 
   it('Library says what it follows, how far a sync has got and what each channel is doing', () => {

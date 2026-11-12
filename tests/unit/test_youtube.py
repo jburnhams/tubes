@@ -43,6 +43,14 @@ def test_rows_from_resources():
     assert (row['subscribers'], row['total_videos'], row['views'], row['uploads'], row['description'], row['added']) == (None, 3, None, None, None, 'now')
     v = youtube.video_row(dict(id='abcdefghijk', snippet={}, contentDetails={}, statistics={}), 'now')
     assert (v['title'], v['published'], v['duration'], v['channel_id'], v['live']) == ('abcdefghijk', 'now', None, '', None)
+    assert (v['language'], v['captions'], v['regions_allowed'], v['regions_blocked'], row['language']) == (None, None, None, None, None)
+    v = youtube.video_row(dict(id='abcdefghijk', snippet=dict(defaultLanguage='fr', defaultAudioLanguage='en-GB'), contentDetails=dict(caption='true', regionRestriction=dict(blocked=['us', 'DE', 'bad1']))), 'now')
+    assert (v['language'], v['captions'], v['regions_allowed'], v['regions_blocked']) == ('en-GB', True, None, 'DE,US')
+    v = youtube.video_row(dict(id='abcdefghijk', snippet=dict(defaultLanguage='zxx'), contentDetails=dict(caption='false', regionRestriction=dict(allowed=[]))), 'now')
+    assert (v['language'], v['captions'], v['regions_allowed'], v['regions_blocked']) == (None, False, '-', None)      # plays nowhere
+    assert youtube.video_row(dict(id='abcdefghijk', snippet=dict(defaultLanguage='es_419'), contentDetails=dict(regionRestriction=dict(allowed=['gb']))), 'now')['regions_allowed'] == 'GB'
+    assert youtube.language('es_419') == 'es-419' and youtube.language('English') is None and youtube.language(' de ') == 'de'
+    assert youtube.channel_row(dict(id='UCx', snippet=dict(defaultLanguage='pt-BR')), 'now')['language'] == 'pt-BR'
 
 
 def test_live_streams_now_scheduled_and_past():
