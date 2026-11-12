@@ -18,10 +18,13 @@ for a while comes back, and a wrong guess from yt-dlp's wording costs no more th
 finds missing (a thumbnail that fails or is YouTube's placeholder, a fetch that fails) through POST /api/videos/check: `report` rechecks
 those at once, so a report is never taken on trust, and skips any asked about in the last REPORT_GAP.
 
-Live streams, scheduled ones and past ones (`live`, see youtube.live) are hidden the same way: a past stream's recording is often cut or
-taken down soon after, a running one cannot be fetched whole and a scheduled one cannot be played at all. The mark comes with the video's
-details, so the sync sets it as a video is added and the recheck sets it on videos added before it existed (`tubes recheck --all` does the
-whole library at once, a unit per 50 videos).
+A stream that is live now or scheduled (`live`, see youtube.live) is hidden until it ends: a running one cannot be fetched whole and a
+scheduled one cannot be played at all, so every recheck after a sync asks about each of them (they are few) before its rolling slice. A
+past stream or premiere (`was`) is shown, but a past stream's recording is often cut or taken down soon after, so a past one a page is about
+to show is asked about again if it was not in the last LIVE_GAP (`recheck_past`, from the server's video reads), and at once if its
+thumbnail fails (`report`); one YouTube no longer has is hidden as `gone` like any other. The mark comes with the video's details, so the
+sync sets it as a video is added and the recheck on videos added before it existed (`tubes recheck --all` does the whole library at once,
+a unit per 50 videos).
 
 `Job` runs a sync of several channels in a background thread for the web server, one at a time, and reports how far it has got; the timer
 runs `tubes sync` (cli.py), which calls `sync` directly."""
@@ -30,6 +33,7 @@ import datetime, threading
 from tubes import cache, db, library, youtube
 
 RECHECK = 2500                                                                   # videos per recheck: 50 quota units of the 10,000 a day
+LIVE_GAP = datetime.timedelta(days=1)                                          # a past stream is asked about again after this (see the notes)
 REPORT_GAP = datetime.timedelta(minutes=10)                                      # a reported video asked about this recently is not asked again (a page of broken thumbnails, reloaded)
 CHANNEL_FIELDS = ('title', 'handle', 'thumbnail', 'description', 'published', 'country', 'subscribers', 'total_videos', 'views', 'uploads')
 VIDEO_FIELDS = ('channel_id', 'title', 'published', 'duration', 'thumbnail', 'views', 'description', 'likes', 'comments', 'definition', 'live')
@@ -173,8 +177,7 @@ def sync_channel(channel_id, now=None, progress=None):
 
 
 def recheck(limit=None, now=None, ids=None, since=None):
-    """Ask YouTube about the `limit` (default RECHECK; 0 for every one) videos checked longest ago, or about these `ids` (those the library
-    holds, and not checked since `since`): refresh the ones it has (clearing `gone`), mark the rest `gone`. Returns `{checked, gone, back}`:
+    """Ask YouTube about the `limit` (default RECHECK; 0 for every one) videos checked longest ago, after every stream not over, or about these `ids` (those the library holds, and not checked since `since`): refresh the ones it has (clearing `gone`), mark the rest `gone`. Returns `{checked, gone, back}`:
     how many were asked about, newly hidden, and found again."""
     now = now or cache.stamp(); limit = RECHECK if limit is None else limit
     with db.connect() as con:
@@ -183,8 +186,9 @@ def recheck(limit=None, now=None, ids=None, since=None):
             rows = con.execute(f"SELECT id, gone, checked FROM videos WHERE id IN ({', '.join('?' * len(ids))})", tuple(ids)) if ids else []
             was = {r[0]: r[1] for r in rows if not (since and r[2] and r[2] >= since)}
         else:
+            was = dict(tuple(r) for r in con.execute("SELECT id, gone FROM videos WHERE live IN ('live', 'upcoming')"))   # to find the ones that have ended
             sql = "SELECT id, gone FROM videos ORDER BY COALESCE(checked, ''), id" + (' LIMIT ?' if limit else '')
-            was = dict(tuple(r) for r in con.execute(sql, (limit,) if limit else ()))
+            was.update((r[0], r[1]) for r in con.execute(sql, (limit,) if limit else ()))
     if not was: return dict(checked=0, gone=0, back=0)
     found = {r['id']: r for r in (youtube.video_row(item, now) for item in youtube.videos(list(was)))}
     fields = [f for f in VIDEO_FIELDS if f != 'channel_id']                     # a video stays with the channel it was added under
@@ -195,15 +199,25 @@ def recheck(limit=None, now=None, ids=None, since=None):
     return dict(checked=len(was), gone=sum(1 for i in missing if not was[i]), back=sum(1 for i in found if was[i]))
 
 
-def report(ids, now=None):
-    """The watching side found these videos missing: recheck them (see the module's notes). Returns the recheck's counts and `hidden`, the
-    ids among them that are hidden now, so the page can drop them at once."""
+def report(ids, now=None, gap=REPORT_GAP):
+    """The watching side found these videos missing: recheck those not asked about in `gap` (see the module's notes). Returns the
+    recheck's counts and `hidden`, the ids among them that are hidden now, so the page can drop them at once."""
     now = now or cache.stamp(); ids = list(dict.fromkeys(ids))
-    since = (datetime.datetime.fromisoformat(now) - REPORT_GAP).isoformat(timespec='seconds')
+    since = (datetime.datetime.fromisoformat(now) - gap).isoformat(timespec='seconds')
     r = recheck(now=now, ids=ids, since=since)
     with db.connect() as con:
         gone = {row[0] for row in con.execute(f"SELECT id FROM videos WHERE gone IS NOT NULL AND id IN ({', '.join('?' * len(ids))})", tuple(ids))} if ids else set()
     return dict(r, hidden=[i for i in ids if i in gone])
+
+
+def recheck_past(videos, now=None):
+    """Of these video rows a page is about to show, ask YouTube again about the past streams not asked about in LIVE_GAP, and return the ids
+    it no longer has (now hidden), for the caller to leave out. Without a key, or when YouTube refuses, nothing is asked and the page shows
+    them as they are: the next read tries again, and a fetch that fails still hides one."""
+    ids = [v['id'] for v in videos if v.get('live') == 'was' and not v.get('gone')]
+    if not ids or not youtube.configured(): return set()
+    try: return set(report(ids, now, LIVE_GAP)['hidden'])
+    except youtube.YoutubeError: return set()
 
 
 def mark_gone(video_id, now=None):

@@ -6,32 +6,34 @@ Lists are newest first and paged by a cursor after the last item (`<published>|<
 adds videos.
 
 A video YouTube no longer has (`gone`, see catalogue.recheck) is left out of every list and count, but `video(id)` still finds it, so a link
-to it (or its cached copy) still opens. So is a live stream, a scheduled one or a past one (`live`, see catalogue.py's notes)."""
+to it (or its cached copy) still opens. So is a stream that is live now or scheduled (`live`, see catalogue.py's notes); a past one is
+shown, and rechecked daily in case its recording goes."""
 from tubes import db, youtube
 
 VIDEO_COLUMNS = """v.id, v.channel_id, c.title AS channel, v.title, v.published, v.duration, v.thumbnail, v.views,
                    k.state AS cache_state, k.bytes AS cache_bytes, v.gone, v.live"""
-SHOWN = 'v.gone IS NULL AND v.live IS NULL'                                     # what the lists show: not gone from YouTube, not a live stream
+HIDDEN = "(v.gone IS NOT NULL OR COALESCE(v.live, '') IN ('live', 'upcoming'))"            # gone from YouTube, or a stream not over yet
+SHOWN = f'NOT {HIDDEN}'                                                          # what the lists show
 CHANNEL_COLUMNS = """c.id, c.title, c.handle, c.thumbnail, c.synced, c.published, c.country, c.subscribers, c.total_videos, c.views, c.complete, c.follow,
                      c.added, c.sync_token IS NOT NULL AS resumable"""
 
 
 def status():
     """`{synced, channels, videos, hidden, live, configured}`: when every followed channel was last synced (None: never), what the library
-    holds (videos that can be watched, those hidden because YouTube no longer has them, and live streams, hidden too), and whether the YouTube key is in the environment
+    holds (videos that can be watched, those hidden because YouTube no longer has them, and streams live now or scheduled, hidden until they end), and whether the YouTube key is in the environment
     (without it nothing can be added or synced)."""
     with db.connect() as con:
         synced = con.execute("SELECT value FROM meta WHERE key = 'library_synced'").fetchone()
         counts = con.execute(f'SELECT (SELECT COUNT(*) FROM channels), (SELECT COUNT(*) FROM videos v WHERE {SHOWN}), (SELECT COUNT(*) FROM videos WHERE gone IS NOT NULL), '
-                             '(SELECT COUNT(*) FROM videos WHERE gone IS NULL AND live IS NOT NULL)').fetchone()
+                             "(SELECT COUNT(*) FROM videos WHERE gone IS NULL AND live IN ('live', 'upcoming'))").fetchone()
     return dict(synced=synced[0] if synced else None, channels=counts[0], videos=counts[1], hidden=counts[2], live=counts[3], configured=youtube.configured())
 
 
 def channels():
-    """Every channel with how many videos it has here to watch, how many are hidden (gone from YouTube, or live streams) and its newest one's date, by title."""
+    """Every channel with how many videos it has here to watch, how many are hidden (gone from YouTube, or streams not over yet) and its newest one's date, by title."""
     with db.connect() as con:
-        rows = db.rows(con.execute(f"""SELECT {CHANNEL_COLUMNS}, COUNT(v.id) - COUNT(COALESCE(v.gone, v.live)) AS videos,
-                                       COUNT(COALESCE(v.gone, v.live)) AS hidden, MAX(CASE WHEN {SHOWN} THEN v.published END) AS latest FROM channels c LEFT JOIN videos v ON v.channel_id = c.id
+        rows = db.rows(con.execute(f"""SELECT {CHANNEL_COLUMNS}, COUNT(v.id) - COUNT(CASE WHEN {HIDDEN} THEN 1 END) AS videos,
+                                       COUNT(CASE WHEN {HIDDEN} THEN 1 END) AS hidden, MAX(CASE WHEN {SHOWN} THEN v.published END) AS latest FROM channels c LEFT JOIN videos v ON v.channel_id = c.id
                                        GROUP BY c.id ORDER BY LOWER(c.title), c.id"""))
     for r in rows: r.update(complete=bool(r['complete']), follow=bool(r['follow']), resumable=bool(r['resumable']))   # SQLite answers 0 and 1
     return rows

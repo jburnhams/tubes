@@ -166,10 +166,13 @@ def create_app():
 
     @app.get('/api/videos')
     def get_videos(channel: str | None = None, q: str | None = None, after: str | None = None, limit: int = Query(24, ge=1, le=200)):
-        return library.videos(channel, q, after, limit)
+        r = library.videos(channel, q, after, limit); gone = catalogue.recheck_past(r['videos'])   # a past stream whose recording went is left out at once
+        return dict(r, videos=[v for v in r['videos'] if v['id'] not in gone])
 
     @app.get('/api/videos/shuffle')
-    def get_shuffle(count: int = Query(24, ge=1, le=200), channel: str | None = None): return library.shuffle(count, channel)
+    def get_shuffle(count: int = Query(24, ge=1, le=200), channel: str | None = None):
+        rows = library.shuffle(count, channel); gone = catalogue.recheck_past(rows)
+        return [v for v in rows if v['id'] not in gone]
 
     @app.post('/api/videos/check')
     def post_check(b: CheckIn):
@@ -178,7 +181,10 @@ def create_app():
         return guard(catalogue.report, b.ids)
 
     @app.get('/api/videos/{video_id}')
-    def get_video(video_id: str): return dict(video_or_404(video_id), **cache.plays(video_id))
+    def get_video(video_id: str):
+        v = video_or_404(video_id)
+        if catalogue.recheck_past([v]): v = video_or_404(video_id)                     # it went: the page says so
+        return dict(v, **cache.plays(video_id))
 
     @app.post('/api/videos/{video_id}/play')
     def post_play(video_id: str):

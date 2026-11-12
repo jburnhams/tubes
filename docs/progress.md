@@ -1,9 +1,9 @@
 # Progress log
 
-## 2026-11-12: live streams hidden
+## 2026-11-12: live streams hidden until they end
 
-- Asked for: leave live videos out, since a past stream often stops playing soon after (its recording cut or taken down). Videos that are streaming now, scheduled, or were a live broadcast are marked in a new `videos.live` column (`live`, `upcoming`, `was`) and left out of every list, search, shuffle and count, like `gone`; a link to one still opens. The mark comes from the Data API: `snippet.liveBroadcastContent` says live or upcoming, and a stream that has ended says `none` but keeps its `liveStreamingDetails`, which is now asked for with the other parts (no extra quota: a `videos` call costs one unit whatever the parts).
-- The API cannot tell a premiere (a recording first played as if live) from a stream, so premieres are hidden too. If that hides too much, the column says which kind each one was and the rule can be narrowed.
+- Asked for: live videos play badly, since a past stream often stops playing soon after (its recording cut or taken down). Each video's `live` column (`live`, `upcoming`, `was`, or empty) comes from the Data API: `snippet.liveBroadcastContent` says live or upcoming, and a stream that has ended says `none` but keeps its `liveStreamingDetails`, now asked for with the other parts (no extra quota: a `videos` call costs one unit whatever the parts). The API cannot tell a premiere from a stream, so both are `was` once over.
+- First version (PR #55) hid all three. Changed the same day, as asked: only `live` and `upcoming` are hidden (every recheck after a sync asks about them first, so one that ends comes back within a sync). A past stream is shown, and asked about again when a page reads it (the video lists, shuffle and the Watch page's read, through `catalogue.recheck_past`) if it was not asked about in the last day; one YouTube no longer has is hidden as `gone` and left out of that same response. A thumbnail that fails reports it at once, as for any video. If YouTube refuses, the page shows it as it is.
 - Existing videos get the mark from the rolling recheck (2,500 per sync, the whole library in about three days), or at once from `tubes recheck --all` (about 1,000 units for 47,000 videos). Admin > Library's finding counts the hidden streams; a channel's hidden count includes them.
 
 ## 2026-11-11: suggestions from a watch history
