@@ -1,5 +1,10 @@
 # Progress log
 
+## 2026-11-12: films, and other iPlayer categories, followed like a channel
+
+- Asked for: a way to keep one-offs such as films, which have no programme behind them. ibl lists a category's programmes 200 a page (`categories/<id>/programmes`); a one-off's `initial_children` is the whole episode (versions, availability, images), so every film iPlayer offers comes in two calls. Measured on the home server: Films listed 284 programmes, 277 of them one-offs; following it and syncing took 0.6 s.
+- Built: an iPlayer category link (`/iplayer/categories/<id>/...` or `/iplayer/browse/<id>`) adds a channel `iplayer-<id>` (title from ibl's category list), followed. Its sync takes the category's one-offs and leaves its series (followed as programmes); a one-off it no longer lists is marked gone (a saved copy stays, as for any iPlayer episode). A film added on its own (in the `films` category) is kept under the Films channel, unfollowed until Films is followed; other one-offs stay under their network. A family film iPlayer labels "Film - Family" but files under children's categories, not Films, stays under its network. Pasting a category link, or a film's link, into Suggestions suggests the category (Follow follows it, which brings the film and every other); another one-off is still a problem, having nothing to follow.
+
 ## 2026-11-12: iPlayer on the watching side
 
 - iPlayer has no view counts, so where a YouTube card says "12K views · 3 weeks ago" an episode says "S2 E4 · 3 weeks ago", adding "Leaves iPlayer in 5 days" once it is within 30 days of going (as iPlayer itself does), and "Left iPlayer" on a saved copy after. A programme's page says "BBC iPlayer · 8 episodes", has an Episodes tab, and puts a heading over each series as the newest-first list reaches it (so paging needs nothing new). The watch page says until when iPlayer offers an episode.
