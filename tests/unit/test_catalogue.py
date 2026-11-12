@@ -218,3 +218,123 @@ def test_add_videos_brings_their_channels_in_unfollowed(fake_youtube):
     assert sorted(v['id'] for v in videos_of(A)) == [vid(A, 0), vid(A, 1)]
     assert catalogue.add_videos([vid(A, 0), vid(A, 2)]) == dict(added=1, already=1, missing=0)
     assert catalogue.add_videos([]) == dict(added=0, already=0, missing=0)
+
+
+# iPlayer programmes and episodes (fake_iplayer: tests/utils/fake_iplayer.py).
+
+from fake_iplayer import ep_id  # noqa: E402
+from tubes import cache, iplayer  # noqa: E402
+
+P = 'b0000001'
+
+
+def test_add_an_iplayer_programme_follows_it_and_a_sync_reads_its_episodes(fake_iplayer, monkeypatch):
+    fake_iplayer.programme(P, 'Harbour Lights', episodes=5)
+    r = catalogue.add(f'https://www.bbc.co.uk/iplayer/episodes/{P}/harbour-lights', now='2026-11-12T10:00:00+00:00')
+    c = r['channel']
+    assert r['kind'] == 'channel' and (c['id'], c['platform'], c['title'], c['follow'], c['total_videos'], c['videos']) == (P, 'iplayer', 'Harbour Lights', True, 5, 0)
+    monkeypatch.setattr(iplayer, 'PAGE', 2)
+    seen = []
+    r = catalogue.sync_channel(P, now='2026-11-12T10:00:00+00:00', progress=seen.append)
+    assert r == dict(channel=P, title='Harbour Lights', added=5, pages=3, complete=True) and seen == [2, 4, 5]
+    vs = videos_of(P)
+    assert [(v['id'], v['title'], v['series'], v['episode'], v['platform']) for v in vs][:2] == [(ep_id(P, 5), 'Chapter 5', 'Series 1', 5, 'iplayer'), (ep_id(P, 4), 'Chapter 4', 'Series 1', 4, 'iplayer')]
+    assert library.channel(P)['synced'] == '2026-11-12T10:00:00+00:00' and library.channel(P)['complete'] is True
+    fake_iplayer.episode(P, 6); fake_iplayer.drop(ep_id(P, 1))
+    fake_iplayer.episodes[ep_id(P, 5)]['subtitle'] = 'Series 1: 5. Chapter Five'
+    r = catalogue.sync_channel(P, now='2026-11-13T10:00:00+00:00')
+    assert r['added'] == 1 and len(videos_of(P)) == 5 and library.video(ep_id(P, 1))['gone'] == '2026-11-13T10:00:00+00:00'
+    assert library.video(ep_id(P, 5))['title'] == 'Chapter Five'                           # every episode is refreshed, not just new ones
+    fake_iplayer.episode(P, 1)                                                                # offered again: shown again
+    catalogue.sync_channel(P, now='2026-11-14T10:00:00+00:00')
+    assert library.video(ep_id(P, 1))['gone'] is None
+
+
+def test_an_iplayer_sync_marks_nothing_gone_from_a_list_cut_short(fake_iplayer, monkeypatch):
+    fake_iplayer.programme(P, 'Harbour Lights', episodes=3); catalogue.add(f'https://www.bbc.co.uk/iplayer/episodes/{P}')
+    catalogue.sync_channel(P)
+    monkeypatch.setattr(iplayer, 'episodes_page', lambda pid, page=1: ([], True))
+    assert catalogue.sync_channel(P)['added'] == 0 and len(videos_of(P)) == 3
+    monkeypatch.setattr(iplayer, 'programme', lambda pid: None)
+    with pytest.raises(catalogue.NotFound, match='no programme b0000001 any more'): catalogue.sync_channel(P)
+
+
+def test_an_iplayer_programme_removed_while_it_syncs(fake_iplayer, monkeypatch):
+    fake_iplayer.programme(P, 'Harbour Lights', episodes=3); catalogue.add(f'https://www.bbc.co.uk/iplayer/episodes/{P}')
+    real = iplayer.programme
+    def removed_after(pid):
+        r = real(pid); catalogue.remove(P); return r
+    monkeypatch.setattr(iplayer, 'programme', removed_after)
+    with pytest.raises(catalogue.NotFound, match='removed while it synced'): catalogue.sync_channel(P)
+    monkeypatch.setattr(iplayer, 'programme', real); catalogue.add(f'https://www.bbc.co.uk/iplayer/episodes/{P}')
+    real_page = iplayer.episodes_page
+    def removed_during(pid, page=1):
+        r = real_page(pid, page); catalogue.remove(P); return r
+    monkeypatch.setattr(iplayer, 'episodes_page', removed_during)
+    with pytest.raises(catalogue.NotFound, match='removed while it synced'): catalogue.sync_channel(P)
+    assert videos_of(P) == []
+
+
+def test_add_one_iplayer_episode_brings_its_programme_in_unfollowed(fake_iplayer):
+    fake_iplayer.programme(P, 'Harbour Lights', episodes=2)
+    r = catalogue.add(f'https://www.bbc.co.uk/iplayer/episode/{ep_id(P, 1)}/harbour-lights')
+    assert r['kind'] == 'video' and (r['video']['title'], r['video']['channel'], r['video']['platform']) == ('Chapter 1', 'Harbour Lights', 'iplayer')
+    assert library.channel(P)['follow'] is False and catalogue.followed() == []
+    assert catalogue.add(f'https://www.bbc.co.uk/programmes/{ep_id(P, 2)}')['kind'] == 'video'          # a /programmes link to an episode
+    assert catalogue.add(f'https://www.bbc.co.uk/programmes/{P}')['kind'] == 'channel' and catalogue.followed() == [(P, 'Harbour Lights')]
+    film = fake_iplayer.one_off('p0000009', 'A Film')
+    r = catalogue.add(f'https://www.bbc.co.uk/iplayer/episode/{film}/a-film')
+    assert r['video']['channel'] == 'BBC Two' and library.channel('bbc_two')['follow'] is False
+    with pytest.raises(catalogue.NotFound, match='iPlayer has no programme b0000099'): catalogue.add('https://www.bbc.co.uk/iplayer/episodes/b0000099')
+    with pytest.raises(catalogue.NotFound, match='does not offer m0000099'): catalogue.add('https://www.bbc.co.uk/iplayer/episode/m0000099')
+
+
+def test_the_youtube_recheck_and_reports_leave_iplayer_episodes_alone(fake_iplayer, fake_youtube):
+    fake_iplayer.programme(P, 'Harbour Lights', episodes=2); catalogue.add(f'https://www.bbc.co.uk/iplayer/episodes/{P}'); catalogue.sync_channel(P)
+    assert catalogue.recheck(limit=0) == dict(checked=0, gone=0, back=0)
+    assert catalogue.report([ep_id(P, 1)])['hidden'] == [] and library.video(ep_id(P, 1))['gone'] is None
+    assert fake_youtube.calls == []
+
+
+def test_a_sync_of_everything_notes_an_iplayer_failure_and_goes_on(fake_iplayer, fake_youtube):
+    fake_youtube.channel(A, 'Workshop', videos=2); catalogue.add(A)
+    fake_iplayer.programme(P, 'Harbour Lights', episodes=2); catalogue.add(f'https://www.bbc.co.uk/iplayer/episodes/{P}')
+    fake_iplayer.region = None; fake_iplayer.programmes[P]['id'] = 'b0000002'                 # iPlayer answers, but not about this programme
+    r = catalogue.sync()
+    assert [e['channel'] for e in r['errors']] == [P] and [d['channel'] for d in r['channels']] == [A]
+    fake_iplayer.close()
+    r = catalogue.sync([P])
+    assert 'could not be reached' in r['errors'][0]['error']
+
+
+def test_an_expired_iplayer_episode_is_hidden_unless_it_is_cached(fake_iplayer):
+    fake_iplayer.programme(P, 'Harbour Lights')
+    fake_iplayer.episode(P, 1, expires='2026-11-12T00:00:00Z'); fake_iplayer.episode(P, 2, expires='2026-11-12T00:00:00Z'); fake_iplayer.episode(P, 3)
+    catalogue.add(f'https://www.bbc.co.uk/iplayer/episodes/{P}'); catalogue.sync_channel(P)
+    before, after = '2026-11-11T00:00:00+00:00', '2026-11-13T00:00:00+00:00'
+    assert len(library.videos(P, now=before)['videos']) == 3 and len(library.videos(P, now=after)['videos']) == 1
+    cache.begin(ep_id(P, 2), cache.stamp()); cache.finish(ep_id(P, 2), cache.stamp())          # fetched before it expired
+    assert [v['id'] for v in library.videos(P, now=after)['videos']] == [ep_id(P, 3), ep_id(P, 2)]
+    c = library.channels(now=after)[0]
+    assert (c['videos'], c['hidden']) == (2, 1)
+    s = library.status(now=after)
+    assert (s['videos'], s['hidden']) == (2, 1)
+    assert {v['id'] for v in library.shuffle(10, P, now=after)} == {ep_id(P, 3), ep_id(P, 2)}
+    assert library.video(ep_id(P, 1))['expires'] == '2026-11-12T00:00:00+00:00'               # still found by id
+
+
+def test_an_episode_whose_programme_is_not_offered_is_kept_under_its_network(fake_iplayer):
+    fake_iplayer.programme(P, 'Harbour Lights', episodes=1); e = ep_id(P, 1)
+    del fake_iplayer.programmes[P]
+    r = catalogue.add(f'https://www.bbc.co.uk/iplayer/episode/{e}')
+    assert r['video']['channel_id'] == 'bbc_one' and r['video']['channel'] == 'BBC One'
+    assert [v['id'] for v in videos_of('bbc_one')] == [e] and library.channel(P) is None
+
+
+def test_needs_youtube(fake_iplayer, fake_youtube):
+    assert catalogue.needs_youtube() is False and catalogue.needs_youtube([]) is False
+    fake_iplayer.programme(P, 'Harbour Lights'); catalogue.add(f'https://www.bbc.co.uk/iplayer/episodes/{P}')
+    assert catalogue.needs_youtube() is False and catalogue.needs_youtube([P]) is False
+    assert catalogue.needs_youtube(['UCnotinthelibraryatallxxx']) is True
+    fake_youtube.channel(A, 'Workshop'); catalogue.add(A)
+    assert catalogue.needs_youtube() is True and catalogue.needs_youtube([P, A]) is True and catalogue.needs_youtube([P]) is False

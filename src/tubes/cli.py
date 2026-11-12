@@ -1,9 +1,9 @@
-"""Command line. `doctor` checks the environment; `add`, `remove`, `sync` and `channels` manage the library from YouTube; `history` imports a
+"""Command line. `doctor` checks the environment; `add`, `remove`, `sync` and `channels` manage the library from YouTube and BBC iPlayer; `history` imports a
 watch history that suggestions are made from; `fetch`, `cache`, `evict` the cache; `set` the settings; `serve` starts the web server.
 A timer on the server runs `tubes sync; tubes evict` every few hours (docs/deploy.md)."""
 import argparse, importlib, json, os, sys
 
-from tubes import __version__, cache, catalogue, fetcher, history, library, oslib, settings, youtube, ytdlp
+from tubes import __version__, cache, catalogue, fetcher, history, iplayer, library, oslib, settings, youtube, ytdlp
 
 CHECKS = (('fastapi', 'fastapi'), ('uvicorn', 'uvicorn'), ('pydantic', 'pydantic'))
 
@@ -19,6 +19,8 @@ def doctor(args):
     if not oslib.CAN_PASS_FDS: ok = False; print('  MISSING  fetching needs Linux or macOS')
     if youtube.configured(): print('  ok       library: YOUTUBE_API_KEY set' + (' (sent with a Referer)' if os.environ.get('YOUTUBE_API_REFERER') else ''))
     else: ok = False; print('  MISSING  library: YOUTUBE_API_KEY is not in the environment, so nothing can be added or synced')
+    here, why = iplayer.reachable()                                              # optional: without it only iPlayer episodes cannot be added or played
+    print('  ok       iplayer: answers as in the UK' if here else f'  note     iplayer: {why}')
     lib = library.status()
     print(f"  library    {lib['channels']} channel(s), {lib['videos']} video(s), synced {lib['synced'] or 'never'}")
     print(f'  data       {settings.data_dir()}\n  cache      {settings.cache_dir()} (limit {settings.get("cache_limit_gb"):g} GB)')
@@ -34,7 +36,7 @@ def gb(n): return f'{n / 1e9:.2f} GB'
 
 def cmd_sync(args):
     """Sync the named channels, or every followed one; exits non-zero if any failed (the timer's log then shows it)."""
-    if not youtube.configured(): sys.exit('YOUTUBE_API_KEY is not in the environment, so the library cannot be synced.')
+    if not youtube.configured() and catalogue.needs_youtube(args.channel or None): sys.exit('YOUTUBE_API_KEY is not in the environment, so the library cannot be synced.')
     r = catalogue.sync(args.channel or None)
     lines = [f"  {c['channel']:26} {c['added']:>6} new  {'complete' if c['complete'] else 'backfill continues next sync':30} {c['title'][:40]}" for c in r['channels']]
     lines += [f"  {e['channel'] or 'library':26} FAILED  {'' if e['channel'] else (e['title'] or 'the sync') + ': '}{e['error']}" for e in r['errors']] + [f"  {len(r['channels'])} channel(s) synced, {r['added']} new video(s)"]
@@ -53,7 +55,7 @@ def cmd_recheck(args):
 
 def cmd_add(args):
     try: r = catalogue.add(args.input)
-    except (ValueError, catalogue.NotFound, youtube.YoutubeError) as e: sys.exit(str(e))
+    except (ValueError, catalogue.NotFound, *catalogue.ERRORS) as e: sys.exit(str(e))
     if r['kind'] == 'video': return out(args, r, f"  added video {r['video']['id']}: {r['video']['title']}")
     c = r['channel']; print(f"  following {c['id']}: {c['title']}") if not args.json else None
     if args.no_sync: return out(args, r, '') if args.json else 0

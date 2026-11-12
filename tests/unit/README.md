@@ -15,7 +15,8 @@ Fast and isolated: synthetic data and fakes; no external services, no network. E
 | `catalogue.py` | `test_catalogue.py` | ~100% | done | add a channel or a video (its channel unfollowed), first sync to the end, later syncs stop at nothing new, a stopped backfill resumes, quota stops the rest, remove, start again, the background job |
 | `history.py` | `test_history.py` | 100% | done | Takeout JSON and HTML (UK/US times, zones, ads, gone videos), import replaces a source, score, sittings, groups that keep ids and names, YouTube's topics and audience, quota, the list's filters, dismiss, rename |
 | `cache.py` | `test_cache.py` | ~100% | done | copy states, plays, score and eviction order, protections, pin, drop |
-| `fetcher.py` | `test_fetcher.py` | ~100% | done | the yt-dlp to ffmpeg pipeline with a stand-in yt-dlp, playable after three segments, failures, the fetch limit |
+| `fetcher.py` | `test_fetcher.py` | ~100% | done | the yt-dlp to ffmpeg pipeline with a stand-in yt-dlp, playable after three segments, failures, the fetch limit; iPlayer episodes through ffmpeg alone, the yt-dlp fallback |
+| `iplayer.py` | `test_iplayer.py` | 100% | done | links, BBC times and durations, the version to play, titles from `Series 1: 2. Name`, rows, the catalogue and mediaselector calls and refusals against the stand-in (tests/utils/fake_iplayer.py), 1080p50 then the best listed variant |
 | `ytdlp.py` | `test_ytdlp.py` | 100% | done | format choice (codec order, width as well as height, original audio), video ids |
 | `oslib.py` | `test_oslib.py` | 100% | done | file locks, process liveness, process tree termination, priority, venv/cli helpers |
 | `cli.py` | `test_cli.py` | 100% | done | doctor, add, sync, remove, channels, fetch, cache, evict, set, serve delegation |
