@@ -252,6 +252,8 @@ export interface HistoryStats {
   channels_top: { channel_id: string; title: string | null; watches: number; videos: number; last: string; followed: boolean }[]
   videos_top: { video_id: string; title: string | null; channel_id: string | null; channel: string | null; watches: number; last: string }[]
   sources: HistorySource[]
+  /** The YouTube key is in the server's environment, so a channel can be followed from here. */
+  configured?: boolean
 }
 
 export interface HistoryFilter { start?: string; end?: string; source?: string }
