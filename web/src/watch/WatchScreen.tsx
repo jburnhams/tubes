@@ -19,7 +19,7 @@ import { HttpError, describeHttpError, useAsyncAction, useLoad } from 'strata-re
 import { api, describeError, keys, paths, withBase, type Stream, type VideoDetail } from '../api'
 import { attach, type HlsClass } from '../player'
 import { Avatar, RowsSkeleton, VideoRow, useChannelsById } from './cards'
-import { runningTime, videoCount, viewsAndAge } from './format'
+import { countFor, iplayerText, runningTime, viewsAndAge } from './format'
 import { reportMissing, useHidden } from './missing'
 import { Shown } from './Shown'
 
@@ -108,13 +108,14 @@ function Stage({ v }: { v: VideoDetail }) {
         <Avatar channel={channel} name={v.channel} size="size-10" />
         <span className="grid">
           <span className="text-tube-base font-medium">{v.channel ?? channel?.title ?? 'Channel'}</span>
-          {channel && <span className="text-tube-xs text-tube-quiet">{videoCount(channel.videos)}</span>}
+          {channel && <span className="text-tube-xs text-tube-quiet">{countFor(channel)}</span>}
         </span>
       </Link>
       <dl className="grid gap-1 rounded-tube bg-tube-chip p-3 text-tube-sm">
         <div className="font-medium"><dt className="sr-only">Views and age</dt><dd>{viewsAndAge(v)}</dd></div>
         <div className="flex gap-2"><dt className="text-tube-quiet">Length</dt><dd className="tabular-nums">{runningTime(v.duration)}</dd></div>
-        {gone && <div className="flex gap-2"><dt className="text-tube-quiet">On YouTube</dt><dd>No longer there (removed or made private)</dd></div>}
+        {gone && v.platform !== 'iplayer' && <div className="flex gap-2"><dt className="text-tube-quiet">On YouTube</dt><dd>No longer there (removed or made private)</dd></div>}
+        {v.platform === 'iplayer' && <div className="flex gap-2"><dt className="text-tube-quiet">On iPlayer</dt><dd>{iplayerText(v)}</dd></div>}
         {s && (
           <>
             <div className="flex gap-2"><dt className="text-tube-quiet">Copy</dt><dd className="tabular-nums">{savedText(s, v.duration)}</dd></div>

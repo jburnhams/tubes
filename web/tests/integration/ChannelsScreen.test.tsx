@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { installFakeIntersectionObserver } from 'strata-react/testing'
-import { channels } from '../../src/mocks/fixtures'
-import { channelsEmpty, channelsError, videosLaterPageError, videosLong, videosNone } from '../../src/mocks/handlers'
+import { channels, episodes, programme } from '../../src/mocks/fixtures'
+import { channelsEmpty, channelsError, videosLaterPageError, videosLong, videosNone, withProgramme } from '../../src/mocks/handlers'
 import { act, openApp, screen, waitFor, within } from '../utils/render'
 import { server } from '../utils/server'
 
@@ -96,5 +96,39 @@ describe('A channel', () => {
   it('says when the library no longer has the channel', async () => {
     openApp('/channels/UCgone')
     expect(await screen.findByRole('alert')).toHaveTextContent('The library has no such channel.')
+  })
+})
+
+describe('An iPlayer programme', () => {
+  it('lists its episodes under a heading for each series, labelled where views would be', async () => {
+    server.use(...withProgramme)
+    openApp(`/channels/${programme.id}`)
+    expect(await screen.findByRole('heading', { name: 'Harbour Lights' })).toBeInTheDocument()
+    expect(screen.getByText('BBC iPlayer · 6 episodes')).toBeInTheDocument()
+    expect(screen.getByText('Episodes')).toBeInTheDocument()
+    const latest = await screen.findByRole('region', { name: 'Series 2' })
+    expect(within(latest).getAllByRole('link', { name: /^Chapter/ }).map(l => l.textContent)).toEqual(['Chapter 3', 'Chapter 2', 'Chapter 1'])
+    expect(within(latest).getByText(/^S2 E3 · /)).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'Series 1' })).toBeInTheDocument()
+  })
+
+  it('reads as a plain grid when its episodes are in no series', async () => {
+    server.use(http.get('*/api/videos', () => HttpResponse.json({ videos: episodes.map(e => ({ ...e, series: null })), has_more: false })), ...withProgramme)     // the first handler for a path wins
+    openApp(`/channels/${programme.id}`)
+    expect(await screen.findByRole('list', { name: 'Episodes of Harbour Lights' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Other episodes' })).not.toBeInTheDocument()
+  })
+
+  it('puts episodes in no series under Other episodes when others have one', async () => {
+    server.use(http.get('*/api/videos', () => HttpResponse.json({ videos: [...episodes.slice(0, 3), { ...episodes[3], series: null }], has_more: false })), ...withProgramme)
+    openApp(`/channels/${programme.id}`)
+    expect(await screen.findByRole('heading', { name: 'Other episodes' })).toBeInTheDocument()
+    expect(screen.getByRole('list', { name: 'Other episodes of Harbour Lights' })).toBeInTheDocument()
+  })
+
+  it('says when iPlayer offers none of its episodes', async () => {
+    server.use(videosNone, ...withProgramme)
+    openApp(`/channels/${programme.id}`)
+    expect(await screen.findByText('No episodes to watch')).toBeInTheDocument()
   })
 })

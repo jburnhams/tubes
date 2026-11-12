@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { http, HttpResponse } from 'msw'
 import { addFails, channelsError, libraryFirstVisit, libraryNoKey, removeChannelFails, syncIn } from '../../src/mocks/handlers'
-import { syncJobs } from '../../src/mocks/fixtures'
+import { channels, programme, syncJobs } from '../../src/mocks/fixtures'
 import { openApp, screen, waitFor, within } from '../utils/render'
 import { mock, server } from '../utils/server'
 
@@ -31,7 +32,7 @@ describe('Library', () => {
     const { user, router } = openApp('/admin/library')
     await table()
     const order = () => screen.getAllByRole('row').slice(1).map(r => within(r).getAllByRole('link')[0].textContent)
-    await user.click(screen.getByRole('button', { name: 'On YouTube' }))
+    await user.click(screen.getByRole('button', { name: 'At source' }))
     expect(order()[0]).toBe('Rivers and Coasts')
     expect(within(row('Rivers and Coasts')).getByText('–')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Here' }))
@@ -158,14 +159,23 @@ describe('Library', () => {
     expect(screen.getByRole('row', { name: /Night Sky/ })).toBeInTheDocument()
   })
 
-  it('without a YouTube key, says so and offers nothing that needs one', async () => {
+  it('without a YouTube key, says so and offers only what iPlayer can do', async () => {
     server.use(libraryNoKey)
     openApp('/admin/library')
     expect(await screen.findByText(/YOUTUBE_API_KEY in its environment/)).toBeInTheDocument()
     await table()
     expect(screen.queryByRole('button', { name: 'Sync all' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('textbox', { name: 'Channel or video' })).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Channel or video' })).toBeInTheDocument()      // an iPlayer link needs no key
     expect(screen.queryByRole('checkbox')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sync Night Sky' })).not.toBeInTheDocument()
+  })
+
+  it('names an iPlayer programme as one, and syncs it without a YouTube key', async () => {
+    server.use(libraryNoKey, http.get('*/api/channels', () => HttpResponse.json([...channels, programme])))
+    openApp('/admin/library')
+    const row = await screen.findByRole('row', { name: /Harbour Lights/ })
+    expect(within(row).getByText('BBC iPlayer')).toBeInTheDocument()
+    expect(within(row).getByRole('button', { name: 'Sync Harbour Lights' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Remove Night Sky' })).toBeInTheDocument()
   })
 

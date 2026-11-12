@@ -9,7 +9,9 @@ import { describeCache, describeEvicted } from '../../src/screens/CacheScreen'
 import { settingsProblems } from '../../src/screens/SettingsScreen'
 import { describeSystem, usable } from '../../src/screens/SystemScreen'
 import { channelState, describeAdded, describeJob, describeLibrary } from '../../src/screens/LibraryScreen'
-import { ago, videoCount, views, viewsAndAge } from '../../src/watch/format'
+import { ago, countFor, episodeLabel, iplayerText, leaving, videoCount, views, viewsAndAge } from '../../src/watch/format'
+import { bySeries } from '../../src/watch/ChannelScreen'
+import { episodes } from '../../src/mocks/fixtures'
 import { isPlaceholder } from '../../src/watch/missing'
 import { savedText, settled, waitingText } from '../../src/watch/WatchScreen'
 import { describePasted, describeRelated, describeSuggestedBy, describeSuggestions, describeWatched, filterOf, groupChoices, placeOf } from '../../src/screens/SuggestionsScreen'
@@ -291,6 +293,51 @@ describe('history', () => {
     const h = { ...historyStats, sources: historySources }
     expect(describeHistory({ ...h, channels_top: [] }, 'in 2026')).toMatch(/channels in 2026\.$/)
     expect(describeHistory({ ...h, channels_top: [{ ...h.channels_top[0], title: null }] }, 'then')).toMatch(/Most watched: UCsuggest000000000000002/)
+  })
+})
+
+describe('iPlayer episodes on the watching side', () => {
+  const now = Date.parse('2026-11-12T12:00:00Z')
+  const inDays = (d: number) => new Date(now + d * 86_400_000).toISOString()
+
+  it('labels an episode by its series and number', () => {
+    expect(episodeLabel({ series: 'Series 2', episode: 4 })).toBe('S2 E4')
+    expect(episodeLabel({ series: 'Series 2', episode: null })).toBe('S2')
+    expect(episodeLabel({ series: 'Christmas Special', episode: 1 })).toBe('Christmas Special')
+    expect(episodeLabel({ series: null, episode: 7433 })).toBeNull()
+    expect(episodeLabel({})).toBeNull()
+  })
+
+  it('says when an episode leaves iPlayer only once it is close', () => {
+    expect(leaving(inDays(60), now)).toBeNull()
+    expect(leaving(inDays(20), now)).toBe('Leaves iPlayer in 2 weeks')
+    expect(leaving(inDays(5.5), now)).toBe('Leaves iPlayer in 5 days')
+    expect(leaving(inDays(1.2), now)).toBe('Leaves iPlayer in 1 day')
+    expect(leaving(inDays(0.5), now)).toBe('Leaves iPlayer today')
+    expect(leaving(inDays(-1), now)).toBe('Left iPlayer')
+    expect(leaving(null, now)).toBeNull()
+    expect(leaving('soon', now)).toBeNull()
+  })
+
+  it('puts the series and the leaving date where views go', () => {
+    expect(viewsAndAge({ views: null, published: '2026-11-11T12:00:00Z', series: 'Series 1', episode: 2, expires: inDays(3) }, now)).toBe('S1 E2 · 1 day ago · Leaves iPlayer in 3 days')
+    expect(viewsAndAge({ views: null, published: '2026-11-11T12:00:00Z', series: null, expires: inDays(300) }, now)).toBe('1 day ago')
+  })
+
+  it('counts a programme in episodes, and says how long one is offered', () => {
+    expect(countFor({ platform: 'iplayer', videos: 1 })).toBe('1 episode')
+    expect(countFor({ platform: 'iplayer', videos: 1020 })).toBe('1,020 episodes')
+    expect(countFor({ videos: 3 })).toBe('3 videos')
+    expect(iplayerText({ gone: null, expires: '2026-12-12T00:00:00Z' }, now)).toBe('Until 12 Dec 2026')
+    expect(iplayerText({ gone: null, expires: inDays(-1) }, now)).toMatch(/^No longer offered/)
+    expect(iplayerText({ gone: '2026-11-01T00:00:00Z', expires: null }, now)).toMatch(/^No longer offered/)
+    expect(iplayerText({ gone: null }, now)).toBe('Offered')
+  })
+
+  it('groups a programme\'s episodes by series as the list reaches them', () => {
+    expect(bySeries(episodes).map(([s, vs]) => [s, vs.length])).toEqual([['Series 2', 3], ['Series 1', 3]])
+    expect(bySeries([{ ...episodes[0], series: null }, { ...episodes[1], series: undefined }]).map(([s, vs]) => [s, vs.length])).toEqual([[null, 2]])
+    expect(bySeries([])).toEqual([])
   })
 })
 
