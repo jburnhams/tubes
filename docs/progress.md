@@ -1,5 +1,10 @@
 # Progress log
 
+## 2026-11-12: iPlayer on the watching side
+
+- iPlayer has no view counts, so where a YouTube card says "12K views · 3 weeks ago" an episode says "S2 E4 · 3 weeks ago", adding "Leaves iPlayer in 5 days" once it is within 30 days of going (as iPlayer itself does), and "Left iPlayer" on a saved copy after. A programme's page says "BBC iPlayer · 8 episodes", has an Episodes tab, and puts a heading over each series as the newest-first list reaches it (so paging needs nothing new). The watch page says until when iPlayer offers an episode.
+- Admin > Library keeps its add form and an iPlayer programme's Sync without a YouTube key; only YouTube channels need it, and the page's finding says so. The "On YouTube" column is "At source".
+- Visual: the 30 Library baselines changed (scope line, column name, the finding) and the new Programme story added two; the other baselines were left as they were.
 ## 2026-11-12: a pasted list of channels to follow
 
 - Asked for: a box on the Suggestions page to paste a list of links or channel names, shown as suggestions that are easy to follow, for YouTube and iPlayer. Built on the iPlayer work (PR #54, merged into this branch: programmes kept as channels with `platform` 'iplayer', `iplayer.parse` for links).

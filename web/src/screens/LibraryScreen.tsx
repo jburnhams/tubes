@@ -23,9 +23,9 @@ import { api, describeError, keys, type Added, type Channel, type LibraryStatus,
 
 /** The page's finding. */
 export function describeLibrary(channels: Channel[], status: LibraryStatus): string {
-  if (!status.configured) return 'Nothing can be added or synced until the server has a YouTube key: put YOUTUBE_API_KEY in its environment and restart it.'
+  const noKey = status.configured ? '' : ' YouTube channels cannot be added or synced until the server has a YouTube key (YOUTUBE_API_KEY in its environment); iPlayer programmes need none.'
   const followed = channels.filter(c => c.follow !== false)
-  if (!followed.length) return 'The library follows no channels yet. Add one below by its link or @handle; its videos are fetched at once.'
+  if (!followed.length) return 'The library follows no channels yet. Add one below by its link or @handle, or an iPlayer programme by its link; its videos are fetched at once.' + noKey
   const behind = followed.filter(c => !c.complete).length
   const videos = channels.reduce((n, c) => n + c.videos, 0)
   const head = `${format.count(videos, 'video')} from ${format.count(followed.length, 'followed channel')}.`
@@ -33,7 +33,7 @@ export function describeLibrary(channels: Channel[], status: LibraryStatus): str
   const when = status.synced ? ` Every channel was last synced on ${format.dateTime(status.synced)}.` : ' Not every channel has been synced yet.'
   const hidden = status.hidden ? ` ${format.count(status.hidden, 'video is', 'videos are')} hidden because YouTube no longer has them.` : ''
   const live = status.live ? ` ${format.count(status.live, 'live or scheduled stream is', 'live or scheduled streams are')} hidden until ${status.live === 1 ? 'it ends' : 'they end'}.` : ''
-  return head + back + when + hidden + live
+  return head + back + when + hidden + live + noKey
 }
 
 /** How far the sync has got, or how the last one went. Undefined before any sync since the server started. */
@@ -90,6 +90,8 @@ export function LibraryScreen() {
   const rows = load.status === 'ready' ? load.data.filter(c => !undoable.isRemoved(key(c))) : []
   const selection = useSelection(rows, key)
   const configured = status.status === 'ready' && status.data.configured
+  /** Whether this channel can be synced here: an iPlayer programme always, a YouTube channel only with the key. */
+  const syncable = (c: Channel) => configured || c.platform === 'iplayer'
 
   const remove = (c: Channel) => undoable.schedule({
     id: c.id,
@@ -106,7 +108,7 @@ export function LibraryScreen() {
       cell: c => (
         <span className="flex min-w-0 flex-col">
           <Link to={`/channels/${encodeURIComponent(c.id)}`} className="truncate hover:underline">{c.title}</Link>
-          {c.handle && <span className="truncate type-caption text-muted-foreground">{c.handle}</span>}
+          {(c.handle || c.platform === 'iplayer') && <span className="truncate type-caption text-muted-foreground">{c.handle ?? 'BBC iPlayer'}</span>}
         </span>
       ),
     },
@@ -116,15 +118,15 @@ export function LibraryScreen() {
         {!!c.hidden && <span className="type-caption text-muted-foreground">{format.integer(c.hidden)} hidden</span>}
       </span>
     ), sort: (a, b) => a.videos - b.videos },
-    { key: 'total', header: 'On YouTube', numeric: true, cell: c => (c.total_videos == null ? '–' : format.integer(c.total_videos)), sort: (a, b) => totalOf(a) - totalOf(b) },
+    { key: 'total', header: 'At source', numeric: true, cell: c => (c.total_videos == null ? '–' : format.integer(c.total_videos)), sort: (a, b) => totalOf(a) - totalOf(b) },
     { key: 'state', header: 'State', cell: c => { const s = channelState(c); return <Status tone={s.tone}>{s.word}</Status> } },
     { key: 'synced', header: 'Last synced', cell: c => (c.synced ? format.dateTime(c.synced) : 'Never'), sort: (a, b) => syncedAt(a).localeCompare(syncedAt(b)), className: 'whitespace-nowrap' },
     {
       key: 'actions', header: 'Actions', hideHeader: true, cell: c => (
         <span className="flex justify-end gap-1">
-          {configured && c.follow !== false && <RowAction label="Sync" subject={c.title} disabled={running} onClick={() => void syncSome.run([c.id])} />}
-          {configured && c.follow !== false && <RowAction label="Start again" subject={c.title} disabled={running} onClick={() => void restart.run(c)} />}
-          {configured && c.follow === false && <RowAction label="Follow" subject={c.title} onClick={() => void follow.run(c)} />}
+          {syncable(c) && c.follow !== false && <RowAction label="Sync" subject={c.title} disabled={running} onClick={() => void syncSome.run([c.id])} />}
+          {syncable(c) && c.follow !== false && <RowAction label="Start again" subject={c.title} disabled={running} onClick={() => void restart.run(c)} />}
+          {configured && c.follow === false && c.platform !== 'iplayer' && <RowAction label="Follow" subject={c.title} onClick={() => void follow.run(c)} />}
           <RowAction label="Remove" subject={c.title} onClick={() => remove(c)} />
         </span>
       ),
@@ -137,7 +139,7 @@ export function LibraryScreen() {
     <>
       <PageHeader
         title="Library"
-        scope="Channels and videos from YouTube"
+        scope="Channels and videos from YouTube, programmes and episodes from BBC iPlayer"
         finding={load.status === 'ready' && status.status === 'ready' ? { text: describeLibrary(load.data, status.data) } : undefined}
         actions={configured ? (
           <AsyncButton variant={selection.count ? 'outline' : 'default'} disabled={running} phase={syncAll.phase} error={syncAll.error} labels={{ idle: 'Sync all', pending: 'Starting…', done: 'Started' }} onClick={() => void syncAll.run()} />
@@ -147,7 +149,7 @@ export function LibraryScreen() {
       {job.status === 'ready' && <SyncProgress job={job.data} />}
       {failure && <p role="alert" className="type-body-sm text-danger">{failure.error}</p>}
 
-      {configured && <AddForm onAdded={started} />}
+      <AddForm onAdded={started} />
 
       <section aria-labelledby="channels" className="grid gap-3">
         <h2 id="channels" className="type-heading">Channels</h2>
@@ -224,7 +226,7 @@ export function AddForm({ onAdded }: { onAdded: (j: SyncJob) => Promise<void> })
   return (
     <form onSubmit={onSubmit} noValidate aria-labelledby="add" className="grid max-w-xl gap-3">
       <h2 id="add" className="type-heading">Add to the library</h2>
-      <Field label="Channel or video" hint="A channel is followed: every video it has posted is fetched, and new ones with each sync. A video's link adds just that video." error={problem ?? (add.phase === 'error' ? add.error : undefined)}>
+      <Field label="Channel or video" hint="A YouTube channel or an iPlayer programme is followed: every video or episode it has is fetched, and new ones with each sync. A video's or an episode's link adds just that one." error={problem ?? (add.phase === 'error' ? add.error : undefined)}>
         <Input value={text} onChange={e => setText(e.target.value)} placeholder="https://www.youtube.com/@channel" autoComplete="off" spellCheck={false} />
       </Field>
       <div className="flex flex-wrap items-center gap-3">
