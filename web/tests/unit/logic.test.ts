@@ -11,6 +11,8 @@ import { describeSystem, usable } from '../../src/screens/SystemScreen'
 import { channelState, describeAdded, describeJob, describeLibrary } from '../../src/screens/LibraryScreen'
 import { ago, countFor, episodeLabel, iplayerText, leaving, videoCount, views, viewsAndAge } from '../../src/watch/format'
 import { bySeries } from '../../src/watch/ChannelScreen'
+import { at, modesOf, place, segmentKey, shown, skippedText, skipText } from '../../src/watch/skip'
+import { defaultSettings, kindsFor, sampleSegments } from '../../src/mocks/fixtures'
 import { episodes } from '../../src/mocks/fixtures'
 import { isPlaceholder } from '../../src/watch/missing'
 import { savedText, settled, waitingText } from '../../src/watch/WatchScreen'
@@ -355,5 +357,34 @@ describe('channel panel', () => {
     expect(elsewhere(o)).toEqual({ href: 'https://www.youtube.com/channel/UCx', label: 'Open on YouTube' })
     expect(elsewhere({ channel_id: 'b0000001', library: { ...channels[0], id: 'b0000001', platform: 'iplayer' } })).toEqual({ href: 'https://www.bbc.co.uk/iplayer/episodes/b0000001', label: 'Open on iPlayer' })
     expect(elsewhere({ channel_id: 'iplayer-films', library: { ...channels[0], id: 'iplayer-films', platform: 'iplayer' } })).toEqual({ href: 'https://www.bbc.co.uk/iplayer/categories/films/featured', label: 'Open on iPlayer' })
+  })
+})
+
+describe('skipping', () => {
+  const kinds = kindsFor(defaultSettings)
+  const modes = modesOf(kinds)
+  it('acts on the parts whose kind is not off, earliest first', () => {
+    const parts = [...sampleSegments, { category: 'filler', start: 5, end: 9, action: 'skip' as const }, { category: 'mystery', start: 1, end: 2, action: 'skip' as const }]
+    expect(shown(parts, modes).map(s => s.category)).toEqual(['intro', 'sponsor', 'outro'])
+    expect(shown([{ ...sampleSegments[0], start: 0, end: 20 }, sampleSegments[0]], modes).map(s => s.end)).toEqual([12, 20])
+    expect(modes.sponsor).toBe('auto')
+  })
+  it('finds the part playing, the longer of two, its end outside it', () => {
+    const two = [{ category: 'intro', start: 0, end: 12, action: 'skip' as const }, { category: 'outro', start: 5, end: 30, action: 'skip' as const }]
+    expect(at(two, 3)?.category).toBe('intro')
+    expect(at(two, 6)?.category).toBe('outro')
+    expect(at(two, 30)).toBeUndefined()
+    expect(segmentKey(two[0])).toBe('intro@0')
+  })
+  it('says what is skipped, and places it on the timeline', () => {
+    expect(skipText(sampleSegments[0], kinds)).toBe('Skip intro')
+    expect(skipText({ ...sampleSegments[0], category: 'mystery' }, kinds)).toBe('Skip segment')
+    expect(skippedText(sampleSegments[1], kinds)).toBe('Skipped sponsor')
+    expect(skippedText({ category: 'music_offtopic', start: 0, end: 1, action: 'mute' }, kinds)).toBe('Muted non-music section')
+    expect(skippedText({ category: 'mystery', start: 0, end: 1, action: 'skip' }, kinds)).toBe('Skipped segment')
+    expect(place(sampleSegments[1], 400)).toEqual({ left: 15, width: 8.75 })
+    expect(place({ ...sampleSegments[2], end: 500 }, 400)).toEqual({ left: 90, width: 10 })
+    expect(place(sampleSegments[0], null)).toBeUndefined()
+    expect(place(sampleSegments[0], 0)).toBeUndefined()
   })
 })
