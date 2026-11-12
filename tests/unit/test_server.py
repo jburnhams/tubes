@@ -293,3 +293,15 @@ def test_iplayer_programmes_sync_without_a_youtube_key(client, fake_iplayer):
 
 def test_channel_overview(client):
     assert client.get('/api/channels/UCnone/overview').status_code == 404
+
+
+def test_segments_endpoint(client, monkeypatch):
+    from library import seed
+    from tubes import segments
+    seed()
+    monkeypatch.setattr(segments, 'sponsorblock', lambda vid: [dict(category='sponsor', start=1.0, end=2.0, action='skip', votes=1)])
+    r = client.get('/api/videos/aaaaaaaaaaa/segments').json()
+    assert r['segments'] == [dict(category='sponsor', start=1.0, end=2.0, action='skip')] and len(r['categories']) == 9
+    assert client.get('/api/videos/zzzzzzzzzzz/segments').status_code == 404
+    client.put('/api/settings', json=dict(skip_intro='auto'))
+    assert next(k for k in client.get('/api/skipping').json() if k['id'] == 'intro')['mode'] == 'auto'

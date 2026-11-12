@@ -2,7 +2,7 @@
 // tests, every Storybook story and the visual suite's screenshots, so a screen looks the same in
 // each. Dates are fixed, so screenshots do not change from day to day. Pictures are flat SVG
 // tiles as data URLs, so nothing is fetched from outside.
-import type { CacheItem, CacheReport, Channel, ChannelOverview, HistorySource, HistoryStats, LibraryStatus, RelatedStatus, Settings, ShownFilters, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video } from '../api'
+import type { CacheItem, CacheReport, Channel, Segment, SegmentKind, ChannelOverview, HistorySource, HistoryStats, LibraryStatus, RelatedStatus, Settings, ShownFilters, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video } from '../api'
 
 export const GB = 1e9
 
@@ -17,7 +17,30 @@ export const defaultSettings: Settings = {
   protect_days: 7,
   ytdlp: 'yt-dlp',
   ffmpeg: 'ffmpeg',
+  skip_sponsor: 'auto', skip_selfpromo: 'ask', skip_interaction: 'ask', skip_intro: 'ask', skip_outro: 'ask', skip_preview: 'ask', skip_hook: 'off', skip_filler: 'off', skip_music_offtopic: 'off',
 }
+
+/** The kinds of segment the player can skip (src/tubes/segments.py), without their settings (`kindsFor` adds them). */
+export const segmentKinds: Omit<SegmentKind, 'mode'>[] = [
+  { id: 'sponsor', label: 'Sponsor', detail: 'A paid promotion or sponsor read.' },
+  { id: 'selfpromo', label: 'Self-promotion', detail: "Unpaid promotion: the creator's own merchandise, Patreon or other channels." },
+  { id: 'interaction', label: 'Subscribe reminder', detail: 'A reminder to like, subscribe or follow.' },
+  { id: 'intro', label: 'Intro', detail: 'An intro or title sequence (iPlayer marks these on its programmes).' },
+  { id: 'outro', label: 'Credits and end cards', detail: 'Credits or end cards (iPlayer marks where its credits start).' },
+  { id: 'preview', label: 'Preview or recap', detail: 'A preview of what is coming, or a recap of what came before.' },
+  { id: 'hook', label: 'Hook or greeting', detail: 'A teaser or greeting at the start, before the video gets going.' },
+  { id: 'filler', label: 'Filler or tangent', detail: 'A tangent or joke that is not needed to follow the video.' },
+  { id: 'music_offtopic', label: 'Non-music section', detail: 'The talking or other parts of a music video that are not the music.' },
+]
+
+export const kindsFor = (s: Settings): SegmentKind[] => segmentKinds.map(k => ({ ...k, mode: s[`skip_${k.id}`] ?? 'off' }))
+
+/** A first video's skippable parts: an intro, a sponsor read and end cards, so the timeline, the Skip button and an automatic skip all show. */
+export const sampleSegments: Segment[] = [
+  { category: 'intro', start: 0, end: 12, action: 'skip' },
+  { category: 'sponsor', start: 60, end: 95, action: 'skip' },
+  { category: 'outro', start: 360, end: 400, action: 'skip' },
+]
 
 /** A flat picture of one colour with a lighter disc whose place depends on `label`: a stand-in thumbnail. No text: an SVG inside an <img>
  *  draws text in the machine's own fonts, which the visual suite cannot pin, and another machine's glyphs failed the CI screenshots. */

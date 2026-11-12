@@ -7,6 +7,8 @@ The library (channels and videos) is managed here, from YouTube and BBC iPlayer 
 API (JSON):
   GET  /api/health                         {ok, version}
   GET  /api/system                         versions (app, Python, yt-dlp, ffmpeg), folders, disk, cache use, the library copy's state
+  GET  /api/skipping                      [{id, label, detail, mode}]: every kind of segment, with what the player does in it (settings skip_<id>)
+  GET  /api/videos/{id}/segments          {segments: [{category, start, end, action}], categories: [{id, label, detail, mode}], error}: what can be skipped
   GET  /api/settings, PUT /api/settings    every setting (settings.py); PUT takes any subset, a null resets one
   GET  /api/library                       {synced, channels, videos, hidden, live, filtered, configured}: when every followed channel was last synced, and whether the YouTube key is set
   POST /api/library {input}                add a channel (followed; its sync starts at once, or after the running sync's channels) or one video from a link, id or @handle; an iPlayer programme or episode link works the same way: {kind, channel|video, sync}
@@ -49,7 +51,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from tubes import __version__, cache, catalogue, fetcher, history, iplayer, library, oslib, paste, settings, youtube, ytdlp
+from tubes import __version__, cache, catalogue, fetcher, history, iplayer, library, oslib, paste, segments, settings, youtube, ytdlp
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 LANDING = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'landing.html')
@@ -216,6 +218,16 @@ def create_app():
         v = video_or_404(video_id)
         guard(fetcher.start, video_id, v['title'], v['channel'])
         cache.record_play(video_id, cache.stamp()); return stream(video_id)
+
+    @app.get('/api/skipping')
+    def get_skipping():
+        """Every kind of segment the player can skip, with its setting (`skip_<id>`, saved through PUT /api/settings)."""
+        return segments.categories()
+
+    @app.get('/api/videos/{video_id}/segments')
+    def get_segments(video_id: str):
+        """The parts of the video the player can skip, and what it does in each kind (segments.py)."""
+        video_or_404(video_id); return segments.for_video(video_id)
 
     @app.get('/api/videos/{video_id}/stream')
     def get_stream(video_id: str): return stream(video_id)

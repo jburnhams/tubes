@@ -17,6 +17,8 @@ export const ShownVideos: Story = { render: () => <AppAt route="/admin/settings?
 export const ShownVideosSet: Story = { render: () => <AppAt route="/admin/settings?tab=shown" />, beforeEach: ({ msw }) => msw.use(shownSet) }
 export const ShownVideosLoading: Story = { render: () => <AppAt route="/admin/settings?tab=shown" />, beforeEach: ({ msw }) => msw.use(shownLoading) }
 export const ShownVideosError: Story = { render: () => <AppAt route="/admin/settings?tab=shown" />, beforeEach: ({ msw }) => msw.use(shownError) }
+/** Off, Ask or Skip for each kind of segment (SponsorBlock's categories; iPlayer's intros and credits come in as two of them). */
+export const Skipping: Story = { render: () => <AppAt route="/admin/settings?tab=skipping" /> }
 export const Appearance: Story = { render: () => <AppAt route="/admin/settings?tab=appearance" /> }
 export const Loading: Story = { beforeEach: ({ msw }) => msw.use(settingsLoading) }
 export const ServerError: Story = { beforeEach: ({ msw }) => msw.use(settingsError) }

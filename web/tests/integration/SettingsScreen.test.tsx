@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { saveSettingsFails, settingsError, shownError, shownSet } from '../../src/mocks/handlers'
-import { openApp, screen, waitFor } from '../utils/render'
+import { openApp, screen, waitFor, within } from '../utils/render'
 import { mock, server } from '../utils/server'
 
 describe('Settings', () => {
@@ -117,5 +117,34 @@ describe('Settings', () => {
     server.use(settingsError)
     openApp('/admin/settings')
     expect(await screen.findByRole('alert')).toHaveTextContent('The server could not answer (503)')
+  })
+})
+
+describe('Settings > Skipping', () => {
+  it('has a choice for each kind of segment, starting from the server, and saves them', async () => {
+    const { user } = openApp('/admin/settings?tab=skipping')
+    const sponsor = await screen.findByRole('group', { name: 'Sponsor' })
+    expect(within(sponsor).getByRole('radio', { name: /^Skip/ })).toBeChecked()
+    const filler = screen.getByRole('group', { name: 'Filler or tangent' })
+    expect(within(filler).getByRole('radio', { name: /^Off/ })).toBeChecked()
+    expect(screen.getAllByRole('group')).toHaveLength(9)
+    await user.click(within(screen.getByRole('group', { name: 'Intro' })).getByRole('radio', { name: /^Skip/ }))
+    await user.click(within(sponsor).getByRole('radio', { name: /^Ask/ }))
+    await user.click(screen.getByRole('button', { name: 'Save skipping' }))
+    expect(await screen.findByText('Saved', { selector: '[role=status]' })).toBeInTheDocument()
+    expect(mock.settings).toMatchObject({ skip_intro: 'auto', skip_sponsor: 'ask', skip_filler: 'off' })
+  })
+
+  it('says when saving failed', async () => {
+    server.use(saveSettingsFails)
+    const { user } = openApp('/admin/settings?tab=skipping')
+    await user.click(await screen.findByRole('button', { name: 'Save skipping' }))
+    expect((await screen.findAllByText(/Nothing was changed\./)).length).toBeGreaterThan(0)
+  })
+
+  it('says when the server names no kinds', async () => {
+    server.use(http.get('*/api/skipping', () => HttpResponse.json([])))
+    openApp('/admin/settings?tab=skipping')
+    expect(await screen.findByText('Nothing to skip')).toBeInTheDocument()
   })
 })

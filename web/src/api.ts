@@ -19,6 +19,33 @@ export interface Settings {
   protect_days: number
   ytdlp: string
   ffmpeg: string
+  /** What the player does in each kind of segment (`skip_sponsor`, `skip_intro` ...): off, ask or auto. */
+  [skip: `skip_${string}`]: SkipMode | undefined
+}
+
+export type SkipMode = 'off' | 'ask' | 'auto'
+
+/** A part of a video the player can skip, under SponsorBlock's categories (src/tubes/segments.py). `mute` parts are muted rather than skipped when skipped automatically. */
+export interface Segment {
+  category: string
+  start: number
+  end: number
+  action: 'skip' | 'mute'
+}
+
+/** A kind of segment, with the server's setting for it. */
+export interface SegmentKind {
+  id: string
+  label: string
+  detail: string
+  mode: SkipMode
+}
+
+/** `GET /api/videos/{id}/segments`: what can be skipped, and `error` when its source could not be asked just now. */
+export interface Segments {
+  segments: Segment[]
+  categories: SegmentKind[]
+  error: string | null
 }
 
 /** `GET /api/library`: what the library holds. `synced` is when every followed channel was last synced, null before the first. */
@@ -390,6 +417,8 @@ export const paths = {
   video: (id: string) => `/api/videos/${encodeURIComponent(id)}`,
   play: (id: string) => `/api/videos/${encodeURIComponent(id)}/play`,
   stream: (id: string) => `/api/videos/${encodeURIComponent(id)}/stream`,
+  segments: (id: string) => `/api/videos/${encodeURIComponent(id)}/segments`,
+  skipping: '/api/skipping',
   check: '/api/videos/check',
   playlist: (id: string) => `/api/media/${encodeURIComponent(id)}/index.m3u8`,
   cache: '/api/cache',
@@ -421,6 +450,8 @@ export const keys = {
   video: (id: string) => ['videos', 'one', id],
   play: (id: string) => ['play', id],
   stream: (id: string) => ['stream', id],
+  segments: (id: string) => ['segments', id],
+  skipping: ['settings', 'skipping'],
   cache: ['cache'],
   suggestions: ['suggestions'],
   history: (f: HistoryFilter) => ['suggestions', 'history', f.start ?? '', f.end ?? '', f.source ?? ''],
@@ -472,6 +503,8 @@ export const api = {
   check: (ids: string[]) => callJson<Checked>(withBase(paths.check), send('POST', { ids })),
   play: (id: string) => callJson<Stream>(withBase(paths.play(id)), { method: 'POST' }),
   stream: (id: string) => fetchJson<Stream>(withBase(paths.stream(id))),
+  segments: (id: string) => fetchJson<Segments>(withBase(paths.segments(id))),
+  skipping: () => fetchJson<SegmentKind[]>(withBase(paths.skipping)),
   cache: () => fetchJson<CacheReport>(withBase(paths.cache)),
   pin: (id: string, pinned: boolean) => fetchJson<unknown>(withBase(paths.cacheItem(id)), send('PUT', { pinned })),
   dropCopy: (id: string) => fetchJson<{ video_id: string; freed: number }>(withBase(paths.cacheItem(id)), { method: 'DELETE' }),

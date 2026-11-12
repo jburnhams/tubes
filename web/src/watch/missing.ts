@@ -71,6 +71,13 @@ export function isPlaceholder(img: { naturalWidth: number; naturalHeight: number
   return img.naturalWidth === 120 && img.naturalHeight === 90 && !/\/default\.jpg(\?|$)/.test(img.currentSrc || img.src)
 }
 
+/** The size every YouTube video has, to try before a failed thumbnail is reported: since 2026-11 YouTube lists sizes for some videos
+ *  (`fhddefault` and up) that i.ytimg.com does not serve, and a stored URL may name one. Null when the URL is not YouTube's or is already it. */
+export function fallbackThumbnail(src: string): string | null {
+  const m = /^https:\/\/i\.ytimg\.com\/vi(?:_webp)?\/([\w-]+)\/([a-z0-9_]+)\.(?:jpg|webp)(?:\?.*)?$/.exec(src)
+  return m && m[2] !== 'hqdefault' ? `https://i.ytimg.com/vi/${m[1]}/hqdefault.jpg` : null
+}
+
 /** Forget every report (between tests). */
 export function resetMissing() {
   if (timer) clearTimeout(timer)
