@@ -200,6 +200,23 @@ def test_a_past_stream_whose_recording_went_is_dropped_as_it_is_read(client, fak
     assert client.get(f'/api/videos/{vid(A, 1)}').json()['gone']                                     # the Watch page's read finds it gone too
 
 
+def test_a_page_emptied_by_the_recheck_reads_on(client, fake_youtube):
+    from fake_youtube import vid
+    from tubes import catalogue, db
+    A = 'UCaaaaaaaaaaaaaaaaaaaaaa'
+    fake_youtube.channel(A, 'Workshop', videos=4)
+    for n in range(4): fake_youtube.videos[vid(A, n)]['liveStreamingDetails'] = dict(actualEndTime='t')
+    catalogue.add(A); catalogue.sync_channel(A)
+    order = [v['id'] for v in client.get('/api/videos').json()['videos']]
+    for i in order[:2]: del fake_youtube.videos[i]                                                  # the two newest went
+    with db.connect() as con: con.execute("UPDATE videos SET checked = '2026-01-01T00:00:00'")
+    r = client.get('/api/videos', params=dict(limit=2)).json()
+    assert [v['id'] for v in r['videos']] == order[2:] and r['has_more'] is False                 # not an empty page with more behind it
+    for i in order[2:]: del fake_youtube.videos[i]
+    with db.connect() as con: con.execute("UPDATE videos SET checked = '2026-01-01T00:00:00'")
+    assert client.get('/api/videos', params=dict(limit=2)).json() == dict(videos=[], has_more=False)
+
+
 def test_suggestions(client, fake_youtube, monkeypatch):
     from takeout import as_json, chan, watch
     from fake_youtube import vid

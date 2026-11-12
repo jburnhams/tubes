@@ -166,8 +166,12 @@ def create_app():
 
     @app.get('/api/videos')
     def get_videos(channel: str | None = None, q: str | None = None, after: str | None = None, limit: int = Query(24, ge=1, le=200)):
-        r = library.videos(channel, q, after, limit); gone = catalogue.recheck_past(r['videos'])   # a past stream whose recording went is left out at once
-        return dict(r, videos=[v for v in r['videos'] if v['id'] not in gone])
+        while True:                                                               # a past stream whose recording went is left out at once
+            r = library.videos(channel, q, after, limit); gone = catalogue.recheck_past(r['videos'])
+            if not gone: return r
+            shown = [v for v in r['videos'] if v['id'] not in gone]
+            if shown or not r['has_more']: return dict(r, videos=shown)
+            after = library.cursor(r['videos'][-1])                               # every one went: the page reads on from the cursor, so read the next
 
     @app.get('/api/videos/shuffle')
     def get_shuffle(count: int = Query(24, ge=1, le=200), channel: str | None = None):
