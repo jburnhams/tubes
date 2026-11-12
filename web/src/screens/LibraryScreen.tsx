@@ -227,7 +227,7 @@ export function AddForm({ onAdded }: { onAdded: (j: SyncJob) => Promise<void> })
   return (
     <form onSubmit={onSubmit} noValidate aria-labelledby="add" className="grid max-w-xl gap-3">
       <h2 id="add" className="type-heading">Add to the library</h2>
-      <Field label="Channel or video" hint="A YouTube channel or an iPlayer programme is followed: every video or episode it has is fetched, and new ones with each sync. A video's or an episode's link adds just that one." error={problem ?? (add.phase === 'error' ? add.error : undefined)}>
+      <Field label="Channel or video" hint="A YouTube channel, an iPlayer programme or an iPlayer category (such as Films) is followed: every video or episode it has is fetched, and new ones with each sync. A video's or an episode's link adds just that one." error={problem ?? (add.phase === 'error' ? add.error : undefined)}>
         <Input value={text} onChange={e => setText(e.target.value)} placeholder="https://www.youtube.com/@channel" autoComplete="off" spellCheck={false} />
       </Field>
       <div className="flex flex-wrap items-center gap-3">

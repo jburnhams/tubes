@@ -33,8 +33,9 @@ export function describeWatching(o: ChannelOverview): string {
 
 /** Where the channel lives outside Tubes: its iPlayer programme page, or its YouTube channel. */
 export function elsewhere(o: Pick<ChannelOverview, 'channel_id' | 'library'>): { href: string; label: string } {
+  const category = o.channel_id.startsWith('iplayer-') ? o.channel_id.slice('iplayer-'.length) : null      // a followed category (iplayer-films)
   return o.library?.platform === 'iplayer'
-    ? { href: `https://www.bbc.co.uk/iplayer/episodes/${encodeURIComponent(o.channel_id)}`, label: 'Open on iPlayer' }
+    ? { href: category ? `https://www.bbc.co.uk/iplayer/categories/${encodeURIComponent(category)}/featured` : `https://www.bbc.co.uk/iplayer/episodes/${encodeURIComponent(o.channel_id)}`, label: 'Open on iPlayer' }
     : { href: `https://www.youtube.com/channel/${encodeURIComponent(o.channel_id)}`, label: 'Open on YouTube' }
 }
 

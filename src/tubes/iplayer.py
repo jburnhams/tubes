@@ -13,7 +13,10 @@ reads either playlist itself: unlike YouTube's, the segment addresses carry thei
 fetcher.py). Measured on the home server (2026-11-12): the first segment in 0.4 s, a 29-minute episode (1.9 GB at 1080p50) in under a minute.
 
 Episode images are templates (`.../{recipe}/<id>.jpg`) filled in with a size; 16:9 like YouTube's thumbnails. A one-off (a film: its own
-top-level programme) has no programme to follow, so it is kept under its network (`bbc_one`), unfollowed.
+top-level programme) has no programme to follow. A category (iPlayer's `films`, `documentaries` ...) can be followed instead, as a channel
+with the id `iplayer-<category>`: its sync takes the category's one-offs (ibl lists a category's programmes 200 a page, a one-off's
+`initial_children` being the whole episode, so a sync of every film is two calls) and leaves its series to be followed as programmes. A
+one-off added on its own is kept under the category channel when it is a film (FILED_UNDER), else under its network (`bbc_one`), unfollowed.
 
 `TUBES_IPLAYER_API` and `TUBES_MEDIASELECTOR` point the calls elsewhere (the tests' stand-in)."""
 import datetime, json, os, re, urllib.error, urllib.parse, urllib.request
@@ -31,6 +34,9 @@ SUBTITLE = re.compile(r'^(?P<series>[^:]+):\s*(?:(?P<n>\d+)\.\s*)?(?P<rest>.*)$'
 SKIP_KINDS = ('audio-described', 'signed')                   # versions for those who need them, never the default one
 KIND_ORDER = ('original', 'editorial', 'shortened')
 HOSTS = ('bbc.co.uk', 'www.bbc.co.uk', 'bbc.com', 'www.bbc.com')
+CATEGORY = re.compile(r'^[a-z][a-z-]{1,40}$')
+PREFIX = 'iplayer-'                                          # a category channel's id: `iplayer-films`
+FILED_UNDER = ('films',)                                     # a one-off in one of these categories is kept under its category's channel
 
 
 class IplayerError(RuntimeError):
@@ -57,8 +63,8 @@ def call(path, **params):
 
 
 def parse(text):
-    """('programme', pid), ('episode', pid) or ('pid', pid) (a bbc.co.uk/programmes link, which may be either) for an iPlayer or BBC
-    programmes link; None when it is not one (so YouTube can read it); ValueError for a BBC link that names no programme."""
+    """('programme', pid), ('episode', pid), ('pid', pid) (a bbc.co.uk/programmes link, which may be either) or ('category', id) (an
+    iPlayer category page: /iplayer/categories/films/..., /iplayer/browse/films) for an iPlayer or BBC programmes link; None when it is not one (so YouTube can read it); ValueError for a BBC link that names no programme."""
     t = (text or '').strip()
     if '://' not in t and not t.startswith(HOSTS): return None
     u = urllib.parse.urlparse(t if '://' in t else 'https://' + t)
@@ -67,7 +73,8 @@ def parse(text):
     if len(path) >= 3 and path[0] == 'iplayer' and path[1] in ('episodes', 'episode') and PID.match(path[2]):
         return ('programme' if path[1] == 'episodes' else 'episode'), path[2]
     if len(path) >= 2 and path[0] == 'programmes' and PID.match(path[1]): return 'pid', path[1]
-    raise ValueError('That BBC link is not to an iPlayer programme or episode.')
+    if len(path) >= 3 and path[0] == 'iplayer' and path[1] in ('categories', 'browse') and CATEGORY.match(path[2]): return 'category', path[2]
+    raise ValueError('That BBC link is not to an iPlayer programme, episode or category.')
 
 
 def image(template, recipe=THUMB):
@@ -127,10 +134,42 @@ def network_row(episode, now):
                 subscribers=None, total_videos=None, views=None, uploads=None, added=now)
 
 
+def one_off(episode):
+    return episode.get('tleo_type') == 'episode' or not episode.get('tleo_id') or episode.get('tleo_id') == episode['id']
+
+
 def channel_of(episode):
-    """The id of the channel an episode is kept under: its programme, or its network when it is a one-off."""
-    if episode.get('tleo_type') == 'episode' or not episode.get('tleo_id') or episode.get('tleo_id') == episode['id']: return (episode.get('master_brand') or {}).get('id') or 'bbc'
-    return episode['tleo_id']
+    """The id of the channel an episode is kept under: its programme; for a one-off, its category's channel when it is a film, else its network."""
+    if not one_off(episode): return episode['tleo_id']
+    filed = next((c for c in FILED_UNDER if c in (episode.get('categories') or [])), None)
+    return PREFIX + filed if filed else (episode.get('master_brand') or {}).get('id') or 'bbc'
+
+
+def category_id(channel_id):
+    """The category a channel follows (`films` for `iplayer-films`), or None for any other channel."""
+    return channel_id[len(PREFIX):] if (channel_id or '').startswith(PREFIX) else None
+
+
+def category(cat):
+    """iPlayer's category with this id (`{id, title}`), or None when it has none."""
+    return next((c for c in call('categories').get('categories') or [] if c.get('id') == cat), None)
+
+
+def category_row(cat, now):
+    """A category (`{id, title}`) as a `channels` row, id `iplayer-<id>`."""
+    return dict(id=PREFIX + cat['id'], platform='iplayer', title=cat.get('title') or cat['id'], handle=None, thumbnail=None,
+                description=f"Every one-off in iPlayer's {cat.get('title') or cat['id']}, as iPlayer offers them.", published=None, country='GB',
+                subscribers=None, total_videos=None, views=None, uploads=None, added=now)
+
+
+def category_page(cat, page=1):
+    """One page (up to PAGE) of a category's programmes, as iPlayer orders them: (its one-offs, as whole episodes; whether there are more;
+    how many programmes the page listed). Its series are left out (they are followed as programmes), so a page can list programmes and
+    hold no one-offs; `count` is every programme in it."""
+    r = call(f'categories/{cat}/programmes', per_page=PAGE, page=page).get('category_programmes') or {}
+    items = r.get('elements') or []
+    eps = [c for p in items if p.get('tleo_type') == 'episode' for c in (p.get('initial_children') or [])[:1] if c.get('id')]
+    return eps, page * PAGE < (r.get('count') or 0) and bool(items), len(items)
 
 
 def video_row(episode, now):
@@ -166,7 +205,9 @@ def search(text):
     return out
 
 
-def programme_url(pid): return f'https://www.bbc.co.uk/iplayer/episodes/{pid}'
+def programme_url(pid):
+    cat = category_id(pid)
+    return f'https://www.bbc.co.uk/iplayer/categories/{cat}/featured' if cat else f'https://www.bbc.co.uk/iplayer/episodes/{pid}'
 
 
 def episode(pid):
