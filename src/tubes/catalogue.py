@@ -224,21 +224,23 @@ def sync_programme(channel_id, now=None, progress=None):
     if cat:
         found = iplayer.category(cat)
         if found is None: raise NotFound(f'iPlayer has no category {cat} any more.')
-        row, pages = iplayer.category_row(found, now), lambda page: iplayer.category_page(cat, page)
+        row, pages = iplayer.category_row(found, now), lambda page: iplayer.category_page(cat, page)          # (one-offs, more, programmes listed)
     else:
         prog = iplayer.programme(channel_id)
         if prog is None: raise NotFound(f'iPlayer has no programme {channel_id} any more.')
-        row, pages = iplayer.channel_row(prog, now), lambda page: iplayer.episodes_page(channel_id, page)
+        row, pages = iplayer.channel_row(prog, now), lambda page: (*(r := iplayer.episodes_page(channel_id, page)), len(r[0]))
     with db.connect() as con:
         held = con.execute(f"UPDATE channels SET {', '.join(f'{f} = :{f}' for f in CHANNEL_FIELDS)} WHERE id = :id", {k: row[k] for k in ('id', *CHANNEL_FIELDS)}).rowcount
     if not held: raise _gone(channel_id)
     seen, added, page, more, whole = [], 0, 0, True, False
     while more:
         page += 1
-        eps, more = pages(page)
+        eps, more, listed = pages(page)
         rows = [r for r in (iplayer.video_row(e, now) for e in eps) if cat or r['channel_id'] == channel_id]     # a programme's list holds only its own; never move one elsewhere
         for r in rows: r['channel_id'] = channel_id                             # a category keeps every one-off it lists (a one-off documentary's network would be its own)
-        if not rows: break                                                       # an empty page: the list may be cut short, so nothing is marked gone
+        if not listed: break                                                     # an empty page: the list may be cut short, so nothing is marked gone
+        whole = not more
+        if not rows: continue                                                    # a page of a category's series only: nothing to keep, but the list goes on
         ids = [r['id'] for r in rows]; seen += ids
         with db.connect() as con:
             have = {r[0] for r in con.execute(f"SELECT id FROM videos WHERE id IN ({', '.join('?' * len(ids))})", tuple(ids))}
@@ -249,7 +251,6 @@ def sync_programme(channel_id, now=None, progress=None):
         if not held: raise _gone(channel_id)
         added += sum(1 for i in ids if i not in have)
         if progress: progress(added)
-        whole = not more
     with db.connect() as con:
         old = [r[0] for r in con.execute('SELECT id FROM videos WHERE channel_id = ? AND gone IS NULL', (channel_id,))]
         missing = sorted(set(old) - set(seen)) if whole else []

@@ -185,9 +185,10 @@ def test_categories(fake_iplayer, monkeypatch):
     fake_iplayer.programme(P, 'Harbour Lights', episodes=1); fake_iplayer.categories['films'][1].append(P)           # a series filed under Films
     for n in range(3): fake_iplayer.one_off(f'p000000{n}', f'Film {n}', categories=('films',))
     monkeypatch.setattr(iplayer, 'PAGE', 2)
-    (a, more), (b, more2) = iplayer.category_page('films', 1), iplayer.category_page('films', 2)
-    assert [e['id'] for e in a] == ['p0000002', 'p0000001'] and more is True and [e['id'] for e in b] == ['p0000000'] and more2 is False     # the series is left out
-    assert iplayer.category_page('films', 3) == ([], False)
+    (a, more, n), (b, more2, n2) = iplayer.category_page('films', 1), iplayer.category_page('films', 2)
+    assert [e['id'] for e in a] == ['p0000002', 'p0000001'] and (more, n) == (True, 2)
+    assert [e['id'] for e in b] == ['p0000000'] and (more2, n2) == (False, 2)                       # the series it also lists is left out
+    assert iplayer.category_page('films', 3) == ([], False, 0)
 
 
 def test_a_film_is_filed_under_films_and_another_one_off_under_its_network(fake_iplayer):

@@ -388,3 +388,15 @@ def test_one_film_added_on_its_own_goes_under_films(fake_iplayer):
     assert r['video']['channel'] == 'Films' and library.channel('iplayer-films')['follow'] is False
     catalogue.add('https://www.bbc.co.uk/iplayer/categories/films/featured')                     # following Films later keeps the film where it is
     assert library.channel('iplayer-films')['follow'] is True and [v['id'] for v in videos_of('iplayer-films')] == [film]
+
+
+def test_a_category_page_of_series_only_does_not_end_its_sync(fake_iplayer, monkeypatch):
+    fake_iplayer.programme(P, 'Harbour Lights', episodes=1).programme('b0000002', 'Night Garden', episodes=1)
+    fake_iplayer.one_off('p0000001', 'Film 1', categories=('films',)); fake_iplayer.one_off('p0000002', 'Film 2', categories=('films',))
+    fake_iplayer.categories['films'][1][:] = [P, 'b0000002', 'p0000001', 'p0000002', 'b0000002', P]    # pages of 2: series only, films, series only
+    monkeypatch.setattr(iplayer, 'PAGE', 2)
+    catalogue.add('https://www.bbc.co.uk/iplayer/categories/films/featured')
+    assert catalogue.sync_channel('iplayer-films', now='t1')['added'] == 2 and sorted(v['id'] for v in videos_of('iplayer-films')) == ['p0000001', 'p0000002']
+    fake_iplayer.categories['films'][1].remove('p0000002'); fake_iplayer.drop('p0000002')
+    catalogue.sync_channel('iplayer-films', now='t2')                                            # the last page is series only: the list was still read whole
+    assert library.video('p0000002')['gone'] == 't2'

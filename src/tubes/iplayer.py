@@ -163,12 +163,13 @@ def category_row(cat, now):
 
 
 def category_page(cat, page=1):
-    """One page (up to PAGE) of a category's programmes, as iPlayer orders them: (its one-offs, as whole episodes; whether there are more).
-    Its series are left out (they are followed as programmes); `count` is every programme in it."""
+    """One page (up to PAGE) of a category's programmes, as iPlayer orders them: (its one-offs, as whole episodes; whether there are more;
+    how many programmes the page listed). Its series are left out (they are followed as programmes), so a page can list programmes and
+    hold no one-offs; `count` is every programme in it."""
     r = call(f'categories/{cat}/programmes', per_page=PAGE, page=page).get('category_programmes') or {}
     items = r.get('elements') or []
     eps = [c for p in items if p.get('tleo_type') == 'episode' for c in (p.get('initial_children') or [])[:1] if c.get('id')]
-    return eps, page * PAGE < (r.get('count') or 0) and bool(items)
+    return eps, page * PAGE < (r.get('count') or 0) and bool(items), len(items)
 
 
 def video_row(episode, now):
