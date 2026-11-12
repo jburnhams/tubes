@@ -367,7 +367,7 @@ export function PasteForm() {
   return (
     <form onSubmit={onSubmit} noValidate aria-labelledby="paste" className="grid max-w-xl gap-3">
       <h2 id="paste" className="type-heading">Paste channels to follow</h2>
-      <Field label="Channels and programmes" hint="One a line: YouTube links or @handles, iPlayer programme or episode links, or names (looked up on both)." error={problem ?? (send.phase === 'error' ? send.error : undefined)}>
+      <Field label="Channels and programmes" hint="One a line: YouTube channel, video or playlist links or @handles, iPlayer programme or episode links, or names (looked up on both)." error={problem ?? (send.phase === 'error' ? send.error : undefined)}>
         <Textarea value={text} onChange={e => setText(e.target.value)} rows={4} placeholder={'https://www.youtube.com/@…\nhttps://www.bbc.co.uk/iplayer/episodes/…\nA programme name'} />
       </Field>
       <div className="flex flex-wrap items-center gap-3">

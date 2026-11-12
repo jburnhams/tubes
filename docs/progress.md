@@ -1,5 +1,9 @@
 # Progress log
 
+## 2026-11-12: playlists pasted into Suggestions
+
+- Asked for: playlist links in the Suggestions paste, each video's channel suggested. `youtube.playlist_id` reads `/playlist?list=` and a watch link played from a playlist (`&list=`); a mix (`RD…` on a watch link) is made for one viewer and the Data API cannot read it, so that link stays its video. `paste._playlist` reads the first 200 videos (`playlistItems`, then `videos` for their owners, then `channels`: about a dozen quota units), drops private and removed ones, and suggests the channels with the most videos in it first; followed ones are said as before. A missing or private playlist (404) and one with no videos left are said on its line. Library's Add still takes channels and videos only.
+
 ## 2026-11-12: iPlayer on the watching side
 
 - iPlayer has no view counts, so where a YouTube card says "12K views · 3 weeks ago" an episode says "S2 E4 · 3 weeks ago", adding "Leaves iPlayer in 5 days" once it is within 30 days of going (as iPlayer itself does), and "Left iPlayer" on a saved copy after. A programme's page says "BBC iPlayer · 8 episodes", has an Episodes tab, and puts a heading over each series as the newest-first list reaches it (so paging needs nothing new). The watch page says until when iPlayer offers an episode.

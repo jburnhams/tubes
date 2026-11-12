@@ -72,6 +72,19 @@ def parse(text):
     raise ValueError('That is not a channel or video: paste its link, or type its id or @handle.')
 
 
+def playlist_id(text):
+    """The playlist a YouTube link names (`/playlist?list=`, or a watch link played from a playlist), else None. A mix (`RD…`) is made up for
+    one viewer and the Data API cannot read it, so a watch link from one stays a link to its video."""
+    t = (text or '').strip()
+    if not ('://' in t or t.startswith(('www.', 'youtube.com', 'm.youtube.com', 'music.youtube.com'))): return None
+    u = urllib.parse.urlparse(t if '://' in t else 'https://' + t)
+    if not (u.netloc.endswith('youtube.com') or u.netloc.endswith('youtu.be')): return None
+    pid = (urllib.parse.parse_qs(u.query).get('list') or [None])[0]
+    if not pid or not re.match(r'^[\w-]{2,64}$', pid): return None
+    if pid.startswith('RD') and u.path.rstrip('/') != '/playlist': return None
+    return pid
+
+
 def seconds(duration):
     """An ISO 8601 duration (`PT1H2M3S`, `P1DT2S`) in seconds; None when it cannot be read (a live stream says `P0D`, which is 0)."""
     m = DURATION.match(duration or '')
