@@ -54,15 +54,22 @@ def read_playlist(video_id):
 
 
 def served_playlist(video_id):
-    """The playlist as the player is given it, or None when there is none: while the copy is fetching, without `#EXT-X-ENDLIST`. A download
+    """The playlist as the player is given it, or None when there is none: while the copy is fetching, without `#EXT-X-ENDLIST` (nor the segment before it). A download
     that ends short also ends its playlist, and the fetcher then runs it again (fetcher.attempts) into the same names; a player that read the
     end would stop following and never see the rest."""
     try:
         with open(os.path.join(folder(video_id), PLAYLIST), encoding='utf8') as f: text = f.read()
     except OSError: return None
     e = entry(video_id)
-    if e and e['state'] == 'fetching': text = ''.join(ln for ln in text.splitlines(keepends=True) if ln.strip() != '#EXT-X-ENDLIST')
-    return text
+    if not (e and e['state'] == 'fetching') or '#EXT-X-ENDLIST' not in text: return text
+    # An attempt that ended: its last segment may be cut short (the stream stopped mid-segment), and a retry rewrites it whole under the same
+    # name, so a player given the short one would keep it and jump a gap. Until the copy is ready, that segment is held back as well.
+    lines = [ln for ln in text.splitlines(keepends=True) if ln.strip() != '#EXT-X-ENDLIST']
+    uris = [i for i, ln in enumerate(lines) if ln.strip() and not ln.startswith('#')]
+    if uris:
+        last = uris[-1]; tag = max((i for i in range(last) if lines[i].startswith('#EXTINF')), default=last)
+        del lines[tag:last + 1]
+    return ''.join(lines)
 
 
 def entry(video_id):

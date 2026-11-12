@@ -159,7 +159,7 @@ def test_play_stream_and_media(client, monkeypatch):
     assert seg.headers['content-type'] == 'video/iso.segment' and seg.headers['cache-control'] == 'no-store' and len(seg.content) == 1000   # a retry may rewrite it
     write_playlist('aaaaaaaaaaa', 2, True)          # an attempt that ended (short or not) while the copy is still fetching: a retry may follow
     r = client.get('/api/media/aaaaaaaaaaa/index.m3u8')
-    assert r.headers['cache-control'] == 'no-store' and 'seg_00001.m4s' in r.text and '#EXT-X-ENDLIST' not in r.text
+    assert r.headers['cache-control'] == 'no-store' and 'seg_00000.m4s' in r.text and 'seg_00001.m4s' not in r.text and '#EXT-X-ENDLIST' not in r.text
     assert client.get('/api/videos/aaaaaaaaaaa/stream').json()['complete'] is False
     cache.finish('aaaaaaaaaaa', cache.stamp())
     r = client.get('/api/media/aaaaaaaaaaa/index.m3u8')

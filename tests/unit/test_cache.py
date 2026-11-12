@@ -151,7 +151,11 @@ def test_a_copy_over_2_gb_is_recorded(monkeypatch):
 def test_a_fetching_copy_is_never_served_as_ended():
     assert cache.served_playlist('aaaaaaaaaaa') is None
     cache.begin('aaaaaaaaaaa', cache.stamp()); write_playlist('aaaaaaaaaaa', 2, True)     # a first attempt that ended short; the fetcher may run it again
-    assert '#EXT-X-ENDLIST' not in cache.served_playlist('aaaaaaaaaaa') and 'seg_00001.m4s' in cache.served_playlist('aaaaaaaaaaa')
+    held = cache.served_playlist('aaaaaaaaaaa')
+    assert '#EXT-X-ENDLIST' not in held and 'seg_00000.m4s' in held and 'seg_00001.m4s' not in held and held.count('#EXTINF') == 1   # its last segment may be short: held back
+    write_playlist('aaaaaaaaaaa', 3, False); assert 'seg_00002.m4s' in cache.served_playlist('aaaaaaaaaaa')       # still growing: all of it
+    write_playlist('aaaaaaaaaaa', 0, True); assert '#EXT-X-ENDLIST' not in cache.served_playlist('aaaaaaaaaaa')
+    write_playlist('aaaaaaaaaaa', 2, True)
     assert cache.status('aaaaaaaaaaa')['complete'] is False and cache.read_playlist('aaaaaaaaaaa')['complete'] is True
     cache.finish('aaaaaaaaaaa', cache.stamp())
     assert cache.served_playlist('aaaaaaaaaaa').endswith('#EXT-X-ENDLIST\n') and cache.status('aaaaaaaaaaa')['complete'] is True
