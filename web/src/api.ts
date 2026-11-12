@@ -71,8 +71,24 @@ export interface ShownFilters {
   min_seconds: number | null
   max_seconds: number | null
   streams: StreamFilter
+  /** The country the server watches from (`GB`): a video YouTube says does not play there is left out. Null: not checked. */
+  region: string | null
+  /** Base language codes (`en`) a video's spoken language must be one of; empty for every language. */
+  languages: string[]
+  /** Whether a video whose language is not known is shown while `languages` are chosen. */
+  unknown_language: 'show' | 'hide'
+  /** 'only': just videos with captions the uploader added (one it is not known for is kept). */
+  captions: 'any' | 'only'
   /** How many videos these leave out now. */
   filtered: number
+  /** The spoken languages of the videos there are, before the filters, most first; `code` null for those not known. */
+  language_counts: LanguageCount[]
+}
+
+/** How many videos the library offers in one spoken language. */
+export interface LanguageCount {
+  code: string | null
+  videos: number
 }
 
 /** Where a channel or video comes from. A BBC iPlayer programme is kept as a channel and its episodes as videos. Absent from older servers (YouTube). */
@@ -528,7 +544,7 @@ export const api = {
   library: () => fetchJson<LibraryStatus>(withBase(paths.library)),
   quota: () => fetchJson<QuotaUsage>(withBase(paths.quota)),
   shown: () => fetchJson<ShownFilters>(withBase(paths.shown)),
-  saveShown: (f: Partial<Omit<ShownFilters, 'filtered'>>) => callJson<ShownFilters>(withBase(paths.shown), send('PUT', f)),
+  saveShown: (f: Partial<Omit<ShownFilters, 'filtered' | 'language_counts'>>) => callJson<ShownFilters>(withBase(paths.shown), send('PUT', f)),
   add: (input: string) => callJson<Added>(withBase(paths.library), send('POST', { input })),
   syncJob: () => fetchJson<SyncJob>(withBase(paths.sync)),
   /** Sync these channels, or every followed one. */

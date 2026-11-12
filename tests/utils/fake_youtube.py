@@ -94,7 +94,7 @@ class FakeYoutube:
     def video(self, v, cid, title, published, duration='PT4M5S'):
         self.videos[v] = dict(kind='youtube#video', id=v, snippet=dict(title=title, description=f'{title}, described', channelId=cid, publishedAt=published,
                                                                        thumbnails=dict(medium=dict(url=f'https://img.test/{v}/m.jpg', width=320, height=180), maxres=dict(url=f'https://img.test/{v}/x.jpg', width=1280, height=720))),
-                              contentDetails=dict(duration=duration, definition='hd'), statistics=dict(viewCount='12', likeCount='3', commentCount='1'))
+                              contentDetails=dict(duration=duration, definition='hd', caption='false'), statistics=dict(viewCount='12', likeCount='3', commentCount='1'))
         return self
 
     def playlist(self, pid, videos):

@@ -7,11 +7,15 @@
 // (Off, Ask, Skip: what the player does in it, src/tubes/segments.py), saved the same way.
 // Shown videos is a third form, over what the watching side lists (kept in the server's database,
 // not its settings file, so it has its own read and its own Save): the shortest and longest length,
-// in minutes with empty for no limit, and which streams are left out. Its finding is how many videos
-// the filters leave out now, which it says again after a save. Appearance is Strata's ColorSchemeChoice.
+// in minutes with empty for no limit, which streams are left out, the country the server watches from
+// (YouTube's region limits; a video a fetch was refused for here is hidden whatever this says), the
+// spoken languages shown (a Checkbox per language the library has, with its count, so the choice is
+// among real ones) and whether only videos with the uploader's captions are shown. Dubbed audio tracks
+// are not offered: the Data API does not list them. Its finding is how many videos the filters leave
+// out now, which it says again after a save. Appearance is Strata's ColorSchemeChoice.
 import { useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
-import { AsyncButton, ChoiceGroup, ColorSchemeChoice, DataView, EmptyState, Field, Input, NativeSelect, PageHeader, Skeleton, Tabs, format, useAsyncAction, useLoad, type Choice } from 'strata-react'
+import { AsyncButton, Checkbox, ChoiceGroup, ColorSchemeChoice, DataView, EmptyState, Field, Input, NativeSelect, PageHeader, Skeleton, Tabs, format, useAsyncAction, useLoad, type Choice } from 'strata-react'
 import { api, describeError, folderProblem, keys, numberProblem, type SegmentKind, type Settings, type ShownFilters, type SkipMode, type StreamFilter } from '../api'
 
 const tabs = [
@@ -199,19 +203,25 @@ export const streamChoices: { value: StreamFilter; label: string }[] = [
   { value: 'all', label: 'Leave out every stream, past ones and premieres too' },
 ]
 
-type ShownFields = { min: string; max: string; streams: StreamFilter }
+type ShownFields = { min: string; max: string; streams: StreamFilter; region: string; languages: string[]; unknown: 'show' | 'hide'; captions: 'any' | 'only' }
+
+/** A language's name in English (`fr` is French), else its code. */
+export function languageName(code: string): string {
+  try { return String(new Intl.DisplayNames(['en'], { type: 'language', fallback: 'code' }).of(code)) } catch { return code }      // an ill-formed code throws
+}
 
 const minutes = (seconds: number | null) => (seconds == null ? '' : String(Math.round((seconds / 60) * 100) / 100))
 const seconds = (value: string) => (value.trim() ? Math.round(Number(value.trim()) * 60) : null)
 
 /** What is wrong with the length fields, by field: each is empty (no limit) or minutes, 0 or more, and the shortest is not past the longest. */
-export function shownProblems(f: ShownFields): Partial<Record<'min' | 'max', string>> {
+export function shownProblems(f: ShownFields): Partial<Record<'min' | 'max' | 'region', string>> {
   const one = (v: string, what: string) => {
     if (!v.trim()) return undefined
     const n = Number(v.trim())
     return Number.isFinite(n) && n >= 0 ? undefined : `Enter ${what} in minutes, or leave it empty for no limit.`
   }
-  const found = { min: one(f.min, 'the shortest length'), max: one(f.max, 'the longest length') }
+  const found: Partial<Record<'min' | 'max' | 'region', string>> = { min: one(f.min, 'the shortest length'), max: one(f.max, 'the longest length') }
+  if (f.region.trim() && !/^[A-Za-z]{2}$/.test(f.region.trim())) found.region = 'Enter the country as two letters, such as GB, or leave it empty.'
   if (!found.min && !found.max && f.min.trim() && f.max.trim() && Number(f.min) > Number(f.max)) found.max = 'Make this at least the shortest length.'
   return found
 }
@@ -223,12 +233,24 @@ export function describeShown(f: ShownFilters): string {
 
 export function ShownForm({ current }: { current: ShownFilters }) {
   const queryClient = useQueryClient()
-  const [f, setF] = useState<ShownFields>({ min: minutes(current.min_seconds), max: minutes(current.max_seconds), streams: current.streams })
+  const [f, setF] = useState<ShownFields>({
+    min: minutes(current.min_seconds), max: minutes(current.max_seconds), streams: current.streams, region: current.region ?? '',
+    languages: current.languages, unknown: current.unknown_language, captions: current.captions,
+  })
+  const counts = current.language_counts
+  const known = counts.filter((c): c is { code: string; videos: number } => c.code != null)
+  // A chosen language the library no longer has stays listed, so it can be cleared.
+  const offered = [...known, ...f.languages.filter(l => !known.some(c => c.code === l)).map(code => ({ code, videos: 0 }))]
+  const unknownCount = counts.find(c => c.code == null)?.videos ?? 0
+  const toggle = (code: string, on: boolean) => setF(old => ({ ...old, languages: on ? [...old.languages, code].sort() : old.languages.filter(l => l !== code) }))
   const [problems, setProblems] = useState<ReturnType<typeof shownProblems>>({})
-  const set = (k: keyof ShownFields) => (e: { target: { value: string } }) => setF(old => ({ ...old, [k]: e.target.value }))
+  const set = (k: Exclude<keyof ShownFields, 'languages'>) => (e: { target: { value: string } }) => setF(old => ({ ...old, [k]: e.target.value }))
 
   const save = useAsyncAction(async () => {
-    await api.saveShown({ min_seconds: seconds(f.min), max_seconds: seconds(f.max), streams: f.streams })
+    await api.saveShown({
+      min_seconds: seconds(f.min), max_seconds: seconds(f.max), streams: f.streams, region: f.region.trim().toUpperCase() || null,
+      languages: f.languages, unknown_language: f.unknown, captions: f.captions,
+    })
     // Every list and count on both sides reads through the filters.
     await Promise.all([keys.shown, keys.library, keys.channels, keys.videos, keys.system].map(queryKey => queryClient.invalidateQueries({ queryKey })))
   }, { describeError })
@@ -257,6 +279,36 @@ export function ShownForm({ current }: { current: ShownFilters }) {
         <Field label="Live streams" hint="A stream live now or scheduled cannot be played, so it is always left out until it ends. A past stream is checked daily in case its recording goes.">
           <NativeSelect value={f.streams} onChange={set('streams')}>
             {streamChoices.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </NativeSelect>
+        </Field>
+      </fieldset>
+      <fieldset className="grid gap-5">
+        <legend className="mb-4 type-heading">Country</legend>
+        <Field label="Country the server watches from" hint="Two letters, such as GB. Videos YouTube says do not play there are left out. Empty does not check. A video YouTube refuses to fetch as not available here is always left out." error={problems.region}>
+          <Input value={f.region} onChange={set('region')} autoComplete="off" spellCheck={false} maxLength={2} />
+        </Field>
+      </fieldset>
+      <fieldset className="grid gap-3">
+        <legend className="mb-4 type-heading">Languages</legend>
+        <p className="type-body-sm text-muted-foreground">
+          {offered.length ? 'Only videos spoken in the chosen languages are shown; none chosen shows every language. A video that does not say its language goes by its channel’s.' : 'No video in the library says its language yet. Syncs and rechecks fill it in.'}
+        </p>
+        {offered.map(c => (
+          <Checkbox key={c.code} label={languageName(c.code)} detail={format.count(c.videos, 'video')} checked={f.languages.includes(c.code)} onCheckedChange={on => toggle(c.code, on)} />
+        ))}
+        <Field label="Videos whose language is not known" hint={`${format.count(unknownCount, 'video says', 'videos say')} no language, nor does its channel. Used only while a language is chosen.`}>
+          <NativeSelect value={f.unknown} onChange={set('unknown')}>
+            <option value="show">Show them</option>
+            <option value="hide">Leave them out</option>
+          </NativeSelect>
+        </Field>
+      </fieldset>
+      <fieldset className="grid gap-5">
+        <legend className="mb-4 type-heading">Subtitles</legend>
+        <Field label="Subtitles" hint="YouTube lists only captions the uploader added, not its automatic ones, and does not list dubbed audio. iPlayer does not say, so its episodes are always kept.">
+          <NativeSelect value={f.captions} onChange={set('captions')}>
+            <option value="any">Show every video</option>
+            <option value="only">Only videos with subtitles the uploader added</option>
           </NativeSelect>
         </Field>
       </fieldset>

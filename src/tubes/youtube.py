@@ -121,7 +121,7 @@ def channel_row(item, now):
     """A Data API channel resource as a `channels` row."""
     sn, st = item.get('snippet') or {}, item.get('statistics') or {}
     return dict(id=item['id'], platform='youtube', title=sn.get('title') or item['id'], handle=sn.get('customUrl') or None, thumbnail=best_thumbnail(sn.get('thumbnails')),
-                description=sn.get('description') or None, published=sn.get('publishedAt'), country=sn.get('country'),
+                description=sn.get('description') or None, published=sn.get('publishedAt'), country=sn.get('country'), language=language(sn.get('defaultLanguage')),
                 subscribers=None if st.get('hiddenSubscriberCount') else _int(st.get('subscriberCount')), total_videos=_int(st.get('videoCount')), views=_int(st.get('viewCount')),
                 uploads=((item.get('contentDetails') or {}).get('relatedPlaylists') or {}).get('uploads'), added=now)
 
@@ -132,7 +132,25 @@ def video_row(item, now):
     return dict(id=item['id'], platform='youtube', channel_id=sn.get('channelId') or '', title=sn.get('title') or item['id'], published=sn.get('publishedAt') or now,
                 duration=seconds(cd.get('duration')), thumbnail=best_thumbnail(sn.get('thumbnails')), views=_int(st.get('viewCount')),
                 description=sn.get('description') or None, likes=_int(st.get('likeCount')), comments=_int(st.get('commentCount')), definition=cd.get('definition'), live=live(item),
-                expires=None, series=None, episode=None, added=now)
+                expires=None, series=None, episode=None, language=language(sn.get('defaultAudioLanguage') or sn.get('defaultLanguage')),
+                captions={'true': True, 'false': False}.get(str(cd.get('caption')).lower()), **regions(cd.get('regionRestriction')), added=now)
+
+
+def language(code):
+    """A BCP-47 language code as kept (`en-GB`, `fr`), or None. YouTube writes `zxx` for "no linguistic content" and lets an uploader
+    leave it unset, which both mean not known here."""
+    c = (code or '').strip().replace('_', '-')
+    return None if not re.match(r'^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$', c) or c.lower() in ('zxx', 'und', 'mul') else c[:16]
+
+
+def regions(restriction):
+    """`{regions_allowed, regions_blocked}` from a video's `contentDetails.regionRestriction`: each a comma-separated list of ISO 3166-1
+    alpha-2 codes (YouTube's own), or None. An `allowed` list means it plays only there; a `blocked` one means everywhere but there; YouTube
+    gives one or neither. An empty `allowed` list (it plays nowhere) is kept as `-`, which matches no country."""
+    r = restriction or {}
+    codes = lambda xs: ','.join(sorted({x.strip().upper() for x in xs or [] if isinstance(x, str) and re.match(r'^[A-Za-z]{2}$', x.strip())})) or None
+    allowed = codes(r.get('allowed'))
+    return dict(regions_allowed=allowed if allowed or r.get('allowed') is None else '-', regions_blocked=codes(r.get('blocked')))
 
 
 def live(item):

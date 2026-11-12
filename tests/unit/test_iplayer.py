@@ -63,11 +63,12 @@ def test_rows(fake_iplayer):
     fake_iplayer.programme(P, 'Harbour Lights', episodes=2)
     c = iplayer.channel_row(iplayer.programme(P), 'now')
     assert c == dict(id=P, platform='iplayer', title='Harbour Lights', handle=None, thumbnail=f'https://img.test/ic/480x480/{P}.jpg', description='All about Harbour Lights',
-                     published=None, country='GB', subscribers=None, total_videos=2, views=None, uploads=None, added='now')
+                     published=None, country='GB', language='en', subscribers=None, total_videos=2, views=None, uploads=None, added='now')
     e = ep_id(P, 2)
     v = iplayer.video_row(iplayer.episode(e), 'now')
     assert v == dict(id=e, platform='iplayer', channel_id=P, title='Chapter 2', published='2026-01-02T19:30:00+00:00', duration=6.0, thumbnail=f'https://img.test/ic/1280x720/{e}.jpg',
-                     views=None, description='Chapter 2, told', likes=None, comments=None, definition='hd', live=None, expires='2099-01-01T00:00:00+00:00', series='Series 1', episode=2, added='now')
+                     views=None, description='Chapter 2, told', likes=None, comments=None, definition='hd', live=None, expires='2099-01-01T00:00:00+00:00', series='Series 1', episode=2,
+                     language='en', captions=None, regions_allowed='GB', regions_blocked=None, added='now')
     film = iplayer.video_row(iplayer.episode(fake_iplayer.one_off('p0000009', 'A Film')), 'now')
     assert (film['channel_id'], film['title'], film['definition'], film['duration'], film['published']) == ('bbc_two', 'A Film', 'sd', 5400, 'now')
     assert iplayer.network_row(fake_iplayer.episodes['p0000009'], 'now')['title'] == 'BBC Two'

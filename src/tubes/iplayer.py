@@ -123,14 +123,14 @@ def channel_row(programme, now):
     im, syn = programme.get('images') or {}, programme.get('synopses') or {}
     return dict(id=programme['id'], platform='iplayer', title=programme.get('title') or programme['id'], handle=None,
                 thumbnail=image(im.get('standard') or im.get('promotional'), AVATAR), description=syn.get('large') or syn.get('medium') or syn.get('small'),
-                published=None, country='GB', subscribers=None, total_videos=programme.get('count'), views=None, uploads=None, added=now)
+                published=None, country='GB', language='en', subscribers=None, total_videos=programme.get('count'), views=None, uploads=None, added=now)
 
 
 def network_row(episode, now):
     """The channel a one-off is kept under: its network (`bbc_one`, BBC One)."""
     mb = episode.get('master_brand') or {}
     title = (mb.get('titles') or {}).get('large') or mb.get('id') or 'BBC'
-    return dict(id=mb.get('id') or 'bbc', platform='iplayer', title=title, handle=None, thumbnail=None, description=None, published=None, country='GB',
+    return dict(id=mb.get('id') or 'bbc', platform='iplayer', title=title, handle=None, thumbnail=None, description=None, published=None, country='GB', language='en',
                 subscribers=None, total_videos=None, views=None, uploads=None, added=now)
 
 
@@ -158,7 +158,7 @@ def category(cat):
 def category_row(cat, now):
     """A category (`{id, title}`) as a `channels` row, id `iplayer-<id>`."""
     return dict(id=PREFIX + cat['id'], platform='iplayer', title=cat.get('title') or cat['id'], handle=None, thumbnail=None,
-                description=f"Every one-off in iPlayer's {cat.get('title') or cat['id']}, as iPlayer offers them.", published=None, country='GB',
+                description=f"Every one-off in iPlayer's {cat.get('title') or cat['id']}, as iPlayer offers them.", published=None, country='GB', language='en',
                 subscribers=None, total_videos=None, views=None, uploads=None, added=now)
 
 
@@ -181,7 +181,8 @@ def video_row(episode, now):
     return dict(id=episode['id'], platform='iplayer', channel_id=channel_of(episode), title=title, published=published,
                 duration=seconds((v.get('duration') or {}).get('value')), thumbnail=image(im.get('standard')), views=None,
                 description=syn.get('large') or syn.get('medium') or syn.get('small') or syn.get('editorial'), likes=None, comments=None,
-                definition=('hd' if v.get('hd') else 'sd') if v else None, live=None, expires=stamp(avail.get('end')), series=series, episode=number, added=now)
+                definition=('hd' if v.get('hd') else 'sd') if v else None, live=None, expires=stamp(avail.get('end')), series=series, episode=number,
+                language='en', captions=None, regions_allowed='GB', regions_blocked=None, added=now)     # iPlayer plays only in the UK; nearly every programme is subtitled, but ibl does not say
 
 
 def programme(pid):

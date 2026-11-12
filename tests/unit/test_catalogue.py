@@ -130,6 +130,17 @@ def test_recheck_hides_what_youtube_lost_and_brings_back_what_returns(fake_youtu
     assert catalogue.recheck() == dict(checked=0, gone=0, back=0)
 
 
+def test_the_recheck_fills_language_captions_and_regions_on_videos_added_before_them(fake_youtube):
+    fake_youtube.channel(A, 'Workshop', videos=2); catalogue.add(A); catalogue.sync_channel(A)
+    with db.connect() as con: assert con.execute('SELECT COUNT(*) FROM videos WHERE language IS NULL AND captions IS NOT NULL').fetchone()[0] == 2   # the stand-in says no language, and captions false
+    v = fake_youtube.videos[vid(A, 1)]
+    v['snippet']['defaultAudioLanguage'] = 'en-GB'; v['contentDetails'].update(caption='true', regionRestriction=dict(blocked=['GB']))
+    catalogue.recheck(0, now='t1')
+    catalogue.save_filters(dict(region='GB'))
+    assert vid(A, 1) not in [x['id'] for x in library.videos()['videos']] and dict(code='en', videos=1) in library.languages()     # counted before the filters
+    with db.connect() as con: assert con.execute('SELECT language, captions, regions_blocked FROM videos WHERE id = ?', (vid(A, 1),)).fetchone() == ('en-GB', True, 'GB')
+
+
 def test_live_streams_are_marked_as_they_are_added_and_by_the_recheck(fake_youtube):
     fake_youtube.channel(A, 'Workshop', videos=3)
     fake_youtube.videos[vid(A, 0)]['snippet']['liveBroadcastContent'] = 'upcoming'

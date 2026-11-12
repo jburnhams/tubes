@@ -100,6 +100,60 @@ describe('Settings', () => {
     expect(mock.shown.min_seconds).toBeNull()
   })
 
+  it('sets the country, languages and subtitles, and saves them with the lengths', async () => {
+    const { user } = openApp('/admin/settings?tab=shown')
+    const country = await screen.findByRole('textbox', { name: 'Country the server watches from' })
+    await user.type(country, 'gb')
+    const english = screen.getByRole('checkbox', { name: /^English/ })
+    expect(english).not.toBeChecked()
+    expect(screen.getByText(/^41,200\svideos$/)).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: 'Videos whose language is not known' })).toHaveAccessibleDescription(/^5,400\svideos say no language/)
+    await user.click(english)
+    await user.click(screen.getByRole('checkbox', { name: /^French/ }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Videos whose language is not known' }), 'Leave them out')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Subtitles' }), 'Only videos with subtitles the uploader added')
+    await user.click(screen.getByRole('button', { name: 'Save filters' }))
+    expect(await screen.findByText('Saved', { selector: '[role=status]' })).toBeInTheDocument()
+    expect(mock.shown).toMatchObject({ region: 'GB', languages: ['en', 'fr'], unknown_language: 'hide', captions: 'only', min_seconds: null })
+  })
+
+  it('starts the country, languages and subtitles from the server, and clearing them saves no limit', async () => {
+    server.use(shownSet)
+    const { user } = openApp('/admin/settings?tab=shown')
+    const country = await screen.findByRole('textbox', { name: 'Country the server watches from' })
+    expect(country).toHaveValue('GB')
+    expect(screen.getByRole('checkbox', { name: /^English/ })).toBeChecked()
+    expect(screen.getByRole('combobox', { name: 'Subtitles' })).toHaveValue('only')
+    await user.clear(country)
+    await user.click(screen.getByRole('checkbox', { name: /^English/ }))
+    await user.click(screen.getByRole('button', { name: 'Save filters' }))
+    await waitFor(() => expect(mock.shown).toMatchObject({ region: null, languages: [] }))
+  })
+
+  it('says the country must be two letters, and saves nothing', async () => {
+    const { user } = openApp('/admin/settings?tab=shown')
+    const country = await screen.findByRole('textbox', { name: 'Country the server watches from' })
+    await user.type(country, 'G1')
+    await user.click(screen.getByRole('button', { name: 'Save filters' }))
+    expect(country).toHaveAccessibleDescription(/Enter the country as two letters/)
+    expect(mock.shown.region).toBeNull()
+  })
+
+  it('keeps a chosen language the library no longer has, so it can be cleared', async () => {
+    server.use(http.get('*/api/library/shown', () => HttpResponse.json({ ...mock.shown, languages: ['ja'], language_counts: [{ code: null, videos: 7 }] })))
+    openApp('/admin/settings?tab=shown')
+    expect(await screen.findByRole('checkbox', { name: /^Japanese/ })).toBeChecked()
+    expect(screen.getByRole('combobox', { name: 'Videos whose language is not known' })).toHaveAccessibleDescription(/^7\svideos say no language/)
+  })
+
+  it('says when no video says its language yet', async () => {
+    server.use(http.get('*/api/library/shown', () => HttpResponse.json({ ...mock.shown, language_counts: [] })))
+    openApp('/admin/settings?tab=shown')
+    expect(await screen.findByText('No video in the library says its language yet. Syncs and rechecks fill it in.')).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.getByRole('combobox', { name: 'Videos whose language is not known' })).toHaveAccessibleDescription(/^0\svideos say no language/)
+  })
+
   it('says why the server refused the filters', async () => {
     server.use(http.put('*/api/library/shown', () => HttpResponse.json({ detail: 'A length must be a number of seconds, 0 or more.' }, { status: 400 })))
     const { user } = openApp('/admin/settings?tab=shown')

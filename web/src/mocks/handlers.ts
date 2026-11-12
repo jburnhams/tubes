@@ -135,7 +135,7 @@ export const handlers = [
     const next = { ...mock.shown, ...body }
     if (next.min_seconds != null && next.max_seconds != null && next.min_seconds > next.max_seconds) return refused('The shortest length must not be longer than the longest.', 400)
     // A made-up count that moves with the filters, so a saved change is seen to do something.
-    mock.shown = { ...next, filtered: (next.min_seconds ? 12 : 0) + (next.max_seconds ? 5 : 0) + (next.streams === 'all' ? 3 : 0) }
+    mock.shown = { ...next, filtered: (next.min_seconds ? 12 : 0) + (next.max_seconds ? 5 : 0) + (next.streams === 'all' ? 3 : 0) + (next.region ? 2 : 0) + (next.languages?.length ? 475 : 0) + (next.captions === 'only' ? 30 : 0) }
     return HttpResponse.json(mock.shown)
   }),
   http.get(at(paths.skipping), () => HttpResponse.json(kindsFor(mock.settings))),
@@ -320,7 +320,7 @@ export const saveSettingsFails = http.put(at(paths.settings), down)
 export const shownLoading = http.get(at(paths.shown), () => delay('infinite'))
 export const shownError = http.get(at(paths.shown), down)
 /** Filters already set: videos under 3 minutes and past streams left out. */
-export const shownSet = http.get(at(paths.shown), () => HttpResponse.json({ min_seconds: 180, max_seconds: null, streams: 'all', filtered: 15 } satisfies ShownFilters))
+export const shownSet = http.get(at(paths.shown), () => HttpResponse.json({ ...defaultShown, min_seconds: 180, max_seconds: null, streams: 'all', region: 'GB', languages: ['en'], unknown_language: 'hide', captions: 'only', filtered: 15 } satisfies ShownFilters))
 
 export const syncFails = http.post(at(paths.sync), () => refused('YouTube cannot be asked without YOUTUBE_API_KEY in the server’s environment.', 503))
 /** The sync in one state from the first answer on: `msw.use(syncIn('running'))`. */

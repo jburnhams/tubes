@@ -116,7 +116,10 @@ export const syncJobs = {
 }
 
 /** Admin's filters as a new server has them: nothing left out but streams live now or scheduled. */
-export const defaultShown: ShownFilters = { min_seconds: null, max_seconds: null, streams: 'current', filtered: 0 }
+export const defaultShown: ShownFilters = {
+  min_seconds: null, max_seconds: null, streams: 'current', region: null, languages: [], unknown_language: 'show', captions: 'any', filtered: 0,
+  language_counts: [{ code: 'en', videos: 41_200 }, { code: null, videos: 5_400 }, { code: 'fr', videos: 380 }, { code: 'de', videos: 95 }],
+}
 
 export const library: LibraryStatus = { synced: '2026-11-09T06:00:00+00:00', channels: channels.length, videos: videos.length, hidden: 3, configured: true }
 export const libraryEmpty: LibraryStatus = { synced: null, channels: 0, videos: 0, hidden: 0, configured: false }

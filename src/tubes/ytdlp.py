@@ -74,11 +74,20 @@ GONE = re.compile(r'Video unavailable|This video is unavailable|Private video|ha
 BUSY = re.compile(r'try again later|not a bot|confirm your age', re.I)
 
 
+BLOCKED = re.compile(r'not made this video available in your country|not available in your country|blocked it in your country|geo.?restrict', re.I)
+
+
+def says_blocked(message):
+    """Whether yt-dlp's error says the video does not play in this server's country ("The uploader has not made this video available in
+    your country", sometimes after "Video unavailable"): YouTube still has it, so it is hidden as blocked, not gone (catalogue.mark_blocked)."""
+    return bool(message and BLOCKED.search(message))
+
+
 def says_gone(message):
     """Whether yt-dlp's error says YouTube no longer has the video (deleted, private, its account closed), rather than that it refused this
     request (rate limits, bot checks and age checks are worded "try again later", "not a bot" or "confirm your age", sometimes after "Video
     unavailable"). A wrong yes only hides the video until the next recheck finds it (catalogue.recheck)."""
-    return bool(message and GONE.search(message) and not BUSY.search(message))
+    return bool(message and GONE.search(message) and not BUSY.search(message) and not says_blocked(message))
 
 
 def probe(url, signed_in=False):

@@ -34,15 +34,15 @@ side's reports leave iPlayer episodes alone.
 
 `Job` runs a sync of several channels in a background thread for the web server, one at a time, and reports how far it has got; the timer
 runs `tubes sync` (cli.py), which calls `sync` directly."""
-import datetime, json, math, threading
+import datetime, json, math, re, threading
 
 from tubes import cache, db, iplayer, library, quota, youtube
 
 RECHECK = 2500                                                                   # videos per recheck: 50 quota units of the 10,000 a day
 LIVE_GAP = datetime.timedelta(days=1)                                          # a past stream is asked about again after this (see the notes)
 REPORT_GAP = datetime.timedelta(minutes=10)                                      # a reported video asked about this recently is not asked again (a page of broken thumbnails, reloaded)
-CHANNEL_FIELDS = ('platform', 'title', 'handle', 'thumbnail', 'description', 'published', 'country', 'subscribers', 'total_videos', 'views', 'uploads')
-VIDEO_FIELDS = ('platform', 'channel_id', 'title', 'published', 'duration', 'thumbnail', 'views', 'description', 'likes', 'comments', 'definition', 'live', 'expires', 'series', 'episode')
+CHANNEL_FIELDS = ('platform', 'title', 'handle', 'thumbnail', 'description', 'published', 'country', 'language', 'subscribers', 'total_videos', 'views', 'uploads')
+VIDEO_FIELDS = ('platform', 'channel_id', 'title', 'published', 'duration', 'thumbnail', 'views', 'description', 'likes', 'comments', 'definition', 'live', 'expires', 'series', 'episode', 'language', 'captions', 'regions_allowed', 'regions_blocked')
 ERRORS = (youtube.YoutubeError, iplayer.IplayerError)                          # what a sync notes against a channel and goes on from
 
 
@@ -324,8 +324,15 @@ def mark_gone(video_id, now=None):
     with db.connect() as con: con.execute('UPDATE videos SET gone = COALESCE(gone, ?) WHERE id = ?', (now or cache.stamp(), video_id))
 
 
+def mark_blocked(video_id, now=None):
+    """Hide a video whose fetch YouTube refused as not available in this server's country (a block the Data API's regionRestriction does
+    not always list, such as a rights holder's claim). A recheck leaves the mark, since YouTube still has the video; only a fetch that
+    succeeds clears it."""
+    with db.connect() as con: con.execute('UPDATE videos SET blocked = COALESCE(blocked, ?) WHERE id = ?', (now or cache.stamp(), video_id))
+
+
 def mark_found(video_id):
-    with db.connect() as con: con.execute('UPDATE videos SET gone = NULL WHERE id = ? AND gone IS NOT NULL', (video_id,))
+    with db.connect() as con: con.execute('UPDATE videos SET gone = NULL, blocked = NULL WHERE id = ? AND (gone IS NOT NULL OR blocked IS NOT NULL)', (video_id,))
 
 
 class FilterError(ValueError):
@@ -333,13 +340,21 @@ class FilterError(ValueError):
 
 
 def save_filters(changes):
-    """Merge `changes` into which videos the watching side shows (library.filters: `min_seconds`, `max_seconds`, None for no limit, and
-    `streams`, 'current' or 'all'), after checking every value (nothing is saved if one is wrong); returns the filters now in force."""
+    """Merge `changes` into which videos the watching side shows (library.filters: `min_seconds`, `max_seconds`, None for no limit;
+    `streams`, 'current' or 'all'; `region`, a country code or None; `languages`, language codes, empty for every one; `unknown_language`,
+    'show' or 'hide'; `captions`, 'any' or 'only'), after checking every value (nothing is saved if one is wrong); returns the filters now in force."""
     f = library.filters()
     for k, v in changes.items():
         if k not in library.FILTERS: raise FilterError(f'There is no filter called {k}.')
-        if k == 'streams':
-            if v not in library.STREAMS: raise FilterError(f'streams must be one of {", ".join(library.STREAMS)}.')
+        if k in library.CHOICES:
+            if v not in library.CHOICES[k]: raise FilterError(f'{k} must be one of {", ".join(library.CHOICES[k])}.')
+        elif k == 'region':
+            if v is not None and not (isinstance(v, str) and re.match(r'^[A-Za-z]{2}$', v.strip())): raise FilterError('The country must be a two-letter code, such as GB, or empty.')
+            v = v.strip().upper() if v else None
+        elif k == 'languages':
+            if not isinstance(v, list) or not all(isinstance(x, str) and re.match(r'^[A-Za-z]{2,3}$', x.strip()) for x in v):
+                raise FilterError('Languages must be a list of two- or three-letter codes, such as en.')
+            v = sorted({x.strip().lower() for x in v})
         elif v is not None:
             if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0: raise FilterError('A length must be a number of seconds, 0 or more.')   # 1e309 parses as infinity, which JSON cannot carry back
             v = int(v) if float(v).is_integer() else float(v)

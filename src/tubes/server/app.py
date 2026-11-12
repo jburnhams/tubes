@@ -12,7 +12,7 @@ API (JSON):
   GET  /api/settings, PUT /api/settings    every setting (settings.py); PUT takes any subset, a null resets one
   GET  /api/library                       {synced, channels, videos, hidden, live, filtered, configured}: when every followed channel was last synced, and whether the YouTube key is set
   POST /api/library {input}                add a channel (followed; its sync starts at once, or after the running sync's channels) or one video from a link, id or @handle; an iPlayer programme or episode link works the same way: {kind, channel|video, sync}
-  GET  /api/library/shown, PUT            which videos the watching side shows (library.filters): {min_seconds, max_seconds, streams, filtered}; PUT takes any subset, null for no limit; filtered is how many they leave out
+  GET  /api/library/shown, PUT            which videos the watching side shows (library.filters): {min_seconds, max_seconds, streams, region, languages, unknown_language, captions, filtered, language_counts}; PUT takes any subset of the filters, null for no limit; filtered is how many they leave out, language_counts the languages there are to choose from (library.languages)
   GET  /api/library/sync                   the background sync: {running, total, done, current, added, errors, started, finished}
   POST /api/library/sync {channels}        start one for these channel ids (default: every followed channel); 409 while one runs
   GET  /api/quota                         the YouTube Data API quota: today's units used of the limit, what remains, when it resets, today by
@@ -153,7 +153,7 @@ def create_app():
         return r
 
     @app.get('/api/library/shown')
-    def get_shown(): return dict(library.filters(), filtered=library.status()['filtered'])
+    def get_shown(): return dict(library.filters(), filtered=library.status()['filtered'], language_counts=library.languages())
 
     @app.put('/api/library/shown')
     def put_shown(changes: dict): guard(catalogue.save_filters, changes); return get_shown()

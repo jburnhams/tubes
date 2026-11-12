@@ -181,7 +181,8 @@ def _run(job, url):
         except OSError: pass
         cache.finish(job.video_id, cache.stamp(), error)
         with _lock: _running.pop(job.video_id, None)
-    if ytdlp.says_gone(error): catalogue.mark_gone(job.video_id)     # hidden from the lists until a recheck or a later fetch finds it
+    if ytdlp.says_blocked(error): catalogue.mark_blocked(job.video_id)   # not offered in this country: hidden until a fetch succeeds
+    elif ytdlp.says_gone(error): catalogue.mark_gone(job.video_id)     # hidden from the lists until a recheck or a later fetch finds it
     if not error: catalogue.mark_found(job.video_id); cache.evict(cache.utcnow())
 
 
