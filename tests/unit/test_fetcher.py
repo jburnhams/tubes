@@ -318,10 +318,8 @@ def test_an_iplayer_fetch_runs_ffmpeg_on_the_chosen_stream(monkeypatch):
     monkeypatch.setattr(fetcher, 'direct_pipeline', fake_direct)
     monkeypatch.setattr(ytdlp, 'probe', lambda *a, **kw: pytest.fail('yt-dlp is not asked when iPlayer answers'))
     evicted = []; monkeypatch.setattr(cache, 'evict', lambda now: evicted.append(now))
-    st = fetcher.start(E, 'Chapter 1', 'Harbour Lights', background=True)
-    assert st['state'] == 'fetching'
-    fetcher._running.get(E) and fetcher._running[E].thread.join(10)
-    assert seen == [('https://cdn.test/fhd.m3u8', 6.0)] and len(evicted) == 1
+    fetcher.start(E, 'Chapter 1', 'Harbour Lights', background=False)
+    assert cache.entry(E)['title'] == 'Chapter 1' and seen == [('https://cdn.test/fhd.m3u8', 6.0)] and len(evicted) == 1
     assert cache.status(E)['formats'] == '1080p50 H.264 + AAC' and cache.status(E)['state'] == 'ready'
 
 
@@ -377,3 +375,10 @@ def test_direct_pipeline_runs_ffmpeg_and_reads_the_result(monkeypatch):
     job2 = fetcher.Job(E); job2.cancelled = True
     killed = []; monkeypatch.setattr(oslib, 'kill_tree', lambda pid: killed.append(pid))
     assert fetcher.direct_pipeline(job2, 'u', 8) == 'The fetch was stopped.'
+
+
+def test_an_iplayer_fetch_needs_no_pipes(monkeypatch):
+    seed_episode(); monkeypatch.setattr(oslib, 'CAN_PASS_FDS', False)
+    monkeypatch.setattr(iplayer, 'stream', lambda pid, h: dict(url='u', label='720p50 H.264 + AAC'))
+    monkeypatch.setattr(fetcher, 'direct_pipeline', lambda job, url, d: write_playlist(job.video_id, 1, True))
+    assert fetcher.start(E, background=False)['state'] == 'ready'

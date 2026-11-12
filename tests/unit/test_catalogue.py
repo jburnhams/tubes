@@ -310,3 +310,20 @@ def test_an_expired_iplayer_episode_is_hidden_unless_it_is_cached(fake_iplayer):
     assert (s['videos'], s['hidden']) == (2, 1)
     assert {v['id'] for v in library.shuffle(10, P, now=after)} == {ep_id(P, 3), ep_id(P, 2)}
     assert library.video(ep_id(P, 1))['expires'] == '2026-11-12T00:00:00+00:00'               # still found by id
+
+
+def test_an_episode_whose_programme_is_not_offered_is_kept_under_its_network(fake_iplayer):
+    fake_iplayer.programme(P, 'Harbour Lights', episodes=1); e = ep_id(P, 1)
+    del fake_iplayer.programmes[P]
+    r = catalogue.add(f'https://www.bbc.co.uk/iplayer/episode/{e}')
+    assert r['video']['channel_id'] == 'bbc_one' and r['video']['channel'] == 'BBC One'
+    assert [v['id'] for v in videos_of('bbc_one')] == [e] and library.channel(P) is None
+
+
+def test_needs_youtube(fake_iplayer, fake_youtube):
+    assert catalogue.needs_youtube() is False and catalogue.needs_youtube([]) is False
+    fake_iplayer.programme(P, 'Harbour Lights'); catalogue.add(f'https://www.bbc.co.uk/iplayer/episodes/{P}')
+    assert catalogue.needs_youtube() is False and catalogue.needs_youtube([P]) is False
+    assert catalogue.needs_youtube(['UCnotinthelibraryatallxxx']) is True
+    fake_youtube.channel(A, 'Workshop'); catalogue.add(A)
+    assert catalogue.needs_youtube() is True and catalogue.needs_youtube([P, A]) is True and catalogue.needs_youtube([P]) is False

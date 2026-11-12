@@ -20,7 +20,7 @@ when the episode has it, else 720p50. Should the BBC's services stop answering a
 asked for its best muxed HLS stream instead (720p at most, as of 2026-11), so a change there costs quality rather than playback.
 
 Fetches run in background threads of the server process, one per video, at most `MAX_RUNNING` at a time; a play of a video already being fetched
-joins it. The pipes need file descriptors passed by number, which Windows lacks, so fetching runs on Linux and macOS only (oslib.CAN_PASS_FDS)."""
+joins it. The pipes need file descriptors passed by number, which Windows lacks, so fetching from YouTube runs on Linux and macOS only (oslib.CAN_PASS_FDS); an iPlayer fetch has no pipes and runs anywhere."""
 import json, os, subprocess, threading, time
 from concurrent.futures import ThreadPoolExecutor
 
@@ -145,7 +145,7 @@ def start(video_id, title=None, channel=None, background=True):
         if video_id in _running: return cache.status(video_id)
         st = cache.status(video_id)
         if st['state'] == 'ready' and st['complete']: return st      # a ready row whose files are gone (the cache folder moved, or was cleared by hand) is fetched again
-        if not oslib.CAN_PASS_FDS: raise FetchError('Fetching needs Linux or macOS.')
+        if where == 'youtube' and not oslib.CAN_PASS_FDS: raise FetchError('Fetching needs Linux or macOS.')      # an iPlayer fetch passes no pipes
         if len(_running) >= MAX_RUNNING: raise FetchError(f'{MAX_RUNNING} videos are already being fetched; try again when one finishes.')
         job = _running[video_id] = Job(video_id)
         cache.begin(video_id, cache.stamp(), title, channel)

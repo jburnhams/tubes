@@ -103,6 +103,7 @@ def add_iplayer(kind, pid, now=None):
     if not known:
         tleo = iplayer.programme(row['channel_id']) if row['channel_id'] == ep.get('tleo_id') else None
         ch = iplayer.channel_row(tleo, now) if tleo else iplayer.network_row(ep, now)
+        row['channel_id'] = ch['id']                                             # its programme is not offered: kept under its network, where it can be found
         with db.connect() as con: save_channel(con, ch, follow=False)
     with db.connect() as con: save_videos(con, [row])
     return dict(kind='video', video=library.video(row['id']))
@@ -274,6 +275,18 @@ def mark_gone(video_id, now=None):
 
 def mark_found(video_id):
     with db.connect() as con: con.execute('UPDATE videos SET gone = NULL WHERE id = ? AND gone IS NOT NULL', (video_id,))
+
+
+def needs_youtube(channel_ids=None):
+    """Whether a sync of these channels (default: every followed one) asks YouTube, so needs its key: iPlayer programmes sync without one."""
+    with db.connect() as con:
+        if channel_ids is None: rows = con.execute("SELECT 1 FROM channels WHERE follow = ? AND platform = 'youtube'", (True,)).fetchall()
+        else:
+            ids = list(channel_ids)
+            if not ids: return False
+            known = {r[0]: r[1] for r in con.execute(f"SELECT id, platform FROM channels WHERE id IN ({', '.join('?' * len(ids))})", tuple(ids))}
+            return any(known.get(i, 'youtube') == 'youtube' for i in ids)          # one the library does not know fails as YouTube's would
+    return bool(rows)
 
 
 def followed():

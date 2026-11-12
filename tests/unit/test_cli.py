@@ -130,3 +130,12 @@ def test_history_sync_from_a_history_database(capsys, tmp_path, monkeypatch):
     capsys.readouterr()
     assert cli.main(['history', 'sync', '--no-lookup']) == 0
     assert capsys.readouterr().out == '  main: 1 watch(es)\n  1 channel(s) in the history, 0 in 0 group(s)\n'
+
+
+def test_an_iplayer_programme_is_added_and_synced_without_a_youtube_key(capsys, fake_iplayer):
+    fake_iplayer.programme('b0000001', 'Harbour Lights', episodes=2)
+    assert cli.main(['add', 'https://www.bbc.co.uk/iplayer/episodes/b0000001']) == 0
+    out = capsys.readouterr().out
+    assert 'following b0000001: Harbour Lights' in out and '1 channel(s) synced, 2 new video(s)' in out
+    assert cli.main(['sync']) == 0
+    with pytest.raises(SystemExit, match='YOUTUBE_API_KEY is not in the environment'): cli.main(['sync', 'UCaaaaaaaaaaaaaaaaaaaaaa'])

@@ -144,7 +144,7 @@ def create_app():
 
     @app.post('/api/library/sync')
     def post_sync(b: SyncIn | None = None):
-        if not youtube.configured(): raise HTTPException(503, 'YouTube cannot be asked without YOUTUBE_API_KEY in the server’s environment.')
+        if not youtube.configured() and catalogue.needs_youtube(b.channels if b else None): raise HTTPException(503, 'YouTube cannot be asked without YOUTUBE_API_KEY in the server’s environment.')
         return guard(job.start, b.channels if b else None)
 
     @app.delete('/api/channels/{channel_id}')
@@ -153,7 +153,7 @@ def create_app():
     @app.post('/api/channels/{channel_id}/restart')
     def post_restart(channel_id: str):
         r = guard(catalogue.restart, channel_id)
-        if not youtube.configured(): return dict(r, sync=job.state())
+        if not youtube.configured() and catalogue.needs_youtube([channel_id]): return dict(r, sync=job.state())
         r['sync'] = job.follow_up([channel_id]); return r
 
     @app.get('/api/channels')

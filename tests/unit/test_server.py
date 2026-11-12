@@ -229,3 +229,16 @@ def test_history_stats_and_refresh_from_a_history_database(client, tmp_path, mon
     assert client.post('/api/suggestions/refresh').status_code == 502
     monkeypatch.setenv('TUBES_HISTORY_TABLE', 'bad name')
     assert client.post('/api/suggestions/refresh').status_code == 400
+
+
+def test_iplayer_programmes_sync_without_a_youtube_key(client, fake_iplayer):
+    fake_iplayer.programme('b0000001', 'Harbour Lights', episodes=2)
+    r = client.post('/api/library', json=dict(input='https://www.bbc.co.uk/iplayer/episodes/b0000001')).json()
+    assert r['kind'] == 'channel' and r['sync']['total'] == 1
+    client.app.state.sync.wait(10)
+    assert client.get('/api/library/sync').json()['added'] == 2
+    assert client.post('/api/library/sync').status_code == 200
+    client.app.state.sync.wait(10)
+    assert client.post('/api/channels/b0000001/restart').json()['sync']['total'] == 1
+    client.app.state.sync.wait(10)
+    assert client.post('/api/library/sync', json=dict(channels=['UCaaaaaaaaaaaaaaaaaaaaaa'])).status_code == 503
