@@ -14,10 +14,11 @@ import { bySeries } from '../../src/watch/ChannelScreen'
 import { episodes } from '../../src/mocks/fixtures'
 import { isPlaceholder } from '../../src/watch/missing'
 import { savedText, settled, waitingText } from '../../src/watch/WatchScreen'
-import { describeSuggestions, describeWatched, filterOf, groupChoices, placeOf } from '../../src/screens/SuggestionsScreen'
+import { describePasted, describeRelated, describeSuggestedBy, describeSuggestions, describeWatched, filterOf, groupChoices, placeOf } from '../../src/screens/SuggestionsScreen'
 import { historyUrl, suggestionsUrl } from '../../src/api'
 import { describeHistory, fillPeriods, periodLabel, rangeChoices, rangeOf } from '../../src/screens/HistoryScreen'
-import { historyStats } from '../../src/mocks/fixtures'
+import { channelHistory, historyStats } from '../../src/mocks/fixtures'
+import { describeWatching, elsewhere, libraryState, placeLine } from '../../src/screens/ChannelDetail'
 import { historySources, suggestions } from '../../src/mocks/fixtures'
 import { suggestionSummary } from '../../src/mocks/handlers'
 
@@ -166,8 +167,8 @@ describe('the findings', () => {
     expect(describeLibrary(channels, library)).toMatch(/^24\svideos from 3\sfollowed channels\. 1\schannel is still being read back to the first upload\. Every channel was last synced on /)
     expect(describeLibrary(channels.filter(c => c.complete), { ...library, synced: null })).toMatch(/^12\svideos from 2\sfollowed channels\. Not every channel has been synced yet\. 3\svideos are hidden because YouTube no longer has them\.$/)
     expect(describeLibrary(channels, { ...library, hidden: 0 })).toMatch(/synced on [^.]+\.$/)
-    expect(describeLibrary(channels, { ...library, hidden: 0, live: 1 })).toMatch(/\. 1\slive stream is hidden too, since their recordings often go\.$/)
-    expect(describeLibrary(channels, { ...library, live: 4 })).toMatch(/no longer has them\. 4\slive streams are hidden too/)
+    expect(describeLibrary(channels, { ...library, hidden: 0, live: 1 })).toMatch(/\. 1\slive or scheduled stream is hidden until it ends\.$/)
+    expect(describeLibrary(channels, { ...library, live: 4 })).toMatch(/no longer has them\. 4\slive or scheduled streams are hidden until they end\.$/)
     expect(describeLibrary([], library)).toMatch(/^The library follows no channels yet/)
     expect(describeLibrary(channels, { ...library, configured: false })).toMatch(/YOUTUBE_API_KEY/)
     expect(describeJob(syncJobs.idle)).toBeUndefined()
@@ -234,19 +235,35 @@ describe('index.html', () => {
 describe('suggestions', () => {
   it('says where they come from, and how far through them', () => {
     const one = { ...suggestionSummary(), sources: [historySources[0]], dismissed: 0, followed: 0 }
-    expect(describeSuggestions(one)).toMatch(/^6\schannels from the home history to consider, out of 4,210\swatches\.$/)
+    expect(describeSuggestions(one)).toMatch(/^8\schannels from the home history to consider, out of 4,210\swatches\. 4 of them are pointed at by related channels \(2 never watched\), asked about last on 8 Nov 2026\. 1\schannel could not be read last time\.$/)
+    expect(describeRelated({ ...one, related: { ...one.related, failed: 0, last: null }, unwatched: 0 })).toMatch(/^4 of them are pointed at by related channels, asked about this week\.$/)
+    expect(describeRelated({ ...one, related: { sources: 0, asked: 0, due: 0, failed: 0, last: null } })).toBe('')
+    expect(describeRelated({ ...one, open: 0 })).toBe('')
+    expect(describeSuggestions({ ...one, sources: [], open: 0, dismissed: 0 })).toMatch(/^No watch history yet\. .* Channels your followed ones point at are added as YouTube is asked about them\.$/)
     expect(describeSuggestions({ ...one, followed: 2, configured: false })).toMatch(/So far 2 followed\. Following and adding need the server’s YouTube key \(YOUTUBE_API_KEY\)\.$/)
-    expect(describeSuggestions({ ...one, sources: [] })).toMatch(/^No watch history yet\./)
+    expect(describeSuggestions({ ...one, sources: [], open: 0, dismissed: 0, related: { ...one.related, sources: 0 } })).toMatch(/most watched first\.$/)
   })
 
   it('describes a channel, the groups to choose from and the filter in the URL', () => {
-    expect(describeWatched({ ...suggestions[6], total_videos: null })).toMatch(/^12\swatches · 12\svideos$/)
+    const walks = suggestions.find(x => x.title === 'City Walks')!, lathe = suggestions.find(x => x.title === 'Lathe Turning')!
+    expect(describeWatched({ ...walks, total_videos: null })).toMatch(/^12\swatches · 12\svideos$/)
+    expect(describeWatched({ ...lathe, total_videos: null })).toBe('Never watched')
+    expect([0, 1, 2, 3].map(n => describeSuggestedBy({ ...lathe, suggested_by: n, suggested_from: lathe.suggested_from.slice(0, Math.min(n, 2)) }))).toEqual(['', 'Pointed at by Workshop Notes', 'Pointed at by Workshop Notes and Bike Repairs', 'Pointed at by Workshop Notes, Bike Repairs and 1 more'])
+    expect(describeSuggestedBy({ ...lathe, suggested_by: 2, suggested_from: [] })).toMatch(/^Pointed at by 2\srelated channels$/)
+    expect(filterOf(new URLSearchParams('order=suggested')).order).toBe('suggested')
+    expect(filterOf(new URLSearchParams('order=other')).order).toBeUndefined()
+    expect(suggestionsUrl({ order: 'suggested' })).toBe('/api/suggestions?order=suggested')
+    expect(suggestionsUrl({ pasted: true })).toBe('/api/suggestions?pasted=true')
+    expect(filterOf(new URLSearchParams('pasted=true')).pasted).toBe(true)
+    expect(describeWatched({ ...lathe, pasted: '2026-11-12T05:00:00+00:00', platform: 'iplayer', total_videos: 3 })).toMatch(/^Pasted .*2026 · 3 on iPlayer$/)
+    expect(describePasted({ found: [], already: [], problems: [] })).toBe('Nothing new to suggest.')
+    expect(describePasted({ found: [{ input: 'a', platform: 'iplayer', channel_id: 'b1', title: 'A' }], already: [{ input: 'b', title: 'B' }], problems: [{ input: 'c', error: 'No.' }] })).toMatch(/^Added 1\ssuggestion \(1 on iPlayer\)\. Already followed: B\. Not found: “c” \(No\)\.$/)
     const s = suggestionSummary()
     expect(groupChoices({ ...s, ungrouped: 0 }).map(c => c.value)).toEqual(['', '1', '2'])
     expect(groupChoices({ ...s, groups: [{ id: 3, name: 'Empty', named: false, channels: 0 }] }).map(c => c.value)).toEqual(['', 'none'])
-    expect(filterOf(new URLSearchParams('group=2&topic=Music&kids=yes&view=dismissed'))).toEqual({ group: '2', topic: 'Music', kids: 'yes', dismissed: true })
+    expect(filterOf(new URLSearchParams('group=2&topic=Music&kids=yes&view=dismissed'))).toEqual({ group: '2', topic: 'Music', kids: 'yes', dismissed: true, order: undefined, pasted: undefined })
     const names = new Map([[1, 'Making and mending']])
-    expect([suggestions[0], suggestions[1], suggestions[6]].map(x => placeOf(x, names))).toEqual(['Making and mending · Hobby, Vehicle', 'Entertainment, Film', ''])
+    expect([suggestions[0], suggestions[1], walks].map(x => placeOf(x, names))).toEqual(['Making and mending · Hobby, Vehicle', 'Entertainment, Film', ''])
     expect(suggestionsUrl({})).toBe('/api/suggestions')
     expect(suggestionsUrl({ group: 'none', topic: 'Pop music', kids: 'no', dismissed: true })).toBe('/api/suggestions?group=none&topic=Pop+music&kids=false&dismissed=true')
     expect(suggestionsUrl({ kids: 'maybe' })).toBe('/api/suggestions')
@@ -321,5 +338,18 @@ describe('iPlayer episodes on the watching side', () => {
     expect(bySeries(episodes).map(([s, vs]) => [s, vs.length])).toEqual([['Series 2', 3], ['Series 1', 3]])
     expect(bySeries([{ ...episodes[0], series: null }, { ...episodes[1], series: undefined }]).map(([s, vs]) => [s, vs.length])).toEqual([[null, 2]])
     expect(bySeries([])).toEqual([])
+  })
+})
+
+describe('channel panel', () => {
+  const o = { channel_id: 'UCx', title: 'X', thumbnail: null, handle: null, library: null, suggestion: null, group: null, configured: true, history: channelHistory('X') }
+  it('says how much it was watched, where it sits and what the library holds', () => {
+    expect(describeWatching({ ...o, history: { ...o.history, sources: [{ source: 'home', watches: 58 }] } })).toMatch(/^Watched 58\stimes \(41\svideos\) from .* to [^,]*\.$/)
+    expect(placeLine(o)).toBe('')
+    expect(placeLine({ group: { id: 1, name: 'G', named: true }, suggestion: { ...suggestions[0], topics: [] } })).toBe('Group: G')
+    expect(placeLine({ group: null, suggestion: suggestions[0] })).toBe('Hobby, Vehicle')
+    expect(libraryState(o).word).toBe('Not in the library')
+    expect(elsewhere(o)).toEqual({ href: 'https://www.youtube.com/channel/UCx', label: 'Open on YouTube' })
+    expect(elsewhere({ channel_id: 'b0000001', library: { ...channels[0], id: 'b0000001', platform: 'iplayer' } })).toEqual({ href: 'https://www.bbc.co.uk/iplayer/episodes/b0000001', label: 'Open on iPlayer' })
   })
 })

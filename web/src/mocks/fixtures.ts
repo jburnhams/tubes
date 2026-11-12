@@ -2,7 +2,7 @@
 // tests, every Storybook story and the visual suite's screenshots, so a screen looks the same in
 // each. Dates are fixed, so screenshots do not change from day to day. Pictures are flat SVG
 // tiles as data URLs, so nothing is fetched from outside.
-import type { CacheItem, CacheReport, Channel, HistorySource, HistoryStats, LibraryStatus, Settings, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video } from '../api'
+import type { CacheItem, CacheReport, Channel, ChannelOverview, HistorySource, HistoryStats, LibraryStatus, RelatedStatus, Settings, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video } from '../api'
 
 export const GB = 1e9
 
@@ -155,19 +155,37 @@ export const historySources: HistorySource[] = [
 const suggestion = (n: number, title: string, hue: number, s: Partial<Suggestion>): Suggestion => ({
   channel_id: `UCsuggest${String(n).padStart(15, '0')}`, title, handle: `@${title.toLowerCase().replace(/[^a-z]/g, '')}`, thumbnail: tile(hue, title), watches: 10, videos: 8,
   first: '2024-02-01T10:00:00+00:00', last: '2026-10-01T10:00:00+00:00', score: 5, group_id: null, subscribers: 10_000, total_videos: 120, topics: [], made_for_kids: null,
-  missing: false, dismissed: null, in_library: false, ...s,
+  missing: false, dismissed: null, in_library: false, suggested_by: 0, related_score: 0, suggested_from: [], platform: 'youtube', pasted: null,
+  link: `https://www.youtube.com/channel/UCsuggest${String(n).padStart(15, '0')}`, ...s,
 })
 
-/** Channels from the history, best score first: two groups (one named), one ungrouped, one made for kids, one with a video in the library. */
+/** One no history has watches for, only pointed at by related channels. */
+const related = (n: number, title: string, hue: number, s: Partial<Suggestion>): Suggestion =>
+  suggestion(n, title, hue, { watches: 0, videos: 0, first: null, last: null, score: 0, ...s })
+
+/** Channels from the history, best score first: two groups (one named), one ungrouped, one made for kids, one with a video in the library;
+ * some also pointed at by related channels, and two that only related channels point at (one with no picture or details yet). */
 export const suggestions: Suggestion[] = [
-  suggestion(1, 'Bike Repairs', 20, { watches: 412, videos: 380, score: 140.2, group_id: 1, topics: ['Hobby', 'Vehicle'], total_videos: 2_900, last: '2026-10-28T19:00:00+00:00' }),
+  suggestion(1, 'Bike Repairs', 20, { watches: 412, videos: 380, score: 140.2, group_id: 1, topics: ['Hobby', 'Vehicle'], total_videos: 2_900, last: '2026-10-28T19:00:00+00:00', suggested_by: 2, related_score: 1.3, suggested_from: ['Workshop Notes', 'Model Railways'] }),
   suggestion(2, 'Puppet Theatre', 300, { watches: 248, videos: 89, score: 120.5, group_id: 2, topics: ['Entertainment', 'Film'], made_for_kids: true, last: '2026-10-30T07:00:00+00:00' }),
-  suggestion(3, 'Model Railways', 100, { watches: 180, videos: 172, score: 61.9, group_id: 1, topics: ['Hobby'], last: '2026-09-07T20:00:00+00:00', in_library: true }),
+  suggestion(3, 'Model Railways', 100, { watches: 180, videos: 172, score: 61.9, group_id: 1, topics: ['Hobby'], last: '2026-09-07T20:00:00+00:00', in_library: true, suggested_by: 1, related_score: 0.33, suggested_from: ['Workshop Notes'] }),
   suggestion(4, 'Garden Birds', 140, { watches: 96, videos: 90, score: 33.4, group_id: 1, topics: ['Lifestyle'], total_videos: null }),
   suggestion(5, 'Counting Songs', 50, { watches: 51, videos: 39, score: 30.1, group_id: 2, topics: ['Music'], made_for_kids: true }),
   suggestion(6, 'Old Synth Sounds', 260, { watches: 105, videos: 48, score: 9.8, topics: ['Electronic music', 'Music'], last: '2023-08-02T22:00:00+00:00', thumbnail: null }),
+  related(8, 'Lathe Turning', 40, { group_id: 1, topics: ['Hobby'], total_videos: 640, suggested_by: 5, related_score: 3.6, suggested_from: ['Workshop Notes', 'Bike Repairs', 'Model Railways'] }),
+  related(9, 'Canal Boats', 220, { thumbnail: null, handle: null, subscribers: null, total_videos: null, suggested_by: 2, related_score: 0.5, suggested_from: ['Garden Birds', 'Workshop Notes'] }),
   suggestion(7, 'City Walks', 200, { watches: 12, videos: 12, score: 2.1, group_id: null, dismissed: '2026-11-01T10:00:00+00:00', last: null }),
 ]
+
+/** Asking YouTube about related channels: every source asked this week, one failed. */
+export const relatedStatus: RelatedStatus = { sources: 24, asked: 24, due: 0, failed: 1, last: '2026-11-08T08:00:00+00:00' }
+
+/** What the stand-in finds when a list is pasted, by what was typed (a link or a name, any case): a YouTube channel and an iPlayer programme. */
+export const pasteable: Record<string, Suggestion> = {
+  'https://www.youtube.com/@ropemaking': related(20, 'Rope Making', 10, { handle: '@ropemaking', topics: ['Hobby'], total_videos: 210 }),
+  'https://www.bbc.co.uk/iplayer/episodes/b0000001': related(21, 'Harbour Lights', 190, { channel_id: 'b0000001', platform: 'iplayer', handle: null, subscribers: null, total_videos: 12, link: 'https://www.bbc.co.uk/iplayer/episodes/b0000001' }),
+}
+pasteable['harbour lights'] = pasteable['https://www.bbc.co.uk/iplayer/episodes/b0000001']
 
 export const suggestionGroups: SuggestionGroup[] = [
   { id: 1, name: 'Making and mending', named: true, channels: 3 },
@@ -194,6 +212,20 @@ export const historyStats: Omit<HistoryStats, 'sources'> = {
 export const historyDays: Omit<HistoryStats, 'sources'> = {
   ...historyStats, watches: 64, videos: 50, channels: 12, by: 'day', first: '2026-10-11T08:00:00+00:00',
   periods: Array.from({ length: 20 }, (_, i) => ({ period: `2026-10-${String(i + 11).padStart(2, '0')}`, watches: (i * 7) % 6 + (i % 4 === 0 ? 0 : 1) })).filter(p => p.watches > 0),
+}
+
+/** A channel's watch history for the overview: two accounts, a quiet month, and three videos (one in the library). */
+export function channelHistory(title: string): ChannelOverview['history'] {
+  return {
+    watches: 58, videos: 41, first: '2025-12-02T18:00:00+00:00', last: '2026-10-28T19:00:00+00:00',
+    sources: [{ source: 'home', watches: 50 }, { source: 'work', watches: 8 }],
+    periods: [['2025-12', 6], ['2026-01', 12], ['2026-03', 9], ['2026-04', 14], ['2026-05', 7], ['2026-06', 10]].map(([period, watches]) => ({ period: String(period), watches: Number(watches) })),
+    videos_top: [
+      { video_id: 'wo000000000', title: `${title}: the one watched most`, watches: 6, last: '2026-10-28T19:00:00+00:00', in_library: true },
+      { video_id: 'xx000000001', title: `${title}: a favourite`, watches: 4, last: '2026-06-01T19:00:00+00:00', in_library: false },
+      { video_id: 'xx000000002', title: null, watches: 1, last: '2026-01-01T19:00:00+00:00', in_library: false },
+    ],
+  }
 }
 
 /** An iPlayer programme kept as a channel: two series of three episodes, newest first. They expire far in the future, so screenshots

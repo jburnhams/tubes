@@ -26,8 +26,11 @@ Tubes keeps its own tables (the library, cache copies, plays) in a database thro
 | `tubes doctor` | checks yt-dlp, ffmpeg, the database, the YouTube key and when the library was last synced |
 | `tubes add <link, id or @handle>` | follows a channel and syncs it (`--no-sync` to wait), or adds one video |
 | `tubes sync [channel ...]` | fetches new videos for every followed channel (or the ones named); a first sync reads back to the channel's first upload |
-| `tubes recheck [--limit N \| --all]` | asks YouTube about the videos checked longest ago, hiding those it no longer has and live streams (each sync does 2,500; `--all` costs a unit per 50 videos) |
+| `tubes recheck [--limit N \| --all]` | asks YouTube about the videos checked longest ago, hiding those it no longer has and marking live streams (each sync does 2,500; `--all` costs a unit per 50 videos) |
 | `tubes channels` / `tubes remove <channel>` | lists the channels with their state / removes one and its videos |
+| `tubes history [import, sync, refresh, remove]` | brings in a watch history that channels are suggested from (Admin > Suggestions) |
+| `tubes related [--all] [-v]` | asks YouTube which channels the followed and most watched ones point at (watch pages' next column, featured channels), each again after a week, and suggests them |
+| Admin > Suggestions: Paste channels to follow | YouTube links, @handles, iPlayer programme or episode links, or names (looked up on both), one a line, become suggestions to follow |
 | `tubes fetch <id>` | fetches one video into the cache now |
 | `tubes cache` / `tubes evict [--dry-run]` | shows the cache with each copy's score / trims it |
 | `tubes set [key [value]]` | shows or changes a setting (`default` resets one) |

@@ -28,7 +28,7 @@ export interface LibraryStatus {
   /** Videos that can be watched; `hidden` are those YouTube no longer has (deleted or made private), left out of every list. */
   videos: number
   hidden: number
-  /** Live streams (running, scheduled or past), hidden from every list too because a past one's recording often goes. Absent from older servers. */
+  /** Streams live now or scheduled, hidden from every list until they end (a past one is shown). Absent from older servers. */
   live?: number
   /** The YouTube key is in the server's environment, so YouTube channels can be added and synced. iPlayer programmes need no key. */
   configured: boolean
@@ -39,13 +39,14 @@ export type Platform = 'youtube' | 'iplayer'
 
 export interface Channel {
   id: string
+  /** Where it comes from: 'youtube', or 'iplayer' for a BBC iPlayer programme. */
   platform?: Platform
   title: string
   handle: string | null
   thumbnail: string | null
   /** When this channel was last synced. */
   synced: string | null
-  /** Videos held here that can be watched, and those hidden because YouTube no longer has them or they are live streams. */
+  /** Videos held here that can be watched, and those hidden because YouTube no longer has them or they are streams not over yet. */
   videos: number
   hidden?: number
   latest: string | null
@@ -190,7 +191,7 @@ export interface HistorySource {
   last: string
 }
 
-/** `GET /api/suggestions`: a channel from the watch history the library could take in. */
+/** `GET /api/suggestions`: a channel the library could take in, from the watch history or pointed at by related channels. */
 export interface Suggestion {
   channel_id: string
   title: string
@@ -214,6 +215,25 @@ export interface Suggestion {
   dismissed: string | null
   /** The library holds some of its videos without following it. */
   in_library: boolean
+  /** How many of the followed channels and the history's most watched ones point at it (their watch pages list its videos, or they feature it). */
+  suggested_by: number
+  /** Those pointers added up, each by the share of its watch pages that listed this channel: the suggested order's tie-break. */
+  related_score: number
+  /** Up to three of the channels pointing at it, the strongest first. */
+  suggested_from: string[]
+  /** Where it is: a YouTube channel, or an iPlayer programme (which only comes in pasted). */
+  platform: string
+  /** When someone pasted it into the page; null for one from the history or related channels only. */
+  pasted: string | null
+  /** Its page on YouTube or iPlayer: where its title goes, and what Follow adds. */
+  link: string
+}
+
+/** `POST /api/suggestions/paste`: what a pasted list named. `found` are now suggested, `already` are followed, `problems` say why a line named nothing. */
+export interface Pasted {
+  found: { input: string; platform: string; channel_id: string; title: string }[]
+  already: { input: string; title: string }[]
+  problems: { input: string; error: string }[]
 }
 
 export interface SuggestionPage { items: Suggestion[]; total: number }
@@ -234,10 +254,20 @@ export interface SuggestionSummary {
   configured: boolean
   /** A history database is set on the server: Regroup reads it again first. */
   database?: boolean
+  /** Open channels a related channel points at, and open channels with no watches (only pointed at). */
+  suggested: number
+  unwatched: number
+  /** Open channels pasted in. */
+  pasted: number
+  /** How far asking YouTube about related channels has got (`tubes related` on the server's timer, each channel again after a week). */
+  related: RelatedStatus
 }
 
+/** Of the followed and most watched channels (`sources`), how many YouTube was asked about, how many are due again, and how many failed last time. */
+export interface RelatedStatus { sources: number; asked: number; due: number; failed: number; last: string | null }
+
 /** What the list is filtered by; each lives in the page's URL. */
-export interface SuggestionFilter { group?: string; topic?: string; kids?: string; dismissed?: boolean }
+export interface SuggestionFilter { group?: string; topic?: string; kids?: string; dismissed?: boolean; order?: string; pasted?: boolean }
 
 export function suggestionsUrl(f: SuggestionFilter): string {
   const q = new URLSearchParams()
@@ -245,6 +275,8 @@ export function suggestionsUrl(f: SuggestionFilter): string {
   if (f.topic) q.set('topic', f.topic)
   if (f.kids === 'yes' || f.kids === 'no') q.set('kids', String(f.kids === 'yes'))
   if (f.dismissed) q.set('dismissed', 'true')
+  if (f.order === 'suggested') q.set('order', 'suggested')
+  if (f.pasted) q.set('pasted', 'true')
   const s = q.toString()
   return s ? `${paths.suggestions}?${s}` : paths.suggestions
 }
@@ -274,6 +306,29 @@ export function historyUrl(f: HistoryFilter): string {
   if (f.source) q.set('source', f.source)
   const s = q.toString()
   return s ? `${paths.history}?${s}` : paths.history
+}
+
+/** `GET /api/channels/{id}/overview`: everything known of a channel, whether or not the library has it. */
+export interface ChannelOverview {
+  channel_id: string
+  title: string
+  thumbnail: string | null
+  handle: string | null
+  /** The library's channel, or null when it is not in the library. */
+  library: Channel | null
+  /** Its suggestion, or null when it was never in a watch history. */
+  suggestion: Suggestion | null
+  group: { id: number; name: string; named: boolean } | null
+  configured: boolean
+  history: {
+    watches: number
+    videos: number
+    first: string | null
+    last: string | null
+    sources: { source: string; watches: number }[]
+    periods: { period: string; watches: number }[]
+    videos_top: { video_id: string; title: string | null; watches: number; last: string; in_library: boolean }[]
+  }
 }
 
 export interface Refreshed { channels: number; groups: number; grouped: number; looked_up: number; missing: number; error: string | null }
@@ -313,6 +368,7 @@ export const paths = {
   sync: '/api/library/sync',
   channels: '/api/channels',
   channel: (id: string) => `/api/channels/${encodeURIComponent(id)}`,
+  overview: (id: string) => `/api/channels/${encodeURIComponent(id)}/overview`,
   restart: (id: string) => `/api/channels/${encodeURIComponent(id)}/restart`,
   videos: '/api/videos',
   shuffle: '/api/videos/shuffle',
@@ -329,6 +385,7 @@ export const paths = {
   suggestionsSummary: '/api/suggestions/summary',
   suggestionsRefresh: '/api/suggestions/refresh',
   suggestionsImport: '/api/suggestions/import',
+  suggestionsPaste: '/api/suggestions/paste',
   suggestion: (id: string) => `/api/suggestions/${encodeURIComponent(id)}`,
   suggestionVideos: (id: string) => `/api/suggestions/${encodeURIComponent(id)}/videos`,
   suggestionGroup: (id: number) => `/api/suggestions/groups/${id}`,
@@ -351,8 +408,9 @@ export const keys = {
   cache: ['cache'],
   suggestions: ['suggestions'],
   history: (f: HistoryFilter) => ['suggestions', 'history', f.start ?? '', f.end ?? '', f.source ?? ''],
-  suggestionList: (f: SuggestionFilter) => ['suggestions', 'list', f.group ?? '', f.topic ?? '', f.kids ?? '', f.dismissed ? 'dismissed' : 'open'],
+  suggestionList: (f: SuggestionFilter) => ['suggestions', 'list', f.group ?? '', f.topic ?? '', f.kids ?? '', f.dismissed ? 'dismissed' : 'open', f.order === 'suggested' ? 'suggested' : 'watched', f.pasted ? 'pasted' : 'all'],
   suggestionSummary: ['suggestions', 'summary'],
+  overview: (id: string) => ['suggestions', 'overview', id],
 } as const
 
 /** A request the server refused with a reason (`{detail}`), such as a fetch that cannot start. The reason is its sentence. */
@@ -400,10 +458,12 @@ export const api = {
   pin: (id: string, pinned: boolean) => fetchJson<unknown>(withBase(paths.cacheItem(id)), send('PUT', { pinned })),
   dropCopy: (id: string) => fetchJson<{ video_id: string; freed: number }>(withBase(paths.cacheItem(id)), { method: 'DELETE' }),
   evict: () => fetchJson<Evicted>(withBase(paths.evict), send('POST', { dry_run: false })),
+  overview: (id: string) => fetchJson<ChannelOverview>(withBase(paths.overview(id))),
   history: (f: HistoryFilter) => fetchJson<HistoryStats>(withBase(historyUrl(f))),
   suggestions: (f: SuggestionFilter) => fetchJson<SuggestionPage>(withBase(suggestionsUrl(f))),
   suggestionSummary: () => fetchJson<SuggestionSummary>(withBase(paths.suggestionsSummary)),
   refreshSuggestions: () => callJson<Refreshed & { summary: SuggestionSummary }>(withBase(paths.suggestionsRefresh), { method: 'POST' }),
+  pasteSuggestions: (text: string) => callJson<Pasted>(withBase(paths.suggestionsPaste), send('POST', { text })),
   importHistory: (source: string, text: string) => callJson<{ source: string; watches: number; first: string; last: string; refresh: Refreshed }>(withBase(paths.suggestionsImport), send('POST', { source, text })),
   dismiss: (id: string, dismissed: boolean) => callJson<Suggestion>(withBase(paths.suggestion(id)), send('PUT', { dismissed })),
   /** Add the channel's watched videos to the library, without following it. */

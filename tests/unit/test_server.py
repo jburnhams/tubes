@@ -183,6 +183,40 @@ def test_the_watching_side_reports_missing_videos(client, fake_youtube, monkeypa
     assert r.status_code == 503 and 'YOUTUBE_API_KEY' in r.json()['detail']
 
 
+def test_a_past_stream_whose_recording_went_is_dropped_as_it_is_read(client, fake_youtube):
+    from fake_youtube import vid
+    from tubes import catalogue, db
+    A = 'UCaaaaaaaaaaaaaaaaaaaaaa'
+    fake_youtube.channel(A, 'Workshop', videos=3)
+    for n in (0, 1, 2): fake_youtube.videos[vid(A, n)]['liveStreamingDetails'] = dict(actualEndTime='t')
+    catalogue.add(A); catalogue.sync_channel(A)
+    assert len(client.get('/api/videos').json()['videos']) == 3                                    # past streams are shown (asked about once, never checked)
+    for n in (0, 1, 2): del fake_youtube.videos[vid(A, n)]
+    assert len(client.get('/api/videos').json()['videos']) == 3                                    # asked about within the day: not again
+    with db.connect() as con: con.execute("UPDATE videos SET checked = '2026-01-01T00:00:00'")
+    assert [v['id'] for v in client.get('/api/videos/shuffle?count=1').json()] == []                      # the one picked had gone
+    assert client.get('/api/videos').json()['videos'] == [] and client.get(f'/api/videos/{vid(A, 0)}').json()['gone']
+    with db.connect() as con: con.execute("UPDATE videos SET checked = '2026-01-01T00:00:00', gone = NULL WHERE id = ?", (vid(A, 1),))
+    assert client.get(f'/api/videos/{vid(A, 1)}').json()['gone']                                     # the Watch page's read finds it gone too
+
+
+def test_a_page_emptied_by_the_recheck_reads_on(client, fake_youtube):
+    from fake_youtube import vid
+    from tubes import catalogue, db
+    A = 'UCaaaaaaaaaaaaaaaaaaaaaa'
+    fake_youtube.channel(A, 'Workshop', videos=4)
+    for n in range(4): fake_youtube.videos[vid(A, n)]['liveStreamingDetails'] = dict(actualEndTime='t')
+    catalogue.add(A); catalogue.sync_channel(A)
+    order = [v['id'] for v in client.get('/api/videos').json()['videos']]
+    for i in order[:2]: del fake_youtube.videos[i]                                                  # the two newest went
+    with db.connect() as con: con.execute("UPDATE videos SET checked = '2026-01-01T00:00:00'")
+    r = client.get('/api/videos', params=dict(limit=2)).json()
+    assert [v['id'] for v in r['videos']] == order[2:] and r['has_more'] is False                 # not an empty page with more behind it
+    for i in order[2:]: del fake_youtube.videos[i]
+    with db.connect() as con: con.execute("UPDATE videos SET checked = '2026-01-01T00:00:00'")
+    assert client.get('/api/videos', params=dict(limit=2)).json() == dict(videos=[], has_more=False)
+
+
 def test_suggestions(client, fake_youtube, monkeypatch):
     from takeout import as_json, chan, watch
     from fake_youtube import vid
@@ -242,3 +276,7 @@ def test_iplayer_programmes_sync_without_a_youtube_key(client, fake_iplayer):
     assert client.post('/api/channels/b0000001/restart').json()['sync']['total'] == 1
     client.app.state.sync.wait(10)
     assert client.post('/api/library/sync', json=dict(channels=['UCaaaaaaaaaaaaaaaaaaaaaa'])).status_code == 503
+
+
+def test_channel_overview(client):
+    assert client.get('/api/channels/UCnone/overview').status_code == 404

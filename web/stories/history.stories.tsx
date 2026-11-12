@@ -21,3 +21,5 @@ export const NoHistory: Story = { beforeEach: ({ msw }) => msw.use(historyNone) 
 export const Loading: Story = { beforeEach: ({ msw }) => msw.use(historyLoading) }
 export const ServerError: Story = { beforeEach: ({ msw }) => msw.use(historyError) }
 export const Phone: Story = { tags: ['visual-phone'] }
+/** A channel opened in place: the shared channel panel (its history, numbers and options). */
+export const ChannelOpen: Story = { render: () => <AppAt route="/admin/history?open=UCsuggest000000000000002" /> }
