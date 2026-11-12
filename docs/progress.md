@@ -8,6 +8,11 @@
 - `GET /api/quota`, `tubes quota`, and Admin > YouTube quota: the finding (used, left, reset in the viewer's clock; spent; nothing yet; no key), a Meter warning at 80% and 95%, today's units by purpose (CompositionBar) and by endpoint, and 30 days as a line and a table. The System page links to it.
 - Not shown: what other apps using the same key spend (only visible through a refusal). Shares under 1% read "0%" in the CompositionBar: the installed strata-react (0.1.17) has no `format.share` yet.
 
+## 2026-11-12: one channel panel for every admin list
+
+- Asked for: a common channel component with its preview, history, stats and options. `ChannelDetail` (web/src/screens) opens in place from History's top channels and the Library's table (DataTable `expansion`, `?open=` in the URL) and from each suggestion (More/Less). It shows the library state, how much and how lately the channel was watched (per month over all the history, per account, the videos watched most), YouTube's counts and topics, and the same options everywhere: Follow, Add watched videos, Dismiss or Restore the suggestion, Open in Tubes, Open on YouTube. One read, `GET /api/channels/{id}/overview` (`history.overview`), made only when a row opens.
+- A hover preview needs a hover card, which Strata does not have; per AGENTS.md that is a strata-react issue to raise, not a hand-built popover here.
+
 ## 2026-11-12: BBC iPlayer programmes and episodes
 
 - Asked for: BBC iPlayer alongside YouTube, blending in on every screen. Tubes runs in the UK, which iPlayer requires (it also needs a TV licence, which is the owner's to hold).

@@ -400,3 +400,27 @@ def stats(start=None, end=None, source=None, top=TOP):
                                          FROM watches WHERE {w} GROUP BY video_id ORDER BY watches DESC, last DESC, video_id LIMIT ?""", (*args, top)))
     for c in channels: c['followed'] = bool(c['followed'])
     return dict(n, by=by, periods=periods, channels_top=channels, videos_top=videos)
+
+
+def overview(channel_id, top=10):
+    """Everything known of one channel, for the detail panel every admin page opens: `{channel_id, title, thumbnail, handle, library,
+    suggestion, group, history}`. `library` is the library's channel (None if not there), `suggestion` its suggestion (None if never in a
+    history), `history` its watches: totals, per account, per month over all time, and the videos watched most. NotFound if nothing knows it."""
+    from tubes import library
+    lib = library.channel(channel_id)
+    try: sug = suggestion(channel_id)
+    except NotFound: sug = None
+    with db.connect() as con:
+        n = db.row(con.execute('SELECT COUNT(*) AS watches, COUNT(DISTINCT video_id) AS videos, MIN(at) AS first, MAX(at) AS last, MAX(channel_title) AS title FROM watches WHERE channel_id = ?', (channel_id,)))
+        by_source = [dict(source=r[0], watches=r[1]) for r in con.execute('SELECT source, COUNT(*) FROM watches WHERE channel_id = ? GROUP BY source ORDER BY COUNT(*) DESC, source', (channel_id,))]
+        periods = [dict(period=r[0], watches=r[1]) for r in con.execute('SELECT SUBSTR(at, 1, 7) AS p, COUNT(*) FROM watches WHERE channel_id = ? GROUP BY SUBSTR(at, 1, 7) ORDER BY p', (channel_id,))]
+        videos = db.rows(con.execute('''SELECT w.video_id, MAX(w.title) AS title, COUNT(*) AS watches, MAX(w.at) AS last, MAX(CASE WHEN v.id IS NOT NULL AND v.gone IS NULL THEN 1 ELSE 0 END) AS in_library
+                                        FROM watches w LEFT JOIN videos v ON v.id = w.video_id WHERE w.channel_id = ? GROUP BY w.video_id ORDER BY watches DESC, last DESC, w.video_id LIMIT ?''', (channel_id, top)))
+        group = db.row(con.execute('SELECT id, name, named FROM suggestion_groups WHERE id = ?', (sug['group_id'],))) if sug and sug['group_id'] is not None else None
+    if lib is None and sug is None and not n['watches']: raise NotFound(f'Nothing is known of channel {channel_id}.')
+    for v in videos: v['in_library'] = bool(v['in_library'])
+    if group: group['named'] = bool(group['named'])
+    title = (lib or {}).get('title') or (sug or {}).get('title') or n['title'] or channel_id
+    return dict(channel_id=channel_id, title=title, thumbnail=(lib or {}).get('thumbnail') or (sug or {}).get('thumbnail'), handle=(lib or {}).get('handle') or (sug or {}).get('handle'),
+                library=lib, suggestion=sug, group=group, configured=youtube.configured(),
+                history=dict(watches=n['watches'], videos=n['videos'], first=n['first'], last=n['last'], sources=by_source, periods=periods, videos_top=videos))

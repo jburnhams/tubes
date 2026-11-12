@@ -15,6 +15,7 @@ API (JSON):
   GET  /api/quota                         the YouTube Data API quota: today's units used of the limit, what remains, when it resets, today by
                                            purpose, endpoint and hour, and the last 30 days (quota.py; Google has no call that says this)
   GET  /api/channels, GET /api/channels/{id}   channels with their video counts and sync state
+  GET  /api/channels/{id}/overview         a channel's library state, watch history (per month, per account, videos watched most) and suggestion
   DELETE /api/channels/{id}                remove a channel and its videos
   POST /api/channels/{id}/restart          forget a channel's videos and sync state, then sync it again from the start
   GET  /api/videos?channel=&q=&after=&limit=   a page of videos, newest first: {videos, has_more}; `after` is the last one's cursor (`published|id`)
@@ -163,6 +164,11 @@ def create_app():
 
     @app.get('/api/channels')
     def get_channels(): return library.channels()
+
+    @app.get('/api/channels/{channel_id}/overview')
+    def get_channel_overview(channel_id: str):
+        """Everything known of a channel (library, watch history, suggestion), whether or not the library has it."""
+        return guard(history.overview, channel_id)
 
     @app.get('/api/channels/{channel_id}')
     def get_channel(channel_id: str):
