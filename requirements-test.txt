@@ -5,7 +5,7 @@ pydantic
 networkx                       # history.py groups channels (Louvain); also in requirements.txt
 omarchy-db @ git+https://github.com/jburnhams/database@2d2940613d49fea5c2f70f62769a5ca56ea581a9#subdirectory=python   # the shared database tooling: SQLAlchemy, Alembic, psycopg, dbtool, pytest fixtures
 httpx
-pytest>=8
+pytest>=9.2.0
 pytest-cov>=7.1.0
 ruff
 # Test tooling
