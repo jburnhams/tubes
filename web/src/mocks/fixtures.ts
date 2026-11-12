@@ -88,6 +88,13 @@ export const videos: Video[] = makeVideos().map(v =>
     : v.id === 'ni000000000' ? { ...v, cache_state: 'fetching', cache_bytes: 0.05 * GB }
       : v.id === 'ki000000001' ? { ...v, cache_state: 'failed', cache_bytes: 0 } : v)
 
+/** Continue watching: three videos part watched lately, the last played first, each with where it stopped. */
+export const unfinished: Video[] = (['ri000000002', 'wo000000003', 'ni000000001'] as const).map((id, i) => {
+  const v = videos.find(x => x.id === id)!
+  const resume = Math.round(v.duration! * [0.62, 0.25, 0.4][i])
+  return { ...v, resume, progress: Math.round((resume / v.duration!) * 1e4) / 1e4 }
+})
+
 /** A long channel, for paging: 60 videos, so its list needs three pages of 24. */
 export const longChannel: Video[] = Array.from({ length: 60 }, (_, i) => ({
   ...videos[0], id: `lo${String(i).padStart(9, '0')}`, title: `Episode ${60 - i}`, published: day(i), thumbnail: tile(28, String(60 - i)), cache_state: null, cache_bytes: null,

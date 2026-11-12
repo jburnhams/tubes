@@ -8,6 +8,7 @@ import { Link, NavLink, Outlet, useNavigate, useSearchParams } from 'react-route
 import { useLoad } from 'strata-react'
 import { api, keys } from '../api'
 import { Avatar } from './cards'
+import { fromState } from './from'
 import { useReconcile } from './missing'
 
 export function Mark() {
@@ -42,10 +43,10 @@ export function SearchBox() {
   )
 }
 
-function RailLink({ to, icon, label, wide, end }: { to: string; icon: ReactNode; label: string; wide: boolean; end?: boolean }) {
+function RailLink({ to, icon, label, wide, end, state }: { to: string; icon: ReactNode; label: string; wide: boolean; end?: boolean; state?: unknown }) {
   return (
     <NavLink
-      to={to} end={end}
+      to={to} end={end} state={state}
       className={({ isActive }) => `flex items-center rounded-tube-sm text-tube-ink hover:bg-tube-chip ${isActive ? 'bg-tube-chip font-medium' : ''} ${wide ? 'h-10 gap-6 px-3 text-tube-sm' : 'flex-col justify-center gap-1 py-4 text-tube-xs'}`}
     >
       {icon}<span className={wide ? 'truncate' : 'text-center'}>{label}</span>
@@ -63,7 +64,7 @@ function Rail({ wide }: { wide: boolean }) {
       {wide && channels.status === 'ready' && channels.data.length > 0 && (
         <section aria-labelledby="rail-channels" className="mt-3 border-t border-tube-line pt-3">
           <h2 id="rail-channels" className="px-3 pb-1 text-tube-base font-medium text-tube-ink">Channels</h2>
-          {channels.data.map(c => <RailLink key={c.id} to={`/channels/${encodeURIComponent(c.id)}`} icon={<Avatar channel={c} size="size-6" />} label={c.title} wide />)}
+          {channels.data.map((c, i) => <RailLink key={c.id} to={`/channels/${encodeURIComponent(c.id)}`} state={fromState({ source: 'rail' }, i)} icon={<Avatar channel={c} size="size-6" />} label={c.title} wide />)}
         </section>
       )}
       <div className={wide ? 'mt-3 border-t border-tube-line pt-3' : ''}>

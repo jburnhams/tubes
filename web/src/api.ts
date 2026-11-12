@@ -196,7 +196,35 @@ export interface Video {
   expires?: string | null
   series?: string | null
   episode?: number | null
+  /** Continue watching only: where the last play stopped (seconds), and how far through the video that is (0-1, null when its length is not known). */
+  resume?: number | null
+  progress?: number | null
 }
+
+/** Where a play or a channel visit was started from (src/tubes/viewing.py): the list, which one (a channel's id, the search words, the
+ *  video Up next was beside) and the item's place in it from 0. None at all is a typed, reloaded or shared address. */
+export interface From {
+  source: 'home' | 'continue' | 'channel' | 'search' | 'up_next' | 'watch' | 'rail' | 'chips' | 'channels'
+  detail?: string
+  rank?: number
+}
+
+/** `POST /api/videos/{id}/play`: the stream status, the play's id (its progress is reported against it) and where it picks up. */
+export interface Started extends Stream {
+  play_id: number
+  /** Where the last part-watched play stopped, in seconds, or null to start from the beginning. */
+  resume: number | null
+}
+
+/** `POST /api/plays/{id}`: how the play is going, as the player sees it. `watched` counts each second seen once. */
+export interface Progress {
+  position: number
+  watched: number
+  length: number | null
+}
+
+/** What the server made of a progress report: none, short, partial, or full (90% and more seen). */
+export type Outcome = 'none' | 'short' | 'partial' | 'full'
 
 /** `POST /api/videos/check`: what the recheck of these videos found (how many asked about, newly gone, back) and the ids now hidden. */
 export interface Checked {
@@ -469,7 +497,10 @@ export const paths = {
   restart: (id: string) => `/api/channels/${encodeURIComponent(id)}/restart`,
   videos: '/api/videos',
   shuffle: '/api/videos/shuffle',
+  continueWatching: '/api/videos/continue',
   video: (id: string) => `/api/videos/${encodeURIComponent(id)}`,
+  progress: (playId: number) => `/api/plays/${playId}`,
+  channelViews: (id: string) => `/api/channels/${encodeURIComponent(id)}/views`,
   play: (id: string) => `/api/videos/${encodeURIComponent(id)}/play`,
   stream: (id: string) => `/api/videos/${encodeURIComponent(id)}/stream`,
   segments: (id: string) => `/api/videos/${encodeURIComponent(id)}/segments`,
@@ -503,6 +534,9 @@ export const keys = {
   videos: ['videos'],
   list: (filter: VideoFilter) => ['videos', 'list', filter.channel ?? '', filter.q?.trim() ?? ''],
   shuffle: ['videos', 'shuffle'],
+  continueWatching: ['videos', 'continue'],
+  /** A visit to a channel's page, recorded once per visit (the location's key). */
+  channelView: (id: string, visit: string) => ['channel-view', id, visit],
   video: (id: string) => ['videos', 'one', id],
   play: (id: string) => ['play', id],
   stream: (id: string) => ['stream', id],
@@ -558,7 +592,11 @@ export const api = {
   video: (id: string) => fetchJson<VideoDetail>(withBase(paths.video(id))),
   /** Ask the server to check these videos on YouTube (at most 50): it hides the ones YouTube no longer has. */
   check: (ids: string[]) => callJson<Checked>(withBase(paths.check), send('POST', { ids })),
-  play: (id: string) => callJson<Stream>(withBase(paths.play(id)), { method: 'POST' }),
+  play: (id: string, from?: From | null) => callJson<Started>(withBase(paths.play(id)), send('POST', from ?? {})),
+  /** How a play is going. `keepalive`, so a report sent as the page closes still arrives. */
+  progress: (playId: number, p: Progress) => callJson<{ outcome: Outcome }>(withBase(paths.progress(playId)), { ...send('POST', p), keepalive: true }),
+  continueWatching: (limit = 12) => fetchJson<Video[]>(withBase(`${paths.continueWatching}?limit=${limit}`)),
+  channelView: (id: string, from?: From | null) => callJson<{ id: number }>(withBase(paths.channelViews(id)), send('POST', from ?? {})),
   stream: (id: string) => fetchJson<Stream>(withBase(paths.stream(id))),
   segments: (id: string) => fetchJson<Segments>(withBase(paths.segments(id))),
   skipping: () => fetchJson<SegmentKind[]>(withBase(paths.skipping)),

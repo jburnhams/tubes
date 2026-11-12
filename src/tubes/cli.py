@@ -1,9 +1,9 @@
 """Command line. `doctor` checks the environment; `add`, `remove`, `sync` and `channels` manage the library from YouTube and BBC iPlayer; `history` imports a
-watch history that suggestions are made from; `related` asks YouTube which channels the followed and watched ones point at; `fetch`, `cache`, `evict` the cache; `quota` what the YouTube key has used today; `set` the settings; `serve` starts the web server.
+watch history that suggestions are made from; `related` asks YouTube which channels the followed and watched ones point at; `fetch`, `cache`, `evict` the cache; `quota` what the YouTube key has used today; `plays` what was watched here and how much; `set` the settings; `serve` starts the web server.
 A timer on the server runs `tubes sync; tubes related; tubes evict` every few hours (docs/deploy.md)."""
 import argparse, importlib, json, os, sys
 
-from tubes import __version__, cache, catalogue, fetcher, history, iplayer, iplayer_suggest, library, oslib, quota, related, settings, youtube, ytdlp
+from tubes import __version__, cache, catalogue, fetcher, history, iplayer, iplayer_suggest, library, oslib, quota, related, settings, viewing, youtube, ytdlp
 
 CHECKS = (('fastapi', 'fastapi'), ('uvicorn', 'uvicorn'), ('pydantic', 'pydantic'))
 
@@ -158,6 +158,17 @@ def cmd_evict(args):
     return out(args, r, '\n'.join([f"  {verb} {gb(r['freed'])} from {len(r['evicted'])} video(s)"] + [f"  {e['video_id']:14} {gb(e['bytes']):>9}  score {e['score']:g}  {e['title'][:40]}" for e in r['evicted']]))
 
 
+def cmd_plays(args):
+    """The latest plays (where each was started from, how much was seen, how it went), then the last 30 days in numbers."""
+    items, s = viewing.recent(args.limit), viewing.summary(args.days)
+    def seen(p): return f"{p['watched'] / p['length']:.0%}" if p['watched'] is not None and p['length'] else '–'
+    lines = [f"  {p['at'][:16].replace('T', ' ')}  {p['outcome'] or '–':8} {seen(p):>4}  {p['source'] or '–':9} {p['video_id']:14} {(p['title'] or '')[:40]}" for p in items]
+    lines.append(f"  last {args.days} days: {s['plays']} play(s), " + ', '.join(f'{n} {k}' for k, n in s['outcomes'].items()))
+    lines += [f"    from {k:9} {v['plays']:>5} play(s), {v['full']} watched to the end" for k, v in s['sources'].items()]
+    if s['channel_views']: lines.append('  channel pages opened from ' + ', '.join(f'{k} {n}' for k, n in s['channel_views'].items()))
+    return out(args, dict(items=items, summary=s), '\n'.join(lines))
+
+
 def cmd_set(args):
     if args.key not in settings.KNOWN: sys.exit(f'unknown setting {args.key!r}; known: {", ".join(settings.KNOWN)}')
     if args.value is not None:
@@ -189,6 +200,7 @@ def main(argv=None):
     c = sub.add_parser('cache', help='show the cache: use, limit and every copy with its score'); c.add_argument('--json', action='store_true'); c.set_defaults(fn=cmd_cache)
     e = sub.add_parser('evict', help='trim the cache when it is over 95%% of its limit'); e.add_argument('--dry-run', action='store_true'); e.add_argument('--json', action='store_true'); e.set_defaults(fn=cmd_evict)
     q = sub.add_parser('quota', help="show how much of the YouTube Data API's daily quota has been used today, and on what"); q.add_argument('--json', action='store_true'); q.set_defaults(fn=cmd_quota)
+    g = sub.add_parser('plays', help='show the latest plays here, where each was started from and how much was watched'); g.add_argument('--limit', type=int, default=20); g.add_argument('--days', type=int, default=30, help='the summary covers this many days'); g.add_argument('--json', action='store_true'); g.set_defaults(fn=cmd_plays)
     t = sub.add_parser('set', help='show or change a setting; value "default" resets it'); t.add_argument('key'); t.add_argument('value', nargs='?'); t.set_defaults(fn=cmd_set)
     v = sub.add_parser('serve', help='start the web server'); v.add_argument('--host', default='127.0.0.1'); v.add_argument('--port', type=int, default=8367); v.set_defaults(fn=cmd_serve)
     args = p.parse_args(argv)
