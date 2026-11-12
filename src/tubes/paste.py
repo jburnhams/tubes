@@ -1,8 +1,9 @@
 """A list someone pastes into the Suggestions page (links, @handles, ids or plain names, one a line), turned into suggestions to follow.
 
 Each line is read as the library's Add reads it (youtube.parse, iplayer.parse): a YouTube channel or video link, an id or an @handle names
-its channel (a video, its channel); an iPlayer programme link names the programme, an episode link the programme it belongs to (a one-off
-has none, so it is a problem, not a suggestion). Anything else is a name, looked up on both: iPlayer's search (programmes whose title is
+its channel (a video, its channel); an iPlayer programme link names the programme, an episode link the programme it belongs to, and a category
+link (or a film's link: a one-off kept under Films, iplayer.FILED_UNDER) the category, followed as a channel of its one-offs; another
+one-off has nothing to follow, so it is a problem, not a suggestion. Anything else is a name, looked up on both: iPlayer's search (programmes whose title is
 the name, ignoring case and punctuation; its search is fuzzy, so its first result is not trusted) and YouTube (the name as an @handle first,
 one quota unit; a search only when that misses, 100 units, so at most NAME_SEARCHES names a paste are searched). A name both have is
 suggested from both, and the one not wanted is dismissed.
@@ -48,6 +49,11 @@ def _iplayer(prog):
     return dict(platform='iplayer', channel_id=row['id'], title=row['title'], handle=None, thumbnail=row['thumbnail'], total_videos=row['total_videos'])
 
 
+def _category(cat):
+    row = iplayer.category_row(cat, None)
+    return dict(platform='iplayer', channel_id=row['id'], title=row['title'], handle=None, thumbnail=None, total_videos=None)
+
+
 def _youtube_channel(kind, value):
     """A Data API channel resource (with the parts suggestions keep) for an id, a handle or a video's id; None when YouTube has none."""
     if kind == 'video':
@@ -64,7 +70,9 @@ def resolve(text, searches):
     except ValueError as e: return [], str(e)
     if bbc:
         kind, pid = bbc
-        if kind == 'category': return [], 'That is an iPlayer category; follow it in Library instead.'
+        if kind == 'category':
+            cat = iplayer.category(pid)
+            return ([_category(cat)], None) if cat else ([], 'iPlayer has no such category.')
         prog = iplayer.programme(pid) if kind in ('programme', 'pid') else None
         if prog: return [_iplayer(prog)], None
         if kind == 'programme': return [], 'iPlayer has no such programme.'
@@ -72,7 +80,11 @@ def resolve(text, searches):
         if ep is None: return [], 'iPlayer does not offer that episode (it may have expired).'
         tleo = ep.get('tleo_id')
         prog = iplayer.programme(tleo) if tleo and tleo != pid else None
-        if prog is None: return [], 'That is a one-off with no programme to follow; add it in Library instead.'
+        if prog is None:
+            cat = iplayer.category_id(iplayer.channel_of(ep))
+            found = iplayer.category(cat) if cat else None
+            if found: return [_category(found)], None                         # a film: following Films brings it, and every other film
+            return [], 'That is a one-off with no programme or category to follow; add it in Library instead.'
         return [_iplayer(prog)], None
     link = '://' in text or text.startswith(('www.', 'youtube.com', 'youtu.be', 'm.youtube.com', '@')) or youtube.CHANNEL_ID.match(text)
     if link:

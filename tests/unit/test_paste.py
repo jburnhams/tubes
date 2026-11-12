@@ -42,7 +42,7 @@ def test_iplayer_programme_and_episode_links_name_the_programme(fake_iplayer):
     r = paste.paste(f"https://www.bbc.co.uk/iplayer/episodes/b0000001\nhttps://www.bbc.co.uk/iplayer/episode/{ep_id('b0000001', 1)}\nhttps://www.bbc.co.uk/programmes/b0000002\n"
                     f"https://www.bbc.co.uk/iplayer/episode/{film}\nhttps://www.bbc.co.uk/iplayer/episodes/b0000009\nhttps://www.bbc.co.uk/iplayer/episode/m0000088\nhttps://www.bbc.co.uk/news", now=NOW)
     assert [(f['platform'], f['channel_id'], f['title']) for f in r['found']] == [('iplayer', 'b0000001', 'Harbour Lights'), ('iplayer', 'b0000002', 'Night Garden')]
-    assert [p['error'] for p in r['problems']] == ['That is a one-off with no programme to follow; add it in Library instead.', 'iPlayer has no such programme.',
+    assert [p['error'] for p in r['problems']] == ['That is a one-off with no programme or category to follow; add it in Library instead.', 'iPlayer has no such programme.',
                                                   'iPlayer does not offer that episode (it may have expired).', 'That BBC link is not to an iPlayer programme, episode or category.']
     h = history.suggestion('b0000001')
     assert (h['platform'], h['link'], h['thumbnail'], h['total_videos']) == ('iplayer', 'https://www.bbc.co.uk/iplayer/episodes/b0000001', 'https://img.test/ic/480x480/b0000001.jpg', 2)
@@ -116,6 +116,13 @@ def test_iplayer_search_gives_the_followable_programme_once_and_leaves_out_one_o
     assert [(x['id'], x['kind']) for x in iplayer.search('harbour')] == [('b0000001', 'episode')]
 
 
-def test_an_iplayer_category_link_is_followed_in_library_not_pasted(fake_iplayer):
-    r = paste.paste('https://www.bbc.co.uk/iplayer/categories/films/featured', now=NOW)
-    assert r['found'] == [] and [p['error'] for p in r['problems']] == ['That is an iPlayer category; follow it in Library instead.']
+def test_a_film_or_a_category_link_suggests_the_category(fake_iplayer):
+    film = fake_iplayer.one_off('p0000001', 'A Film', categories=('films',))
+    r = paste.paste(f'https://www.bbc.co.uk/iplayer/episode/{film}/a-film\nhttps://www.bbc.co.uk/iplayer/browse/documentaries\nhttps://www.bbc.co.uk/iplayer/categories/nope/featured', now=NOW)
+    assert [(f['platform'], f['channel_id'], f['title']) for f in r['found']] == [('iplayer', 'iplayer-films', 'Films'), ('iplayer', 'iplayer-documentaries', 'Documentaries')]
+    assert [p['error'] for p in r['problems']] == ['iPlayer has no such category.']
+    listed = history.suggestions(pasted=True)
+    rows = listed['items'] if isinstance(listed, dict) else listed
+    assert next(x for x in rows if x['channel_id'] == 'iplayer-films')['link'] == 'https://www.bbc.co.uk/iplayer/categories/films/featured'   # what Follow adds
+    catalogue.add('https://www.bbc.co.uk/iplayer/categories/films/featured')                 # followed: a film pasted again is said to be followed
+    assert [a['title'] for a in paste.paste(f'https://www.bbc.co.uk/iplayer/episode/{film}', now=NOW)['already']] == ['Films']
