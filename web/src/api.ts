@@ -28,7 +28,7 @@ export interface LibraryStatus {
   /** Videos that can be watched; `hidden` are those YouTube no longer has (deleted or made private), left out of every list. */
   videos: number
   hidden: number
-  /** Live streams (running, scheduled or past), hidden from every list too because a past one's recording often goes. Absent from older servers. */
+  /** Streams live now or scheduled, hidden from every list until they end (a past one is shown). Absent from older servers. */
   live?: number
   /** The YouTube key is in the server's environment, so channels can be added and synced. */
   configured: boolean
@@ -36,12 +36,14 @@ export interface LibraryStatus {
 
 export interface Channel {
   id: string
+  /** Where it comes from: 'youtube', or 'iplayer' for a BBC iPlayer programme. */
+  platform?: string
   title: string
   handle: string | null
   thumbnail: string | null
   /** When this channel was last synced. */
   synced: string | null
-  /** Videos held here that can be watched, and those hidden because YouTube no longer has them or they are live streams. */
+  /** Videos held here that can be watched, and those hidden because YouTube no longer has them or they are streams not over yet. */
   videos: number
   hidden?: number
   latest: string | null
@@ -298,6 +300,29 @@ export function historyUrl(f: HistoryFilter): string {
   return s ? `${paths.history}?${s}` : paths.history
 }
 
+/** `GET /api/channels/{id}/overview`: everything known of a channel, whether or not the library has it. */
+export interface ChannelOverview {
+  channel_id: string
+  title: string
+  thumbnail: string | null
+  handle: string | null
+  /** The library's channel, or null when it is not in the library. */
+  library: Channel | null
+  /** Its suggestion, or null when it was never in a watch history. */
+  suggestion: Suggestion | null
+  group: { id: number; name: string; named: boolean } | null
+  configured: boolean
+  history: {
+    watches: number
+    videos: number
+    first: string | null
+    last: string | null
+    sources: { source: string; watches: number }[]
+    periods: { period: string; watches: number }[]
+    videos_top: { video_id: string; title: string | null; watches: number; last: string; in_library: boolean }[]
+  }
+}
+
 export interface Refreshed { channels: number; groups: number; grouped: number; looked_up: number; missing: number; error: string | null }
 
 // Where the app is served from: '' at the server's own root, '/prefix' behind a reverse proxy. Read
@@ -335,6 +360,7 @@ export const paths = {
   sync: '/api/library/sync',
   channels: '/api/channels',
   channel: (id: string) => `/api/channels/${encodeURIComponent(id)}`,
+  overview: (id: string) => `/api/channels/${encodeURIComponent(id)}/overview`,
   restart: (id: string) => `/api/channels/${encodeURIComponent(id)}/restart`,
   videos: '/api/videos',
   shuffle: '/api/videos/shuffle',
@@ -376,6 +402,7 @@ export const keys = {
   history: (f: HistoryFilter) => ['suggestions', 'history', f.start ?? '', f.end ?? '', f.source ?? ''],
   suggestionList: (f: SuggestionFilter) => ['suggestions', 'list', f.group ?? '', f.topic ?? '', f.kids ?? '', f.dismissed ? 'dismissed' : 'open', f.order === 'suggested' ? 'suggested' : 'watched', f.pasted ? 'pasted' : 'all'],
   suggestionSummary: ['suggestions', 'summary'],
+  overview: (id: string) => ['suggestions', 'overview', id],
 } as const
 
 /** A request the server refused with a reason (`{detail}`), such as a fetch that cannot start. The reason is its sentence. */
@@ -423,6 +450,7 @@ export const api = {
   pin: (id: string, pinned: boolean) => fetchJson<unknown>(withBase(paths.cacheItem(id)), send('PUT', { pinned })),
   dropCopy: (id: string) => fetchJson<{ video_id: string; freed: number }>(withBase(paths.cacheItem(id)), { method: 'DELETE' }),
   evict: () => fetchJson<Evicted>(withBase(paths.evict), send('POST', { dry_run: false })),
+  overview: (id: string) => fetchJson<ChannelOverview>(withBase(paths.overview(id))),
   history: (f: HistoryFilter) => fetchJson<HistoryStats>(withBase(historyUrl(f))),
   suggestions: (f: SuggestionFilter) => fetchJson<SuggestionPage>(withBase(suggestionsUrl(f))),
   suggestionSummary: () => fetchJson<SuggestionSummary>(withBase(paths.suggestionsSummary)),

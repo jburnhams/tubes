@@ -25,3 +25,5 @@ export const ServerError: Story = { beforeEach: ({ msw }) => msw.use(channelsErr
 /** Adding, syncing and removing each fail; press one to see what it says. */
 export const ActionsFail: Story = { beforeEach: ({ msw }) => msw.use(addFails, syncFails, removeChannelFails), tags: ['no-visual'] }
 export const Phone: Story = { tags: ['visual-phone'] }
+/** A followed channel opened in place: the shared channel panel. */
+export const ChannelOpen: Story = { render: () => <AppAt route="/admin/library?open=UCworkshop00000000000001" /> }

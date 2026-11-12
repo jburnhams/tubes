@@ -134,11 +134,31 @@ def test_live_streams_are_marked_as_they_are_added_and_by_the_recheck(fake_youtu
     fake_youtube.channel(A, 'Workshop', videos=3)
     fake_youtube.videos[vid(A, 0)]['snippet']['liveBroadcastContent'] = 'upcoming'
     catalogue.add(A); catalogue.sync_channel(A)
-    assert library.video(vid(A, 0))['live'] == 'upcoming' and library.status()['live'] == 1
+    assert library.video(vid(A, 0))['live'] == 'upcoming' and library.status()['live'] == 1 and library.status()['videos'] == 2
     fake_youtube.videos[vid(A, 0)]['snippet']['liveBroadcastContent'] = 'none'; fake_youtube.videos[vid(A, 0)]['liveStreamingDetails'] = dict(actualEndTime='t')
     fake_youtube.videos[vid(A, 1)]['liveStreamingDetails'] = dict(actualEndTime='t')                # a past stream added before the mark existed
-    assert catalogue.recheck(0)['checked'] == 3
-    assert [library.video(vid(A, n))['live'] for n in range(3)] == ['was', 'was', None] and library.status()['videos'] == 1
+    assert catalogue.recheck(0, now='2026-11-01T00:00:00')['checked'] == 3
+    assert [library.video(vid(A, n))['live'] for n in range(3)] == ['was', 'was', None] and library.status()['videos'] == 3 and library.status()['live'] == 0   # over: shown
+
+
+def test_running_streams_are_rechecked_first_and_past_ones_when_shown_daily(fake_youtube, monkeypatch):
+    monkeypatch.setattr(catalogue, 'RECHECK', 1)
+    fake_youtube.channel(A, 'Workshop', videos=6)
+    fake_youtube.videos[vid(A, 5)]['snippet']['liveBroadcastContent'] = 'live'                       # not the first in the slice's order
+    for n in (1, 2): fake_youtube.videos[vid(A, n)]['liveStreamingDetails'] = dict(actualEndTime='t')
+    catalogue.add(A); catalogue.sync_channel(A)
+    assert catalogue.recheck(0, now='2026-11-01T00:00:00')['checked'] == 6
+    assert catalogue.recheck(now='2026-11-01T04:00:00')['checked'] == 2                                # the running stream, then the slice of 1
+    rows = library.videos()['videos']; fake_youtube.calls.clear()
+    del fake_youtube.videos[vid(A, 2)]                                                                  # a past stream's recording taken down
+    assert catalogue.recheck_past(rows, now='2026-11-01T12:00:00') == set() and fake_youtube.count('videos') == 0   # asked about within the day
+    assert catalogue.recheck_past(rows, now='2026-11-02T12:00:00') == {vid(A, 2)} and fake_youtube.count('videos') == 1   # a day on: both past ones, one call
+    assert library.video(vid(A, 2))['gone'] == '2026-11-02T12:00:00' and library.video(vid(A, 1))['gone'] is None
+    assert catalogue.recheck_past(rows, now='2026-11-02T13:00:00') == {vid(A, 2)} and fake_youtube.count('videos') == 1   # an old read: still left out, nothing asked
+    fake_youtube.quota_left = 0
+    assert catalogue.recheck_past(library.videos()['videos'], now='2026-11-05T00:00:00') == set()    # YouTube refuses: shown as they are
+    monkeypatch.delenv('YOUTUBE_API_KEY')
+    assert catalogue.recheck_past(rows) == set()
 
 
 def test_a_sync_of_everything_ends_with_a_recheck(fake_youtube):

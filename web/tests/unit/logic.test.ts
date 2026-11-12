@@ -15,7 +15,8 @@ import { savedText, settled, waitingText } from '../../src/watch/WatchScreen'
 import { describePasted, describeRelated, describeSuggestedBy, describeSuggestions, describeWatched, filterOf, groupChoices, placeOf } from '../../src/screens/SuggestionsScreen'
 import { historyUrl, suggestionsUrl } from '../../src/api'
 import { describeHistory, fillPeriods, periodLabel, rangeChoices, rangeOf } from '../../src/screens/HistoryScreen'
-import { historyStats } from '../../src/mocks/fixtures'
+import { channelHistory, historyStats } from '../../src/mocks/fixtures'
+import { describeWatching, elsewhere, libraryState, placeLine } from '../../src/screens/ChannelDetail'
 import { historySources, suggestions } from '../../src/mocks/fixtures'
 import { suggestionSummary } from '../../src/mocks/handlers'
 
@@ -164,8 +165,8 @@ describe('the findings', () => {
     expect(describeLibrary(channels, library)).toMatch(/^24\svideos from 3\sfollowed channels\. 1\schannel is still being read back to the first upload\. Every channel was last synced on /)
     expect(describeLibrary(channels.filter(c => c.complete), { ...library, synced: null })).toMatch(/^12\svideos from 2\sfollowed channels\. Not every channel has been synced yet\. 3\svideos are hidden because YouTube no longer has them\.$/)
     expect(describeLibrary(channels, { ...library, hidden: 0 })).toMatch(/synced on [^.]+\.$/)
-    expect(describeLibrary(channels, { ...library, hidden: 0, live: 1 })).toMatch(/\. 1\slive stream is hidden too, since their recordings often go\.$/)
-    expect(describeLibrary(channels, { ...library, live: 4 })).toMatch(/no longer has them\. 4\slive streams are hidden too/)
+    expect(describeLibrary(channels, { ...library, hidden: 0, live: 1 })).toMatch(/\. 1\slive or scheduled stream is hidden until it ends\.$/)
+    expect(describeLibrary(channels, { ...library, live: 4 })).toMatch(/no longer has them\. 4\slive or scheduled streams are hidden until they end\.$/)
     expect(describeLibrary([], library)).toMatch(/^The library follows no channels yet/)
     expect(describeLibrary(channels, { ...library, configured: false })).toMatch(/YOUTUBE_API_KEY/)
     expect(describeJob(syncJobs.idle)).toBeUndefined()
@@ -290,5 +291,18 @@ describe('history', () => {
     const h = { ...historyStats, sources: historySources }
     expect(describeHistory({ ...h, channels_top: [] }, 'in 2026')).toMatch(/channels in 2026\.$/)
     expect(describeHistory({ ...h, channels_top: [{ ...h.channels_top[0], title: null }] }, 'then')).toMatch(/Most watched: UCsuggest000000000000002/)
+  })
+})
+
+describe('channel panel', () => {
+  const o = { channel_id: 'UCx', title: 'X', thumbnail: null, handle: null, library: null, suggestion: null, group: null, configured: true, history: channelHistory('X') }
+  it('says how much it was watched, where it sits and what the library holds', () => {
+    expect(describeWatching({ ...o, history: { ...o.history, sources: [{ source: 'home', watches: 58 }] } })).toMatch(/^Watched 58\stimes \(41\svideos\) from .* to [^,]*\.$/)
+    expect(placeLine(o)).toBe('')
+    expect(placeLine({ group: { id: 1, name: 'G', named: true }, suggestion: { ...suggestions[0], topics: [] } })).toBe('Group: G')
+    expect(placeLine({ group: null, suggestion: suggestions[0] })).toBe('Hobby, Vehicle')
+    expect(libraryState(o).word).toBe('Not in the library')
+    expect(elsewhere(o)).toEqual({ href: 'https://www.youtube.com/channel/UCx', label: 'Open on YouTube' })
+    expect(elsewhere({ channel_id: 'b0000001', library: { ...channels[0], id: 'b0000001', platform: 'iplayer' } })).toEqual({ href: 'https://www.bbc.co.uk/iplayer/episodes/b0000001', label: 'Open on iPlayer' })
   })
 })

@@ -13,6 +13,7 @@ API (JSON):
   GET  /api/library/sync                   the background sync: {running, total, done, current, added, errors, started, finished}
   POST /api/library/sync {channels}        start one for these channel ids (default: every followed channel); 409 while one runs
   GET  /api/channels, GET /api/channels/{id}   channels with their video counts and sync state
+  GET  /api/channels/{id}/overview         a channel's library state, watch history (per month, per account, videos watched most) and suggestion
   DELETE /api/channels/{id}                remove a channel and its videos
   POST /api/channels/{id}/restart          forget a channel's videos and sync state, then sync it again from the start
   GET  /api/videos?channel=&q=&after=&limit=   a page of videos, newest first: {videos, has_more}; `after` is the last one's cursor (`published|id`)
@@ -166,6 +167,11 @@ def create_app():
     @app.get('/api/channels')
     def get_channels(): return library.channels()
 
+    @app.get('/api/channels/{channel_id}/overview')
+    def get_channel_overview(channel_id: str):
+        """Everything known of a channel (library, watch history, suggestion), whether or not the library has it."""
+        return guard(history.overview, channel_id)
+
     @app.get('/api/channels/{channel_id}')
     def get_channel(channel_id: str):
         c = library.channel(channel_id)
@@ -174,10 +180,17 @@ def create_app():
 
     @app.get('/api/videos')
     def get_videos(channel: str | None = None, q: str | None = None, after: str | None = None, limit: int = Query(24, ge=1, le=200)):
-        return library.videos(channel, q, after, limit)
+        while True:                                                               # a past stream whose recording went is left out at once
+            r = library.videos(channel, q, after, limit); gone = catalogue.recheck_past(r['videos'])
+            if not gone: return r
+            shown = [v for v in r['videos'] if v['id'] not in gone]
+            if shown or not r['has_more']: return dict(r, videos=shown)
+            after = library.cursor(r['videos'][-1])                               # every one went: the page reads on from the cursor, so read the next
 
     @app.get('/api/videos/shuffle')
-    def get_shuffle(count: int = Query(24, ge=1, le=200), channel: str | None = None): return library.shuffle(count, channel)
+    def get_shuffle(count: int = Query(24, ge=1, le=200), channel: str | None = None):
+        rows = library.shuffle(count, channel); gone = catalogue.recheck_past(rows)
+        return [v for v in rows if v['id'] not in gone]
 
     @app.post('/api/videos/check')
     def post_check(b: CheckIn):
@@ -186,7 +199,10 @@ def create_app():
         return guard(catalogue.report, b.ids)
 
     @app.get('/api/videos/{video_id}')
-    def get_video(video_id: str): return dict(video_or_404(video_id), **cache.plays(video_id))
+    def get_video(video_id: str):
+        v = video_or_404(video_id)
+        if catalogue.recheck_past([v]): v = video_or_404(video_id)                     # it went: the page says so
+        return dict(v, **cache.plays(video_id))
 
     @app.post('/api/videos/{video_id}/play')
     def post_play(video_id: str):

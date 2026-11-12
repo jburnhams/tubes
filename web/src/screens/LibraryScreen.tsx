@@ -17,7 +17,8 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
-import { AsyncButton, BulkBar, Button, DataTable, DataView, EmptyState, Field, Input, PageHeader, RowAction, Status, TableSkeleton, UndoBar, format, useAsyncAction, useLoad, useSelection, useUndoable, type Column } from 'strata-react'
+import { AsyncButton, BulkBar, Button, DataTable, DataView, EmptyState, Field, Input, PageHeader, RowAction, Status, TableSkeleton, UndoBar, format, useAsyncAction, useExpanded, useLoad, useSelection, useUndoable, type Column } from 'strata-react'
+import { ChannelDetail } from './ChannelDetail'
 import { api, describeError, keys, type Added, type Channel, type LibraryStatus, type SyncJob } from '../api'
 
 /** The page's finding. */
@@ -31,7 +32,7 @@ export function describeLibrary(channels: Channel[], status: LibraryStatus): str
   const back = behind ? ` ${format.count(behind, 'channel is', 'channels are')} still being read back to the first upload.` : ''
   const when = status.synced ? ` Every channel was last synced on ${format.dateTime(status.synced)}.` : ' Not every channel has been synced yet.'
   const hidden = status.hidden ? ` ${format.count(status.hidden, 'video is', 'videos are')} hidden because YouTube no longer has them.` : ''
-  const live = status.live ? ` ${format.count(status.live, 'live stream is', 'live streams are')} hidden too, since their recordings often go.` : ''
+  const live = status.live ? ` ${format.count(status.live, 'live or scheduled stream is', 'live or scheduled streams are')} hidden until ${status.live === 1 ? 'it ends' : 'they end'}.` : ''
   return head + back + when + hidden + live
 }
 
@@ -71,6 +72,7 @@ export function LibraryScreen() {
   const job = useLoad({ queryKey: keys.sync, queryFn: api.syncJob, refetchInterval: q => (q.state.data?.running ? 2000 : false) })
   const running = job.status === 'ready' && job.data.running
   const undoable = useUndoable()
+  const open = useExpanded({ param: 'open', single: true })               // a channel opened in place to the shared channel panel
 
   // When a sync finishes, what it changed is read again.
   const wasRunning = useRef(false)
@@ -169,6 +171,7 @@ export function LibraryScreen() {
                 rowKey={key}
                 sortParam="sort"
                 selection={configured ? { ...selection, rowLabel: c => c.title, isSelectable: c => c.follow !== false } : undefined}
+                expansion={{ ...open, rowLabel: c => `More about ${c.title}`, detail: c => <ChannelDetail id={c.id} /> }}
               />
             </div>
           )}
