@@ -7,12 +7,14 @@
 // state: `server.use(videosError)` in a test, `msw.use(videosError)` in a story's beforeEach,
 // `states: { error: [videosError] }` in the visual config.
 import { delay, http, HttpResponse } from 'msw'
-import { cursorOf, paths, type CacheItem, type Channel, type HistorySource, type Pasted, type Settings, type Stream, type Suggestion, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Video, type VideoPage } from '../api'
-import { cacheItems, channelHistory, channels, defaultSettings, episodes, programme, historyDays, historySources, historyStats, library, libraryNew, longChannel, pasteable, relatedStatus, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
+import { cursorOf, paths, type CacheItem, type Channel, type HistorySource, type Pasted, type Settings, type ShownFilters, type Stream, type Suggestion, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Video, type VideoPage } from '../api'
+import { cacheItems, channelHistory, channels, defaultSettings, defaultShown, episodes, programme, historyDays, historySources, historyStats, library, libraryNew, longChannel, pasteable, relatedStatus, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
 
 /** What the mock server holds. Writes change it, so a test can pin a copy and see it pinned. */
 export const mock = {
   settings: { ...defaultSettings } as Settings,
+  /** Admin's filters for the watching side; the mock only stores them (the lists are not narrowed). */
+  shown: { ...defaultShown } as ShownFilters,
   items: [...cacheItems] as CacheItem[],
   plays: [] as string[],
   /** What /stream answers, by video id; anything else answers `ready`. */
@@ -36,6 +38,7 @@ export const mock = {
 /** Back to the healthy state: call between tests and stories. */
 export function resetMock() {
   mock.settings = { ...defaultSettings }
+  mock.shown = { ...defaultShown }
   mock.items = [...cacheItems]
   mock.plays = []
   mock.streams = {}
@@ -125,6 +128,15 @@ export const handlers = [
   http.get(at(paths.health), () => HttpResponse.json({ ok: true, version: systemStatus.version })),
   http.get(at(paths.system), () => HttpResponse.json({ ...systemStatus, cache_dir: mock.settings.cache_dir, library: { ...library, synced: mock.synced } })),
   http.get(at(paths.settings), () => HttpResponse.json(mock.settings)),
+  http.get(at(paths.shown), () => HttpResponse.json(mock.shown)),
+  http.put(at(paths.shown), async ({ request }) => {
+    const body = (await request.json()) as Partial<ShownFilters>
+    const next = { ...mock.shown, ...body }
+    if (next.min_seconds != null && next.max_seconds != null && next.min_seconds > next.max_seconds) return refused('The shortest length must not be longer than the longest.', 400)
+    // A made-up count that moves with the filters, so a saved change is seen to do something.
+    mock.shown = { ...next, filtered: (next.min_seconds ? 12 : 0) + (next.max_seconds ? 5 : 0) + (next.streams === 'all' ? 3 : 0) }
+    return HttpResponse.json(mock.shown)
+  }),
   http.put(at(paths.settings), async ({ request }) => {
     const body = (await request.json()) as Partial<Settings>
     for (const k of ['data_dir', 'cache_dir'] as const) if (body[k] !== undefined && !/^[/~]/.test(body[k])) return refused(`${k} must be an absolute path`)
@@ -294,6 +306,10 @@ export const systemInTrouble = http.get(at(paths.system), () => HttpResponse.jso
 export const settingsLoading = http.get(at(paths.settings), () => delay('infinite'))
 export const settingsError = http.get(at(paths.settings), down)
 export const saveSettingsFails = http.put(at(paths.settings), down)
+export const shownLoading = http.get(at(paths.shown), () => delay('infinite'))
+export const shownError = http.get(at(paths.shown), down)
+/** Filters already set: videos under 3 minutes and past streams left out. */
+export const shownSet = http.get(at(paths.shown), () => HttpResponse.json({ min_seconds: 180, max_seconds: null, streams: 'all', filtered: 15 } satisfies ShownFilters))
 
 export const syncFails = http.post(at(paths.sync), () => refused('YouTube cannot be asked without YOUTUBE_API_KEY in the server’s environment.', 503))
 /** The sync in one state from the first answer on: `msw.use(syncIn('running'))`. */

@@ -34,7 +34,7 @@ side's reports leave iPlayer episodes alone.
 
 `Job` runs a sync of several channels in a background thread for the web server, one at a time, and reports how far it has got; the timer
 runs `tubes sync` (cli.py), which calls `sync` directly."""
-import datetime, threading
+import datetime, json, threading
 
 from tubes import cache, db, iplayer, library, youtube
 
@@ -294,6 +294,29 @@ def mark_gone(video_id, now=None):
 
 def mark_found(video_id):
     with db.connect() as con: con.execute('UPDATE videos SET gone = NULL WHERE id = ? AND gone IS NOT NULL', (video_id,))
+
+
+class FilterError(ValueError):
+    """Raised when a filter for what the watching side shows cannot be used; the message says why, for the person who set it."""
+
+
+def save_filters(changes):
+    """Merge `changes` into which videos the watching side shows (library.filters: `min_seconds`, `max_seconds`, None for no limit, and
+    `streams`, 'current' or 'all'), after checking every value (nothing is saved if one is wrong); returns the filters now in force."""
+    f = library.filters()
+    for k, v in changes.items():
+        if k not in library.FILTERS: raise FilterError(f'There is no filter called {k}.')
+        if k == 'streams':
+            if v not in library.STREAMS: raise FilterError(f'streams must be one of {", ".join(library.STREAMS)}.')
+        elif v is not None:
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0: raise FilterError('A length must be a number of seconds, 0 or more.')
+            v = int(v) if float(v).is_integer() else float(v)
+        f[k] = v
+    if f['min_seconds'] is not None and f['max_seconds'] is not None and f['min_seconds'] > f['max_seconds']:
+        raise FilterError('The shortest length must not be longer than the longest.')
+    with db.connect() as con:
+        con.execute("INSERT INTO meta (key, value) VALUES ('shown', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (json.dumps(f),))
+    return f
 
 
 def needs_youtube(channel_ids=None):

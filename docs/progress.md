@@ -1,5 +1,12 @@
 # Progress log
 
+## 2026-11-12: Admin chooses which videos are shown
+
+- Asked for: config in Admin to keep videos off the watching side by length (shortest, longest) and by live status. Admin > Settings has a Shown videos tab (`?tab=shown`): shortest and longest length in minutes (empty for no limit) and a Live streams choice, either leave out streams live now or scheduled (the old fixed rule, the default) or every stream, past ones and premieres too. Showing a stream that is live now is not offered: a running one cannot be fetched whole and a scheduled one cannot be played.
+- Kept in the database, in `meta` under `shown` as JSON (no migration), read by `library.filters()` and written by `catalogue.save_filters()`, which checks every value (lengths 0 or more, shortest not past longest, streams `current` or `all`) and saves nothing if one is wrong. `GET/PUT /api/library/shown` → `{min_seconds, max_seconds, streams, filtered}`.
+- The rule is in `library.shown()`, which replaced the `SHOWN` constant, so every list, count, search and shuffle goes through it, iPlayer expiry included. A video whose length is not known is kept by the length limits. `video(id)` still finds a left-out video, so a link opens. With past streams left out, `recheck_past` gets none to ask about. `GET /api/library` adds `filtered` (left out by the filters, apart from gone and live ones); the Library page's finding says it when it is not 0.
+- Visual: every Settings baseline changed (the new tab in the tab bar); new stories (Shown videos, set, loading, error) and route states (`shown`, `shown-invalid`). Written in Chromium 1243 (the pinned 1254 could not be downloaded here); every other shot matched within tolerance.
+
 ## 2026-11-12: iPlayer on the watching side
 
 - iPlayer has no view counts, so where a YouTube card says "12K views · 3 weeks ago" an episode says "S2 E4 · 3 weeks ago", adding "Leaves iPlayer in 5 days" once it is within 30 days of going (as iPlayer itself does), and "Left iPlayer" on a saved copy after. A programme's page says "BBC iPlayer · 8 episodes", has an Episodes tab, and puts a heading over each series as the newest-first list reaches it (so paging needs nothing new). The watch page says until when iPlayer offers an episode.

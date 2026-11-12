@@ -27,7 +27,7 @@ def library(client, fake_youtube):
 
 
 def test_add_sync_browse_and_settings(client, fake_ytdlp, fake_youtube):
-    assert client.get('/api/library').json() == dict(synced=None, channels=0, videos=0, hidden=0, live=0, configured=True)
+    assert client.get('/api/library').json() == dict(synced=None, channels=0, videos=0, hidden=0, live=0, filtered=0, configured=True)
     library(client, fake_youtube)
     assert [c['title'] for c in client.get('/api/channels').json()] == ['Workshop']
     assert client.get('/api/videos', params=dict(q='upload workshop')).json()['videos'][0]['channel'] == 'Workshop'

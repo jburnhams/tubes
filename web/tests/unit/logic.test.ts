@@ -6,7 +6,7 @@ import { channels, library, libraryEmpty, syncJobs, longChannel, report, streams
 import { videoPage } from '../../src/mocks/handlers'
 import { attach, problemText, type HlsClass, type HlsInstance, type Media } from '../../src/player'
 import { describeCache, describeEvicted } from '../../src/screens/CacheScreen'
-import { settingsProblems } from '../../src/screens/SettingsScreen'
+import { describeShown, settingsProblems, shownProblems } from '../../src/screens/SettingsScreen'
 import { describeSystem, usable } from '../../src/screens/SystemScreen'
 import { channelState, describeAdded, describeJob, describeLibrary } from '../../src/screens/LibraryScreen'
 import { ago, countFor, episodeLabel, iplayerText, leaving, videoCount, views, viewsAndAge } from '../../src/watch/format'
@@ -163,12 +163,22 @@ describe('the findings', () => {
     expect(describeSystem({ ...systemStatus, disk: { total: 100, used: 98, free: 2 } })).toMatch(/nearly full/)
   })
 
+  it('Shown videos checks its lengths and says what the filters leave out', () => {
+    expect(shownProblems({ min: '', max: '', streams: 'current' })).toEqual({ min: undefined, max: undefined })
+    expect(shownProblems({ min: '0', max: '90.5', streams: 'all' })).toEqual({ min: undefined, max: undefined })
+    expect(shownProblems({ min: 'short', max: '-1', streams: 'current' })).toEqual({ min: 'Enter the shortest length in minutes, or leave it empty for no limit.', max: 'Enter the longest length in minutes, or leave it empty for no limit.' })
+    expect(shownProblems({ min: '10', max: '5', streams: 'current' })).toEqual({ min: undefined, max: 'Make this at least the shortest length.' })
+    expect(describeShown({ min_seconds: null, max_seconds: null, streams: 'current', filtered: 0 })).toBe('These leave no video out now.')
+    expect(describeShown({ min_seconds: 180, max_seconds: null, streams: 'current', filtered: 1 })).toMatch(/^1\svideo is left out by these now\./)
+  })
+
   it('Library says what it follows, how far a sync has got and what each channel is doing', () => {
     expect(describeLibrary(channels, library)).toMatch(/^24\svideos from 3\sfollowed channels\. 1\schannel is still being read back to the first upload\. Every channel was last synced on /)
     expect(describeLibrary(channels.filter(c => c.complete), { ...library, synced: null })).toMatch(/^12\svideos from 2\sfollowed channels\. Not every channel has been synced yet\. 3\svideos are hidden because YouTube no longer has them\.$/)
     expect(describeLibrary(channels, { ...library, hidden: 0 })).toMatch(/synced on [^.]+\.$/)
     expect(describeLibrary(channels, { ...library, hidden: 0, live: 1 })).toMatch(/\. 1\slive or scheduled stream is hidden until it ends\.$/)
     expect(describeLibrary(channels, { ...library, live: 4 })).toMatch(/no longer has them\. 4\slive or scheduled streams are hidden until they end\.$/)
+    expect(describeLibrary(channels, { ...library, hidden: 0, filtered: 7 })).toMatch(/\. 7\svideos are left out by the filters in Settings, Shown videos\.$/)
     expect(describeLibrary([], library)).toMatch(/^The library follows no channels yet/)
     expect(describeLibrary(channels, { ...library, configured: false })).toMatch(/YOUTUBE_API_KEY/)
     expect(describeJob(syncJobs.idle)).toBeUndefined()

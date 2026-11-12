@@ -2,7 +2,7 @@
 // tests, every Storybook story and the visual suite's screenshots, so a screen looks the same in
 // each. Dates are fixed, so screenshots do not change from day to day. Pictures are flat SVG
 // tiles as data URLs, so nothing is fetched from outside.
-import type { CacheItem, CacheReport, Channel, ChannelOverview, HistorySource, HistoryStats, LibraryStatus, RelatedStatus, Settings, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video } from '../api'
+import type { CacheItem, CacheReport, Channel, ChannelOverview, HistorySource, HistoryStats, LibraryStatus, RelatedStatus, Settings, ShownFilters, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video } from '../api'
 
 export const GB = 1e9
 
@@ -91,6 +91,9 @@ export const syncJobs = {
   done: { ...idle, total: 3, done: 3, added: 57, gone: 2, started: '2026-11-09T11:58:00+00:00', finished: '2026-11-09T11:59:10+00:00' } as SyncJob,
   failed: { ...idle, total: 3, done: 3, added: 12, started: '2026-11-09T11:58:00+00:00', finished: '2026-11-09T11:59:10+00:00', errors: [{ channel: 'UCkitchen000000000000003', title: 'Kitchen Science', error: 'YouTube refused the request (403: the key has used its quota for today (it resets at midnight Pacific time)).' }, { channel: null, title: null, error: 'The sync stopped: the database could not be reached.' }] } as SyncJob,
 }
+
+/** Admin's filters as a new server has them: nothing left out but streams live now or scheduled. */
+export const defaultShown: ShownFilters = { min_seconds: null, max_seconds: null, streams: 'current', filtered: 0 }
 
 export const library: LibraryStatus = { synced: '2026-11-09T06:00:00+00:00', channels: channels.length, videos: videos.length, hidden: 3, configured: true }
 export const libraryEmpty: LibraryStatus = { synced: null, channels: 0, videos: 0, hidden: 0, configured: false }
