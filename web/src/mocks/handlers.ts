@@ -198,7 +198,8 @@ export const handlers = [
     const base = end && end < '2019-06' ? { ...historyStats, watches: 0, videos: 0, channels: 0, periods: [], channels_top: [], videos_top: [], first: null, last: null }
       : start && start >= '2026-09-30' ? historyDays : historyStats
     const one = p.get('source') ? { watches: Math.round(base.watches / 2) } : {}
-    return HttpResponse.json({ ...base, ...one, sources: mock.sources })
+    const followed = (id: string) => mock.followed.includes(id) || mock.channels.some(c => c.id === id && c.follow !== false)
+    return HttpResponse.json({ ...base, ...one, channels_top: base.channels_top.map(c => ({ ...c, followed: c.followed || followed(c.channel_id) })), sources: mock.sources, configured: true })
   }),
   http.get(at(paths.suggestions), ({ request }) => HttpResponse.json(suggestionPage(request.url, mock.suggestions))),
   http.put(at('/api/suggestions/groups/:id'), async ({ params, request }) => {
@@ -331,3 +332,5 @@ export const historyError = http.get(at(paths.history), down)
 export const historyNone = http.get(at(paths.history), () => HttpResponse.json({ ...historyStats, watches: 0, videos: 0, channels: 0, periods: [], channels_top: [], videos_top: [], first: null, last: null, sources: [] }))
 /** One account only: no account choice. */
 export const historyOneAccount = http.get(at(paths.history), () => HttpResponse.json({ ...historyStats, sources: [historySources[0]] }))
+/** The server has no YouTube key: no channel can be followed from History. */
+export const historyNoKey = http.get(at(paths.history), () => HttpResponse.json({ ...historyStats, sources: historySources, configured: false }))

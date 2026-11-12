@@ -28,7 +28,7 @@ API (JSON):
   GET  /api/suggestions?group=&topic=&kids=&q=&dismissed=&limit=   channels from the imported watch history, best first: {items, total}
   GET  /api/suggestions/summary            the histories, groups, topics and counts around that list (`database`: a history database is set)
   POST /api/suggestions/refresh            read the history database again if one is set, remake the suggestions, ask YouTube about new channels
-  GET  /api/history?start=&end=&source=    what was watched then: counts, watches per day or month, top channels and videos
+  GET  /api/history?start=&end=&source=    what was watched then: counts, watches per day or month, top channels and videos (`configured`: channels can be followed)
   POST /api/suggestions/import {source, text}   import a Takeout watch history (its file's text) under a name, then refresh
   DELETE /api/suggestions/sources/{source}  forget an imported history
   PUT  /api/suggestions/groups/{id} {name}  name a group (empty: back to the made-up name)
@@ -230,7 +230,7 @@ def create_app():
 
     @app.get('/api/history')
     def get_history(start: str | None = None, end: str | None = None, source: str | None = None, top: int = Query(history.TOP, ge=1, le=200)):
-        return dict(history.stats(start, end, source, top), sources=history.sources())
+        return dict(history.stats(start, end, source, top), sources=history.sources(), configured=youtube.configured())
 
     @app.post('/api/suggestions/import')
     def post_suggestions_import(b: ImportIn): return guard(history.import_text, b.text, b.source)
