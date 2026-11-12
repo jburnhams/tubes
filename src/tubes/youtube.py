@@ -78,6 +78,19 @@ def parse(text):
     raise ValueError('That is not a channel or video: paste its link, or type its id or @handle.')
 
 
+def playlist_id(text):
+    """The playlist a YouTube link names (`/playlist?list=`, or a watch link played from a playlist), else None. A mix (`RD…`) is made up for
+    one viewer and the Data API cannot read it, so a watch link from one stays a link to its video."""
+    t = (text or '').strip()
+    if not ('://' in t or t.startswith(('www.', 'youtube.com', 'm.youtube.com', 'music.youtube.com'))): return None
+    u = urllib.parse.urlparse(t if '://' in t else 'https://' + t)
+    if not (u.netloc.endswith('youtube.com') or u.netloc.endswith('youtu.be')): return None
+    pid = (urllib.parse.parse_qs(u.query).get('list') or [None])[0]
+    if not pid or not re.match(r'^[\w-]{2,64}$', pid): return None
+    if pid.startswith('RD') and u.path.rstrip('/') != '/playlist': return None
+    return pid
+
+
 def seconds(duration):
     """An ISO 8601 duration (`PT1H2M3S`, `P1DT2S`) in seconds; None when it cannot be read (a live stream says `P0D`, which is 0)."""
     m = DURATION.match(duration or '')
@@ -87,12 +100,16 @@ def seconds(duration):
 
 
 def best_thumbnail(thumbnails):
-    """The largest thumbnail's URL, by pixels (names are not trusted to be in order), else the first by name."""
-    ts = [t for t in (thumbnails or {}).values() if isinstance(t, dict) and t.get('url')]
+    """The largest of the five sizes YouTube documents (THUMBS), by pixels (names are not trusted to be in order), else the first by name;
+    another size only when none of those is there. Since 2026-11 the Data API also lists `fhddefault`, `qhddefault` and `uhddefault` (1080p
+    and up) for many new uploads and streams, and i.ytimg.com answers 404 for them while `maxresdefault` is there, so the largest listed size
+    left 3% of the library (and nearly half the newest videos) with a blank card."""
+    known = {k: t for k, t in (thumbnails or {}).items() if k in THUMBS and isinstance(t, dict) and t.get('url')}
+    ts = list(known.values()) or [t for t in (thumbnails or {}).values() if isinstance(t, dict) and t.get('url')]
     if not ts: return None
     sized = [t for t in ts if t.get('width') and t.get('height')]
     if sized: return max(sized, key=lambda t: t['width'] * t['height'])['url']
-    return next((thumbnails[k]['url'] for k in THUMBS if (thumbnails.get(k) or {}).get('url')), ts[0]['url'])
+    return next((known[k]['url'] for k in THUMBS if k in known), ts[0]['url'])
 
 
 def _int(v):

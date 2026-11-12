@@ -20,6 +20,16 @@
   --tube-on-screen: #ffffff;
   --tube-badge: rgb(0 0 0 / 0.8);
   --tube-focus: #065fd4;
+  /* Segment kinds on the timeline: SponsorBlock's own colours, so they read as its extension does. */
+  --tube-seg-sponsor: #00d400;
+  --tube-seg-selfpromo: #ffff00;
+  --tube-seg-interaction: #cc00ff;
+  --tube-seg-intro: #00ffff;
+  --tube-seg-outro: #0202ed;
+  --tube-seg-preview: #008fd6;
+  --tube-seg-hook: #395699;
+  --tube-seg-filler: #7300ff;
+  --tube-seg-music_offtopic: #ff9900;
 }
 
 .dark {

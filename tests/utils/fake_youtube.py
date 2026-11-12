@@ -97,6 +97,10 @@ class FakeYoutube:
                               contentDetails=dict(duration=duration, definition='hd'), statistics=dict(viewCount='12', likeCount='3', commentCount='1'))
         return self
 
+    def playlist(self, pid, videos):
+        """A playlist of these video ids, in order (they need not exist: a removed one is listed and the videos call leaves it out)."""
+        self.playlists[pid] = list(videos); return self
+
     def featuring(self, cid, ids, title='Our friends'):
         self.sections.setdefault(cid, []).append(dict(kind='youtube#channelSection', id=f'{cid}.{len(self.sections.get(cid, []))}', snippet=dict(type='multiplechannels', title=title, channelId=cid), contentDetails=dict(channels=list(ids))))
         return self

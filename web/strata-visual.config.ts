@@ -88,6 +88,16 @@ export default defineVisualConfig({
         states: {
           general: [],
           appearance: { path: '/admin/settings?tab=appearance' },
+          shown: { path: '/admin/settings?tab=shown' },
+          'shown-invalid': {
+            path: '/admin/settings?tab=shown',
+            setup: async page => {
+              await page.getByRole('textbox', { name: 'Shortest video (minutes)' }).fill('10')
+              await page.getByRole('textbox', { name: 'Longest video (minutes)' }).fill('5')
+              await page.getByRole('button', { name: 'Save filters' }).click()
+              await page.getByText('Make this at least the shortest length.').waitFor()
+            },
+          },
           invalid: {
             setup: async page => {
               await page.getByRole('textbox', { name: 'Cache folder' }).fill('videos')

@@ -32,7 +32,9 @@ carry them, so they sort and compare as text on both engines.
   related_links      what each of those pointed at: channels whose videos its watch pages list next (`hits`), or that it features itself.
   bbc_programmes     iPlayer's whole catalogue of programmes (its A to Z), kept a day at a time for iPlayer suggestions (iplayer_suggest.py): title,
                      synopsis, categories, label, network, how many episodes, and when Tubes first saw it.
-  bbc_similar        for each iPlayer programme suggested, the followed or played programmes it is most like, and how much (`score`, 0-1)."""
+  bbc_similar        for each iPlayer programme suggested, the followed or played programmes it is most like, and how much (`score`, 0-1).
+  segments           parts of a video the player can skip (segments.py): from SponsorBlock for YouTube, from iPlayer's own intro and credits
+                     points for an episode, under SponsorBlock's categories; `segment_checks` says when each video's source was last asked."""
 from sqlalchemy import BigInteger, Float, Index, String, Text, false, true
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -192,6 +194,24 @@ class BbcSimilar(Base):
     channel_id: Mapped[str] = mapped_column(String(64), primary_key=True)        # the programme suggested
     source_id: Mapped[str] = mapped_column(String(64), primary_key=True)         # a followed or played programme it is like
     score: Mapped[float] = mapped_column(Float, server_default='0', default=0.0)
+
+
+class Segment(Base):
+    __tablename__ = 'segments'
+    video_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    start: Mapped[float] = mapped_column(Float, primary_key=True)
+    category: Mapped[str] = mapped_column(String(32), primary_key=True)          # SponsorBlock's: sponsor, selfpromo, intro, outro ...
+    end: Mapped[float] = mapped_column(Float)
+    source: Mapped[str] = mapped_column(String(16))                              # sponsorblock or iplayer
+    action: Mapped[str] = mapped_column(String(16), server_default='skip', default='skip')   # skip, or mute (SponsorBlock's actionType)
+    votes: Mapped[int | None] = mapped_column(default=None)
+
+
+class SegmentCheck(Base):
+    __tablename__ = 'segment_checks'
+    video_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    checked: Mapped[str] = mapped_column(String(40))                              # when its source was last asked (whether or not it answered)
+    error: Mapped[str | None] = mapped_column(Text, default=None)
 
 
 class SuggestionGroup(Base):

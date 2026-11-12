@@ -3,7 +3,8 @@
 Each line is read as the library's Add reads it (youtube.parse, iplayer.parse): a YouTube channel or video link, an id or an @handle names
 its channel (a video, its channel); an iPlayer programme link names the programme, an episode link the programme it belongs to, and a category
 link (or a film's link: a one-off kept under Films, iplayer.FILED_UNDER) the category, followed as a channel of its one-offs; another
-one-off has nothing to follow, so it is a problem, not a suggestion. Anything else is a name, looked up on both: iPlayer's search (programmes whose title is
+one-off has nothing to follow, so it is a problem, not a suggestion. A YouTube playlist link (or a watch link played from one) names the
+channels of its videos, at most PLAYLIST_VIDEOS of them, those with the most videos in it first. Anything else is a name, looked up on both: iPlayer's search (programmes whose title is
 the name, ignoring case and punctuation; its search is fuzzy, so its first result is not trusted) and YouTube (the name as an @handle first,
 one quota unit; a search only when that misses, 100 units, so at most NAME_SEARCHES names a paste are searched). A name both have is
 suggested from both, and the one not wanted is dismissed.
@@ -16,6 +17,7 @@ from tubes import cache, db, iplayer, quota, youtube
 
 MAX_LINES = 100
 NAME_SEARCHES = 20
+PLAYLIST_VIDEOS = 200                                                        # 4 pages of the playlist and 4 calls for its videos: about a dozen quota units with the channels
 BULLET = re.compile(r'^\s*(?:[-*•]|\d+[.)])\s+')
 
 
@@ -64,6 +66,27 @@ def _youtube_channel(kind, value):
     return items[0] if items else None
 
 
+def _playlist(pid):
+    """The channels of a playlist's videos (the first PLAYLIST_VIDEOS), most videos first, then by where each first comes in it."""
+    ids, token = [], None
+    try:
+        while len(ids) < PLAYLIST_VIDEOS:
+            page, token = youtube.uploads_page(pid, token)
+            ids += page
+            if not token: break
+    except youtube.YoutubeError as e:
+        if e.status == 404: return [], 'YouTube has no such playlist, or it is private.'
+        raise
+    owners = [(v.get('snippet') or {}).get('channelId') for v in youtube.videos(ids[:PLAYLIST_VIDEOS])]   # private and removed videos are left out
+    counts = {}
+    for c in owners:
+        if c: counts[c] = counts.get(c, 0) + 1
+    if not counts: return [], 'That playlist has no videos YouTube still offers.'
+    order = sorted(counts, key=lambda c: -counts[c])                           # stable: ties keep the playlist's order
+    held = {i['id']: i for i in youtube.channels(order)}
+    return [_youtube(held[c]) for c in order if c in held], None
+
+
 def resolve(text, searches):
     """What one entry names: `([found], problem or None)`. `searches` is a one-item list counting the YouTube searches left (shared over a paste)."""
     try: bbc = iplayer.parse(text)
@@ -86,6 +109,10 @@ def resolve(text, searches):
             if found: return [_category(found)], None                         # a film: following Films brings it, and every other film
             return [], 'That is a one-off with no programme or category to follow; add it in Library instead.'
         return [_iplayer(prog)], None
+    playlist = youtube.playlist_id(text)
+    if playlist:
+        if not youtube.configured(): return [], 'YouTube cannot be asked without YOUTUBE_API_KEY in the server’s environment.'
+        return _playlist(playlist)
     link = '://' in text or text.startswith(('www.', 'youtube.com', 'youtu.be', 'm.youtube.com', '@')) or youtube.CHANNEL_ID.match(text)
     if link:
         try: kind, value = youtube.parse(text)

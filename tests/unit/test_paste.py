@@ -126,3 +126,43 @@ def test_a_film_or_a_category_link_suggests_the_category(fake_iplayer):
     assert next(x for x in rows if x['channel_id'] == 'iplayer-films')['link'] == 'https://www.bbc.co.uk/iplayer/categories/films/featured'   # what Follow adds
     catalogue.add('https://www.bbc.co.uk/iplayer/categories/films/featured')                 # followed: a film pasted again is said to be followed
     assert [a['title'] for a in paste.paste(f'https://www.bbc.co.uk/iplayer/episode/{film}', now=NOW)['already']] == ['Films']
+
+
+@pytest.mark.parametrize('text, expected', [
+    ('https://www.youtube.com/playlist?list=PLabc123', 'PLabc123'),
+    ('youtube.com/playlist?list=PLabc123&si=x', 'PLabc123'),
+    ('https://www.youtube.com/watch?v=abcdefghijk&list=PLabc123&index=2', 'PLabc123'),   # played from a playlist: the playlist
+    ('https://music.youtube.com/playlist?list=OLAK5uy_x', 'OLAK5uy_x'),
+    ('https://www.youtube.com/watch?v=abcdefghijk&list=RDabcdefghijk', None),            # a mix is made up per viewer: the video
+    ('https://www.youtube.com/playlist?list=RDCLAK5uy_x', 'RDCLAK5uy_x'),
+    ('https://www.youtube.com/watch?v=abcdefghijk', None), ('https://example.test/playlist?list=PLabc', None), ('PLabc123', None), ('Some name', None),
+])
+def test_playlist_id(text, expected):
+    assert youtube.playlist_id(text) == expected
+
+
+def test_a_playlist_names_the_channels_of_its_videos_most_first(fake_youtube):
+    fake_youtube.channel(A, 'Workshop', videos=3).channel(B, 'Garden', videos=2).channel(C, 'Canal', videos=1)
+    catalogue.add(C)
+    fake_youtube.playlist('PLmix', [vid(B, 0), vid(A, 0), 'gone0000000', vid(A, 1), vid(C, 0), vid(B, 1), vid(A, 2)])
+    r = paste.paste('https://www.youtube.com/playlist?list=PLmix\nhttps://www.youtube.com/playlist?list=PLnone', now=NOW)
+    assert [(f['input'], f['channel_id']) for f in r['found']] == [('https://www.youtube.com/playlist?list=PLmix', A), ('https://www.youtube.com/playlist?list=PLmix', B)]
+    assert r['already'] == [dict(input='https://www.youtube.com/playlist?list=PLmix', title='Canal')]
+    assert r['problems'] == [dict(input='https://www.youtube.com/playlist?list=PLnone', error='YouTube has no such playlist, or it is private.')]
+    assert [i['channel_id'] for i in history.suggestions(pasted=True)['items']] == [A, B]
+
+
+def test_a_long_playlist_is_read_to_the_limit_and_an_empty_one_is_said(fake_youtube, monkeypatch):
+    monkeypatch.setattr(paste, 'PLAYLIST_VIDEOS', 60)
+    fake_youtube.channel(A, 'Workshop', videos=70).channel(B, 'Garden', videos=1)
+    fake_youtube.playlist('PLlong', [vid(A, n) for n in range(60)] + [vid(B, 0)]).playlist('PLgone', ['gone0000000'])
+    r = paste.paste('https://www.youtube.com/playlist?list=PLlong\nhttps://www.youtube.com/watch?v=gone0000000&list=PLgone', now=NOW)
+    assert [f['channel_id'] for f in r['found']] == [A]                        # B's video is the 61st
+    assert fake_youtube.count('playlistItems') == 3 and r['problems'] == [dict(input='https://www.youtube.com/watch?v=gone0000000&list=PLgone', error='That playlist has no videos YouTube still offers.')]
+    monkeypatch.delenv('YOUTUBE_API_KEY')
+    assert paste.paste('https://www.youtube.com/playlist?list=PLlong', now=NOW)['problems'][0]['error'].startswith('YouTube cannot be asked')
+
+
+def test_a_playlist_youtube_fails_on_is_said(fake_youtube):
+    fake_youtube.quota_left = 0
+    assert 'quota' in paste.paste('https://www.youtube.com/playlist?list=PLx', now=NOW)['problems'][0]['error']

@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from tubes import cache, fetcher, library, oslib, ytdlp
 from tubes.server import app as server_app
 from tubes.server.app import create_app
-from library import CHANNELS, seed
+from library import CHANNELS, VIDEOS, seed
 from test_cache import write_playlist
 
 
@@ -48,12 +48,25 @@ def test_system_and_settings(client, monkeypatch):
     monkeypatch.setattr(ytdlp, 'version', lambda: '2026.10.26'); monkeypatch.setattr(fetcher, 'ffmpeg_version', lambda: 'ffmpeg version 7.1')
     s = client.get('/api/system').json()
     assert (s['ytdlp'], s['ffmpeg'], s['can_fetch'], s['fetching']) == ('2026.10.26', 'ffmpeg version 7.1', oslib.CAN_PASS_FDS, [])
-    assert s['disk']['total'] > 0 and s['cache']['limit'] == 10**12 and s['cache_dir'].endswith('cache') and s['library'] == dict(synced=None, channels=0, videos=0, hidden=0, live=0, configured=False)
+    assert s['disk']['total'] > 0 and s['cache']['limit'] == 10**12 and s['cache_dir'].endswith('cache') and s['library'] == dict(synced=None, channels=0, videos=0, hidden=0, live=0, filtered=0, configured=False)
     assert client.put('/api/settings', json=dict(max_height=720, player_client='')).json()['max_height'] == 720
     assert client.get('/api/settings').json()['player_client'] == ''
     assert client.put('/api/settings', json=dict(max_height=None)).json()['max_height'] == 1080
     assert client.put('/api/settings', json=dict(cache_dir='relative')).json() == dict(detail='cache_dir must be an absolute path')
     assert client.put('/api/settings', json=dict(colour='red')).json() == dict(detail="unknown setting 'colour'")
+    assert client.get('/api/library/shown').json() == dict(min_seconds=None, max_seconds=None, streams='current', filtered=0)
+    assert client.put('/api/library/shown', json=dict(min_seconds=120, streams='all')).json() == dict(min_seconds=120, max_seconds=None, streams='all', filtered=0)
+    r = client.put('/api/library/shown', json=dict(max_seconds=60)); assert r.status_code == 400 and r.json() == dict(detail='The shortest length must not be longer than the longest.')
+    assert client.get('/api/library/shown').json()['max_seconds'] is None and client.get('/api/library').json()['filtered'] == 0
+
+
+def test_shown_filters_narrow_the_watching_side(client):
+    seed()
+    r = client.put('/api/library/shown', json=dict(max_seconds=300)).json()                                 # every seeded video is 10 minutes
+    assert r == dict(min_seconds=None, max_seconds=300, streams='current', filtered=4) and client.get('/api/videos').json()['videos'] == []
+    assert client.get('/api/videos/shuffle').json() == [] and client.get('/api/library').json()['filtered'] == 4
+    assert client.get(f"/api/videos/{VIDEOS[0]['id']}").status_code == 200                                     # a link still opens
+    assert len(client.put('/api/library/shown', json=dict(max_seconds=None)).json() and client.get('/api/videos').json()['videos']) == 4
 
 
 def test_quota_counts_what_the_server_asked_youtube(client, fake_youtube):
@@ -68,7 +81,7 @@ def test_quota_counts_what_the_server_asked_youtube(client, fake_youtube):
 
 def test_library_channels_and_videos(client, monkeypatch):
     seed()
-    assert client.get('/api/library').json() == dict(synced='2026-11-09T12:00:00+00:00', channels=2, videos=4, hidden=0, live=0, configured=False)
+    assert client.get('/api/library').json() == dict(synced='2026-11-09T12:00:00+00:00', channels=2, videos=4, hidden=0, live=0, filtered=0, configured=False)
     assert [c['title'] for c in client.get('/api/channels').json()] == ['night sky', 'Workshop']
     assert client.get(f"/api/channels/{CHANNELS[0]['id']}").json()['videos'] == 2 and client.get('/api/channels/nope').status_code == 404
     page = client.get('/api/videos', params=dict(limit=3)).json()
@@ -290,3 +303,15 @@ def test_iplayer_programmes_sync_without_a_youtube_key(client, fake_iplayer):
 
 def test_channel_overview(client):
     assert client.get('/api/channels/UCnone/overview').status_code == 404
+
+
+def test_segments_endpoint(client, monkeypatch):
+    from library import seed
+    from tubes import segments
+    seed()
+    monkeypatch.setattr(segments, 'sponsorblock', lambda vid: [dict(category='sponsor', start=1.0, end=2.0, action='skip', votes=1)])
+    r = client.get('/api/videos/aaaaaaaaaaa/segments').json()
+    assert r['segments'] == [dict(category='sponsor', start=1.0, end=2.0, action='skip')] and len(r['categories']) == 9
+    assert client.get('/api/videos/zzzzzzzzzzz/segments').status_code == 404
+    client.put('/api/settings', json=dict(skip_intro='auto'))
+    assert next(k for k in client.get('/api/skipping').json() if k['id'] == 'intro')['mode'] == 'auto'

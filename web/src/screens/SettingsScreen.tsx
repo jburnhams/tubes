@@ -1,16 +1,23 @@
-// The one question: "How is the server set up, and how do I change it?" Two tabs whose choice
-// lives in the URL (?tab=appearance). General is one form over the server's settings, grouped by
+// The one question: "How is the server set up, and how do I change it?" Four tabs whose choice
+// lives in the URL (?tab=skipping, ?tab=shown, ?tab=appearance). General is one form over the server's settings, grouped by
 // what they decide (the cache, what is fetched, the tools); the fields start
 // from what the server holds (rendered inside DataView's ready state, so never blank while
 // loading), problems are said under their field, and saving is one AsyncButton. The server checks
-// again and says why it refused, under the button. Appearance is Strata's ColorSchemeChoice.
+// again and says why it refused, under the button. Skipping is one ChoiceGroup per kind of segment
+// (Off, Ask, Skip: what the player does in it, src/tubes/segments.py), saved the same way.
+// Shown videos is a third form, over what the watching side lists (kept in the server's database,
+// not its settings file, so it has its own read and its own Save): the shortest and longest length,
+// in minutes with empty for no limit, and which streams are left out. Its finding is how many videos
+// the filters leave out now, which it says again after a save. Appearance is Strata's ColorSchemeChoice.
 import { useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
-import { AsyncButton, ColorSchemeChoice, DataView, EmptyState, Field, Input, NativeSelect, PageHeader, Skeleton, Tabs, useAsyncAction, useLoad } from 'strata-react'
-import { api, describeError, folderProblem, keys, numberProblem, type Settings } from '../api'
+import { AsyncButton, ChoiceGroup, ColorSchemeChoice, DataView, EmptyState, Field, Input, NativeSelect, PageHeader, Skeleton, Tabs, format, useAsyncAction, useLoad, type Choice } from 'strata-react'
+import { api, describeError, folderProblem, keys, numberProblem, type SegmentKind, type Settings, type ShownFilters, type SkipMode, type StreamFilter } from '../api'
 
 const tabs = [
   { value: 'general', label: 'General' },
+  { value: 'skipping', label: 'Skipping' },
+  { value: 'shown', label: 'Shown videos' },
   { value: 'appearance', label: 'Appearance' },
 ]
 
@@ -22,7 +29,7 @@ export function SettingsScreen() {
     <>
       <PageHeader title="Settings" scope="Kept on the server, for every browser that opens the app" />
       <Tabs param="tab" items={tabs} label="Settings">
-        {tab => (tab === 'appearance' ? <Appearance /> : <General />)}
+        {tab => (tab === 'appearance' ? <Appearance /> : tab === 'skipping' ? <Skipping /> : tab === 'shown' ? <Shown /> : <General />)}
       </Tabs>
     </>
   )
@@ -129,6 +136,133 @@ export function SettingsForm({ current }: { current: Settings }) {
       <div className="flex flex-wrap items-center gap-3">
         <AsyncButton type="submit" variant="default" phase={save.phase} error={save.error} labels={{ idle: 'Save settings', pending: 'Saving…', done: 'Saved' }} />
         {save.phase === 'error' && <p className="type-body-sm text-danger">{save.error} The settings were not changed.</p>}
+      </div>
+    </form>
+  )
+}
+
+/** What the player can do in a kind of segment. */
+export const skipChoices: Choice[] = [
+  { value: 'off', label: 'Off', detail: 'Play it as it is, and leave it off the timeline.' },
+  { value: 'ask', label: 'Ask', detail: 'Show a Skip button over the picture while it plays.' },
+  { value: 'auto', label: 'Skip', detail: 'Skip it as it starts, with Undo for a few seconds.' },
+]
+
+function Skipping() {
+  const load = useLoad({ queryKey: keys.skipping, queryFn: api.skipping })
+  return (
+    <DataView state={load} isEmpty={kinds => kinds.length === 0} skeleton={<FormSkeleton />} empty={<EmptyState title="Nothing to skip">The server names no kinds of segment.</EmptyState>}>
+      {kinds => <SkippingForm kinds={kinds} />}
+    </DataView>
+  )
+}
+
+/** One ChoiceGroup per kind of segment (SponsorBlock's categories; iPlayer's intros and credits come in as Intro and Credits), saved together. */
+export function SkippingForm({ kinds }: { kinds: SegmentKind[] }) {
+  const queryClient = useQueryClient()
+  const [modes, setModes] = useState<Record<string, SkipMode>>(() => Object.fromEntries(kinds.map(k => [k.id, k.mode])))
+  const save = useAsyncAction(async () => {
+    await api.saveSettings(Object.fromEntries(Object.entries(modes).map(([id, mode]) => [`skip_${id}`, mode])) as Partial<Settings>)
+    await Promise.all([keys.skipping, keys.settings, ['segments']].map(queryKey => queryClient.invalidateQueries({ queryKey })))
+  }, { describeError })
+  return (
+    <form onSubmit={e => { e.preventDefault(); void save.run() }} noValidate className="grid max-w-xl gap-8">
+      <p className="type-body text-muted-foreground">
+        What the player does in each kind of segment. YouTube videos get theirs from SponsorBlock, which viewers mark up; iPlayer marks its own intros and credits.
+      </p>
+      {kinds.map(k => (
+        <div key={k.id} className="grid gap-2">
+          <ChoiceGroup legend={k.label} name={`skip_${k.id}`} choices={skipChoices} value={modes[k.id]} onChange={v => setModes(old => ({ ...old, [k.id]: v as SkipMode }))} />
+          <p className="type-body-sm text-muted-foreground">{k.detail}</p>
+        </div>
+      ))}
+      <div className="flex flex-wrap items-center gap-3">
+        <AsyncButton type="submit" variant="default" phase={save.phase} error={save.error} labels={{ idle: 'Save skipping', pending: 'Saving…', done: 'Saved' }} />
+        {save.phase === 'error' && <p className="type-body-sm text-danger">{save.error} Nothing was changed.</p>}
+      </div>
+    </form>
+  )
+}
+
+function Shown() {
+  const load = useLoad({ queryKey: keys.shown, queryFn: api.shown })
+  return (
+    <DataView state={load} isEmpty={() => false} skeleton={<FormSkeleton />} empty={<EmptyState title="No filters">The server sent none.</EmptyState>}>
+      {f => <ShownForm current={f} />}
+    </DataView>
+  )
+}
+
+/** The stream choices, in the words of what each leaves out. */
+export const streamChoices: { value: StreamFilter; label: string }[] = [
+  { value: 'current', label: 'Leave out streams live now or scheduled' },
+  { value: 'all', label: 'Leave out every stream, past ones and premieres too' },
+]
+
+type ShownFields = { min: string; max: string; streams: StreamFilter }
+
+const minutes = (seconds: number | null) => (seconds == null ? '' : String(Math.round((seconds / 60) * 100) / 100))
+const seconds = (value: string) => (value.trim() ? Math.round(Number(value.trim()) * 60) : null)
+
+/** What is wrong with the length fields, by field: each is empty (no limit) or minutes, 0 or more, and the shortest is not past the longest. */
+export function shownProblems(f: ShownFields): Partial<Record<'min' | 'max', string>> {
+  const one = (v: string, what: string) => {
+    if (!v.trim()) return undefined
+    const n = Number(v.trim())
+    return Number.isFinite(n) && n >= 0 ? undefined : `Enter ${what} in minutes, or leave it empty for no limit.`
+  }
+  const found = { min: one(f.min, 'the shortest length'), max: one(f.max, 'the longest length') }
+  if (!found.min && !found.max && f.min.trim() && f.max.trim() && Number(f.min) > Number(f.max)) found.max = 'Make this at least the shortest length.'
+  return found
+}
+
+/** What the filters leave out now, as the finding under the form. */
+export function describeShown(f: ShownFilters): string {
+  return f.filtered ? `${format.count(f.filtered, 'video is', 'videos are')} left out by these now. They are still kept, and come back if the filters change.` : 'These leave no video out now.'
+}
+
+export function ShownForm({ current }: { current: ShownFilters }) {
+  const queryClient = useQueryClient()
+  const [f, setF] = useState<ShownFields>({ min: minutes(current.min_seconds), max: minutes(current.max_seconds), streams: current.streams })
+  const [problems, setProblems] = useState<ReturnType<typeof shownProblems>>({})
+  const set = (k: keyof ShownFields) => (e: { target: { value: string } }) => setF(old => ({ ...old, [k]: e.target.value }))
+
+  const save = useAsyncAction(async () => {
+    await api.saveShown({ min_seconds: seconds(f.min), max_seconds: seconds(f.max), streams: f.streams })
+    // Every list and count on both sides reads through the filters.
+    await Promise.all([keys.shown, keys.library, keys.channels, keys.videos, keys.system].map(queryKey => queryClient.invalidateQueries({ queryKey })))
+  }, { describeError })
+
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    const found = shownProblems(f)
+    setProblems(found)
+    if (!Object.values(found).some(Boolean)) void save.run()
+  }
+
+  return (
+    <form onSubmit={onSubmit} noValidate className="grid max-w-xl gap-8">
+      <p className="type-body text-muted-foreground">{describeShown(current)}</p>
+      <fieldset className="grid gap-5">
+        <legend className="mb-4 type-heading">Length</legend>
+        <Field label="Shortest video (minutes)" hint="Shorter videos are left out of every list. 3 leaves out most Shorts. Empty for no limit." error={problems.min}>
+          <Input value={f.min} onChange={set('min')} inputMode="decimal" autoComplete="off" />
+        </Field>
+        <Field label="Longest video (minutes)" hint="Longer videos are left out of every list. Empty for no limit. A video whose length is not known is always shown." error={problems.max}>
+          <Input value={f.max} onChange={set('max')} inputMode="decimal" autoComplete="off" />
+        </Field>
+      </fieldset>
+      <fieldset className="grid gap-5">
+        <legend className="mb-4 type-heading">Streams</legend>
+        <Field label="Live streams" hint="A stream live now or scheduled cannot be played, so it is always left out until it ends. A past stream is checked daily in case its recording goes.">
+          <NativeSelect value={f.streams} onChange={set('streams')}>
+            {streamChoices.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </NativeSelect>
+        </Field>
+      </fieldset>
+      <div className="flex flex-wrap items-center gap-3">
+        <AsyncButton type="submit" variant="default" phase={save.phase} error={save.error} labels={{ idle: 'Save filters', pending: 'Saving…', done: 'Saved' }} />
+        {save.phase === 'error' && <p className="type-body-sm text-danger">{save.error} The filters were not changed.</p>}
       </div>
     </form>
   )
