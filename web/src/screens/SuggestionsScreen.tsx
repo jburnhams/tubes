@@ -18,7 +18,8 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { ActiveList, AsyncButton, DataView, EmptyState, Field, Input, KeysLegend, NativeSelect, PageHeader, RowAction, Skeleton, Status, Tabs, Thumbnail, UndoBar, format, useActiveItem, useAsyncAction, useHotkeys, useLoad, useUndoable, type Shortcut } from 'strata-react'
+import { ActiveList, AsyncButton, DataView, EmptyState, Field, Input, KeysLegend, NativeSelect, PageHeader, RowAction, Skeleton, Status, Tabs, Thumbnail, UndoBar, format, useActiveItem, useAsyncAction, useExpanded, useHotkeys, useLoad, useUndoable, type Shortcut } from 'strata-react'
+import { ChannelDetail } from './ChannelDetail'
 import { api, describeError, keys, withBase, type Suggestion, type SuggestionFilter, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Added } from '../api'
 
 const views = [
@@ -179,6 +180,7 @@ function Queue({ filter, summary }: { filter: SuggestionFilter; summary: Suggest
 function Answers({ items, total, dismissedView, summary }: { items: Suggestion[]; total: number; dismissedView: boolean; summary: SuggestionSummary }) {
   const queryClient = useQueryClient()
   const undoable = useUndoable()
+  const open = useExpanded({ param: 'open', single: true })               // a channel opened in place to the shared channel panel
   const [said, setSaid] = useState<string>()
   const rows = items.filter(x => !undoable.isRemoved(x.channel_id))
   const active = useActiveItem(rows, x => x.channel_id, { noun: 'channel' })
@@ -188,7 +190,9 @@ function Answers({ items, total, dismissedView, summary }: { items: Suggestion[]
   const reread = async () => { for (const queryKey of [keys.suggestions, keys.channels, keys.library, keys.videos]) await queryClient.invalidateQueries({ queryKey }) }
   const follow = useAsyncAction(async (x: Suggestion) => {
     const r = await api.add(x.channel_id)
-    setSaid(describeFollowed(x.title, (r as Extract<Added, { kind: 'channel' }>).sync))     // a channel's id adds the channel
+    const sync = (r as Extract<Added, { kind: 'channel' }>).sync
+    queryClient.setQueryData(keys.sync, sync)                               // so the Library page shows the sync it started
+    setSaid(describeFollowed(x.title, sync))     // a channel's id adds the channel
     await reread()
   }, { describeError })
   const addWatched = useAsyncAction(async (x: Suggestion) => {
@@ -233,6 +237,7 @@ function Answers({ items, total, dismissedView, summary }: { items: Suggestion[]
         empty={<EmptyState title="That was the last one here">Choose another group or topic to keep going.</EmptyState>}
       >
         {s => (
+          <>
           <div className="grid gap-2 sm:flex sm:items-start sm:gap-3">
             <div className="flex min-w-0 flex-1 items-start gap-3">
             <Thumbnail src={s.thumbnail} alt="" missing="None" className="w-12 shrink-0 rounded-full" />
@@ -250,8 +255,11 @@ function Answers({ items, total, dismissedView, summary }: { items: Suggestion[]
               {configured && !dismissedView && <RowAction label="Follow" subject={s.title} onClick={() => void follow.run(s)} />}
               {configured && !dismissedView && <RowAction label="Add watched videos" subject={s.title} onClick={() => void addWatched.run(s)} />}
               <RowAction label={dismissedView ? 'Restore' : 'Dismiss'} subject={s.title} onClick={() => dismiss(s)} />
+              <RowAction label={open.isOpen(s.channel_id) ? 'Less' : 'More'} subject={s.title} onClick={() => open.setOpen(s.channel_id, !open.isOpen(s.channel_id))} />
             </span>
           </div>
+          {open.isOpen(s.channel_id) && <div className="mt-3 border-t border-border pt-3"><ChannelDetail id={s.channel_id} dismiss={() => dismiss(s)} /></div>}
+          </>
         )}
       </ActiveList>
       <UndoBar undoable={undoable} />

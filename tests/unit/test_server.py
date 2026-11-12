@@ -276,3 +276,7 @@ def test_iplayer_programmes_sync_without_a_youtube_key(client, fake_iplayer):
     assert client.post('/api/channels/b0000001/restart').json()['sync']['total'] == 1
     client.app.state.sync.wait(10)
     assert client.post('/api/library/sync', json=dict(channels=['UCaaaaaaaaaaaaaaaaaaaaaa'])).status_code == 503
+
+
+def test_channel_overview(client):
+    assert client.get('/api/channels/UCnone/overview').status_code == 404

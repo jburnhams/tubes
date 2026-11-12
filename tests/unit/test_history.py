@@ -240,3 +240,22 @@ def test_stats_count_rank_and_bucket():
     assert (d['by'], d['watches'], len(d['channels_top']), len(d['videos_top'])) == ('day', 7, 1, 1) and d['periods'][0] == dict(period=at(0)[:10], watches=1)
     e = history.stats(at(500))
     assert (e['watches'], e['first'], e['periods'], e['channels_top'], e['by']) == (0, None, [], [], 'day')
+
+
+def test_overview_brings_library_history_and_suggestion_together(fake_youtube):
+    from fake_youtube import vid
+    fake_youtube.channel(A, 'Channel A', topics=['Music'], videos=3)
+    load(two_crowds() + [watch(at(70), vid(A, 0), 'Upload 0', A, 'Channel a')], source='one', lookup=True)
+    load([watch(at(80), vid(A, 0), 'Upload 0', A, 'Channel a')], source='two')
+    o = history.overview(A)
+    assert (o['title'], o['library'], o['suggestion']['topics'], o['group']['named'], o['configured']) == ('Channel a', None, ['Music'], False, True)
+    h = o['history']
+    assert (h['watches'], h['first'], h['sources'], [p['period'] for p in h['periods']]) == (8, at(0, hour=8), [dict(source='one', watches=7), dict(source='two', watches=1)], ['2026-01', '2026-02', '2026-03'])
+    assert h['videos_top'][0] == dict(video_id=vid(A, 0), title='Upload 0', watches=2, last=at(80), in_library=False)
+    catalogue.add_videos([vid(A, 0)])
+    o = history.overview(A)
+    assert o['library']['follow'] is False and o['history']['videos_top'][0]['in_library'] is True and o['thumbnail'] == f'https://img.test/{A}/l.jpg'
+    fake_youtube.channel(D[:-1] + 'x', 'Only in the library')
+    catalogue.add(D[:-1] + 'x')
+    assert history.overview(D[:-1] + 'x')['history']['watches'] == 0 and history.overview(D[:-1] + 'x')['suggestion'] is None and history.overview(D[:-1] + 'x')['group'] is None
+    with pytest.raises(history.NotFound, match='Nothing is known of channel UCnone'): history.overview('UCnone')

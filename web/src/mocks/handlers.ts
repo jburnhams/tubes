@@ -8,7 +8,7 @@
 // `states: { error: [videosError] }` in the visual config.
 import { delay, http, HttpResponse } from 'msw'
 import { cursorOf, paths, type CacheItem, type Channel, type HistorySource, type Settings, type Stream, type Suggestion, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Video, type VideoPage } from '../api'
-import { cacheItems, channels, defaultSettings, historyDays, historySources, historyStats, library, libraryNew, longChannel, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
+import { cacheItems, channelHistory, channels, defaultSettings, historyDays, historySources, historyStats, library, libraryNew, longChannel, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
 
 /** What the mock server holds. Writes change it, so a test can pin a copy and see it pinned. */
 export const mock = {
@@ -140,6 +140,21 @@ export const handlers = [
     return HttpResponse.json(startSync(body?.channels))
   }),
   http.get(at(paths.channels), () => HttpResponse.json(mock.channels)),
+  // A channel's overview: the library's channel and the suggestion as the mock holds them, and a made-up history for any channel either knows.
+  http.get(at('/api/channels/:id/overview'), ({ params }) => {
+    const id = String(params.id)
+    const library = mock.channels.find(c => c.id === id) ?? null
+    const suggestion = mock.suggestions.find(x => x.channel_id === id) ?? null
+    if (!library && !suggestion) return refused(`Nothing is known of channel ${id}.`, 404)
+    const followed = mock.followed.includes(id)
+    const title = library?.title ?? suggestion!.title
+    return HttpResponse.json({
+      channel_id: id, title, thumbnail: library?.thumbnail ?? suggestion?.thumbnail ?? null, handle: library?.handle ?? suggestion?.handle ?? null,
+      library: followed ? { ...(library ?? channels[0]), id, title, follow: true } : library, suggestion: suggestion && { ...suggestion, in_library: !!library || suggestion.in_library },
+      group: suggestion?.group_id ? mock.groups.find(g => g.id === suggestion.group_id) ?? null : null, configured: true,
+      history: suggestion || library?.id === 'UCworkshop00000000000001' ? channelHistory(title) : { watches: 0, videos: 0, first: null, last: null, sources: [], periods: [], videos_top: [] },
+    })
+  }),
   http.get(at('/api/channels/:id'), ({ params }) => {
     const c = mock.channels.find(c => c.id === params.id)
     return c ? HttpResponse.json(c) : refused(`There is no channel ${params.id} in the library.`, 404)
@@ -334,3 +349,5 @@ export const historyNone = http.get(at(paths.history), () => HttpResponse.json({
 export const historyOneAccount = http.get(at(paths.history), () => HttpResponse.json({ ...historyStats, sources: [historySources[0]] }))
 /** The server has no YouTube key: no channel can be followed from History. */
 export const historyNoKey = http.get(at(paths.history), () => HttpResponse.json({ ...historyStats, sources: historySources, configured: false }))
+export const overviewLoading = http.get(at('/api/channels/:id/overview'), () => delay('infinite'))
+export const overviewError = http.get(at('/api/channels/:id/overview'), down)
