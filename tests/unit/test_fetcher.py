@@ -280,3 +280,105 @@ def test_signed_in_alone_when_signed_out_fails_and_both_failing_is_an_error(monk
 def test_signed_in_downloads_read_the_browser_too():
     settings.save(dict(cookies_from_browser='chrome'))
     assert '--cookies-from-browser' in fetcher.stream_command('399', '/p.json', True) and '--cookies-from-browser' not in fetcher.stream_command('399', '/p.json')
+
+
+# iPlayer episodes: ffmpeg alone, from iplayer.stream (or yt-dlp's muxed HLS when that fails).
+
+from tubes import iplayer  # noqa: E402
+
+E = 'm0000001'
+
+
+def seed_episode(e=E, duration=6.0, fresh=True):
+    if fresh: seed()
+    from tubes import db
+    with db.connect() as con:
+        con.execute("INSERT INTO videos (id, platform, channel_id, title, published, duration) VALUES (?, 'iplayer', 'b0000001', 'Chapter 1', '2026-01-01T00:00:00+00:00', ?)", (e, duration))
+
+
+def test_direct_command():
+    cmd = fetcher.direct_command('https://cdn.test/x.m3u8')
+    assert cmd[6:16] == ['-i', 'https://cdn.test/x.m3u8', '-map', '0:v:0', '-map', '0:a:0', '-c', 'copy', '-bsf:a', 'aac_adtstoasc'] and cmd[-1] == 'index.m3u8'
+
+
+def test_source_url_by_platform():
+    seed_episode(); seed_episode('bad id!', fresh=False)
+    assert fetcher.source_url(E) == ('iplayer', 'https://www.bbc.co.uk/iplayer/episode/m0000001')
+    assert fetcher.source_url('aaaaaaaaaaa') == ('youtube', 'https://www.youtube.com/watch?v=aaaaaaaaaaa')
+    assert fetcher.platform('zzzzzzzzzzz') == 'youtube'
+    with pytest.raises(fetcher.FetchError, match="'bad id!' is not an iPlayer episode id"): fetcher.start('bad id!')
+
+
+def test_an_iplayer_fetch_runs_ffmpeg_on_the_chosen_stream(monkeypatch):
+    seed_episode()
+    monkeypatch.setattr(iplayer, 'stream', lambda pid, h: dict(url='https://cdn.test/fhd.m3u8', height=1080, fps=50, label='1080p50 H.264 + AAC'))
+    seen = []
+    def fake_direct(job, url, duration):
+        seen.append((url, duration)); write_playlist(job.video_id, 2, True); return None
+    monkeypatch.setattr(fetcher, 'direct_pipeline', fake_direct)
+    monkeypatch.setattr(ytdlp, 'probe', lambda *a, **kw: pytest.fail('yt-dlp is not asked when iPlayer answers'))
+    evicted = []; monkeypatch.setattr(cache, 'evict', lambda now: evicted.append(now))
+    fetcher.start(E, 'Chapter 1', 'Harbour Lights', background=False)
+    assert cache.entry(E)['title'] == 'Chapter 1' and seen == [('https://cdn.test/fhd.m3u8', 6.0)] and len(evicted) == 1
+    assert cache.status(E)['formats'] == '1080p50 H.264 + AAC' and cache.status(E)['state'] == 'ready'
+
+
+def test_an_iplayer_fetch_falls_back_to_yt_dlp(monkeypatch):
+    seed_episode()
+    def broken(pid, h): raise iplayer.IplayerError('iPlayer did not answer with JSON.')
+    monkeypatch.setattr(iplayer, 'stream', broken)
+    info = dict(formats=[dict(format_id='hls-1', vcodec='avc1.64001F', acodec='mp4a.40.2', protocol='m3u8_native', height=720, tbr=5000, url='https://cdn.test/720.m3u8'),
+                         dict(format_id='hls-0', vcodec='avc1.4D401F', acodec='mp4a.40.2', protocol='m3u8_native', height=540, tbr=2800, url='https://cdn.test/540.m3u8'),
+                         dict(format_id='dash-v', vcodec='avc3.640020', acodec='none', protocol='http_dash_segments', height=720, url='https://cdn.test/x.mpd')])
+    asked = []; monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: asked.append(url) or info)
+    assert fetcher.iplayer_stream(E, 'https://www.bbc.co.uk/iplayer/episode/m0000001', 1080) == ('https://cdn.test/720.m3u8', '720p H.264 + AAC (yt-dlp)')
+    assert fetcher.iplayer_stream(E, 'u', 600) == ('https://cdn.test/540.m3u8', '540p H.264 + AAC (yt-dlp)')
+    assert asked[0] == 'https://www.bbc.co.uk/iplayer/episode/m0000001'
+    with pytest.raises(iplayer.IplayerError, match='did not answer with JSON'): fetcher.iplayer_stream(E, 'u', 200)       # nothing fits: iPlayer's own reason
+    def no_ytdlp(url, signed_in=False): raise ytdlp.YtdlpError('yt-dlp is not installed')
+    monkeypatch.setattr(ytdlp, 'probe', no_ytdlp)
+    with pytest.raises(iplayer.IplayerError, match='did not answer with JSON'): fetcher.iplayer_stream(E, 'u', 1080)
+
+
+@pytest.mark.parametrize('why', ['iPlayer only plays in the UK, and this server is not seen as in the UK.', 'iPlayer no longer offers this episode.'])
+def test_an_iplayer_refusal_that_yt_dlp_cannot_help_is_recorded(monkeypatch, why):
+    seed_episode()
+    def refuse(pid, h): raise iplayer.IplayerError(why)
+    monkeypatch.setattr(iplayer, 'stream', refuse)
+    monkeypatch.setattr(ytdlp, 'probe', lambda *a, **kw: pytest.fail('yt-dlp cannot help here'))
+    st = fetcher.start(E, background=False)
+    assert (st['state'], st['error']) == ('failed', why)
+
+
+def test_an_iplayer_fetch_records_why_it_failed_or_stopped(monkeypatch):
+    seed_episode()
+    monkeypatch.setattr(iplayer, 'stream', lambda pid, h: dict(url='u', label='720p50 H.264 + AAC'))
+    def cannot(job, url, duration): raise OSError('no ffmpeg')
+    monkeypatch.setattr(fetcher, 'direct_pipeline', cannot)
+    assert fetcher.start(E, background=False)['error'] == 'Could not start the fetch: no ffmpeg'
+    def stopped(job, url, duration):
+        job.cancelled = True; return None
+    monkeypatch.setattr(fetcher, 'direct_pipeline', stopped)
+    assert fetcher.start(E, background=False)['error'] == 'The fetch was stopped.'
+
+
+def test_direct_pipeline_runs_ffmpeg_and_reads_the_result(monkeypatch):
+    seed_episode(); cache.begin(E, cache.stamp())
+    made = []
+    def popen(cmd, **kw):
+        made.append(Proc(cmd, 0, **kw)); write_playlist(E, 2, True); return made[-1]
+    monkeypatch.setattr(subprocess, 'Popen', popen)
+    monkeypatch.setattr(fetcher, 'watch', lambda j: False)
+    job = fetcher.Job(E)
+    assert fetcher.direct_pipeline(job, 'https://cdn.test/x.m3u8', 8) is None
+    assert made[0].cmd[7] == 'https://cdn.test/x.m3u8' and made[0].kw['cwd'] == cache.folder(E)
+    job2 = fetcher.Job(E); job2.cancelled = True
+    killed = []; monkeypatch.setattr(oslib, 'kill_tree', lambda pid: killed.append(pid))
+    assert fetcher.direct_pipeline(job2, 'u', 8) == 'The fetch was stopped.'
+
+
+def test_an_iplayer_fetch_needs_no_pipes(monkeypatch):
+    seed_episode(); monkeypatch.setattr(oslib, 'CAN_PASS_FDS', False)
+    monkeypatch.setattr(iplayer, 'stream', lambda pid, h: dict(url='u', label='720p50 H.264 + AAC'))
+    monkeypatch.setattr(fetcher, 'direct_pipeline', lambda job, url, d: write_playlist(job.video_id, 1, True))
+    assert fetcher.start(E, background=False)['state'] == 'ready'

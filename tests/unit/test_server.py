@@ -258,8 +258,21 @@ def test_history_stats_and_refresh_from_a_history_database(client, tmp_path, mon
     r = client.post('/api/suggestions/refresh').json()
     assert (r['channels'], r['summary']['database'], [s['source'] for s in r['summary']['sources']]) == (1, True, ['main'])
     h = client.get('/api/history', params=dict(start='2026-01-02T00:00:00+00:00', end='2026-01-04T00:00:00+00:00', source='main')).json()
-    assert (h['watches'], h['by'], [p['period'] for p in h['periods']], h['channels_top'][0]['watches'], h['sources'][0]['watches']) == (2, 'day', ['2026-01-02', '2026-01-03'], 2, 5)
+    assert (h['watches'], h['by'], [p['period'] for p in h['periods']], h['channels_top'][0]['watches'], h['sources'][0]['watches'], h['configured']) == (2, 'day', ['2026-01-02', '2026-01-03'], 2, 5, False)
     monkeypatch.setenv('TUBES_HISTORY_TABLE', 'nothere')
     assert client.post('/api/suggestions/refresh').status_code == 502
     monkeypatch.setenv('TUBES_HISTORY_TABLE', 'bad name')
     assert client.post('/api/suggestions/refresh').status_code == 400
+
+
+def test_iplayer_programmes_sync_without_a_youtube_key(client, fake_iplayer):
+    fake_iplayer.programme('b0000001', 'Harbour Lights', episodes=2)
+    r = client.post('/api/library', json=dict(input='https://www.bbc.co.uk/iplayer/episodes/b0000001')).json()
+    assert r['kind'] == 'channel' and r['sync']['total'] == 1
+    client.app.state.sync.wait(10)
+    assert client.get('/api/library/sync').json()['added'] == 2
+    assert client.post('/api/library/sync').status_code == 200
+    client.app.state.sync.wait(10)
+    assert client.post('/api/channels/b0000001/restart').json()['sync']['total'] == 1
+    client.app.state.sync.wait(10)
+    assert client.post('/api/library/sync', json=dict(channels=['UCaaaaaaaaaaaaaaaaaaaaaa'])).status_code == 503
