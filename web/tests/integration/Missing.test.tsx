@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { streams, videos } from '../../src/mocks/fixtures'
+import { videosFrom } from '../../src/mocks/handlers'
 import { flush } from '../../src/watch/missing'
 import { fireEvent } from '@testing-library/react'
 import { act, openApp, screen, waitFor, within } from '../utils/render'
@@ -27,6 +28,18 @@ describe('Missing videos', () => {
     expect(mock.checks).toEqual([[videos[1].id, videos[2].id]])                     // one call, each video once
     await waitFor(() => expect(screen.queryByRole('link', { name: videos[1].title })).not.toBeInTheDocument())
     expect(screen.getByRole('link', { name: videos[2].title })).toBeInTheDocument()  // YouTube still has it: it stays
+  })
+
+  it('tries YouTube\'s hqdefault size before reporting a thumbnail that fails', async () => {
+    server.use(videosFrom([{ ...videos[0], thumbnail: 'https://i.ytimg.com/vi/aaaaaaaaaaa/fhddefault.jpg' }, { ...videos[1], thumbnail: 'https://i.ytimg.com/vi/bbbbbbbbbbb/hqdefault.jpg' }]))
+    openApp('/')
+    const [first, second] = await cards()
+    fireEvent.error(thumbnailOf(first)); fireEvent.error(thumbnailOf(second))
+    await waitFor(() => expect(thumbnailOf(first)).toHaveAttribute('src', 'https://i.ytimg.com/vi/aaaaaaaaaaa/hqdefault.jpg'))
+    await act(flush)
+    expect(mock.checks).toEqual([[videos[1].id]])                                      // already the size every video has: reported at once
+    fireEvent.error(thumbnailOf(first)); await act(flush)
+    expect(mock.checks).toEqual([[videos[1].id], [videos[0].id]])                      // the fallback failed too
   })
 
   it('shows a hidden video again once the server has it back', async () => {

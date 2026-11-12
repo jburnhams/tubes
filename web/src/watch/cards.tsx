@@ -2,14 +2,14 @@
 // running time in its corner, then the channel's round picture beside a bold two-line title, the
 // channel's name and "views · age". A video is one link to its watch page, named by its title: the picture
 // and avatar are links too, for the mouse, but hidden from the keyboard and screen readers so each video is said once.
-// A thumbnail that fails reports its video as missing (missing.ts); a video the server then hides
+// A thumbnail that fails tries YouTube's hqdefault size first, then reports its video as missing (missing.ts); a video the server then hides
 // leaves every list at once, as the server leaves it out of the next page it serves.
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { useLoad, type InfiniteLoad } from 'strata-react'
 import { api, keys, type Channel, type Video } from '../api'
 import { runningTime, viewsAndAge } from './format'
-import { isPlaceholder, reportMissing, useHidden } from './missing'
+import { fallbackThumbnail, isPlaceholder, reportMissing, useHidden } from './missing'
 import { Pill } from './Shown'
 
 /** The channels, by id, from the one shared read (the rail reads the same query). */
@@ -31,9 +31,12 @@ const SAVED: Record<string, string> = { ready: 'Saved', fetching: 'Fetching' }
 /** The thumbnail with its running time, and a corner label when a copy is on this server. */
 export function Picture({ v, className = '' }: { v: Video; className?: string }) {
   const saved = v.cache_state ? SAVED[v.cache_state] : undefined
+  const [fallback, setFallback] = useState<string | null>(null)
+  const src = fallback ?? v.thumbnail
+  const failed = () => { const next = src && !fallback ? fallbackThumbnail(src) : null; if (next) setFallback(next); else reportMissing(v.id) }
   return (
     <span className={`relative block aspect-video overflow-hidden rounded-tube bg-tube-chip ${className}`}>
-      {v.thumbnail && <img src={v.thumbnail} alt="" className="size-full object-cover" onError={() => reportMissing(v.id)} onLoad={e => isPlaceholder(e.currentTarget) && reportMissing(v.id)} />}
+      {src && <img src={src} alt="" className="size-full object-cover" onError={failed} onLoad={e => isPlaceholder(e.currentTarget) && reportMissing(v.id)} />}
       {saved && <span className="absolute top-2 left-2 rounded-tube-sm bg-tube-badge px-1.5 py-0.5 text-tube-xs font-medium text-tube-on-screen">{saved}</span>}
       {v.duration ? <span className="absolute right-2 bottom-2 rounded-tube-sm bg-tube-badge px-1 text-tube-xs font-medium text-tube-on-screen tabular-nums">{runningTime(v.duration)}</span> : null}
     </span>

@@ -1,5 +1,10 @@
 # Progress log
 
+## 2026-11-12: blank thumbnails on the home page
+
+- Found on the home server: 86 of the newest 200 videos had a blank card, and 6,000 of 195,741 YouTube videos (3%, but most of the newest) stored a thumbnail that answers 404. The Data API now lists `fhddefault` (1920×1080), `qhddefault` and `uhddefault` for many new uploads and streams, `best_thumbnail` kept the largest listed, and i.ytimg.com does not serve those sizes (tried as jpg, webp and with `?v=`); `maxresdefault` was there for every one tried. The report a failed thumbnail sends (`/api/videos/check`) found each video still on YouTube, as it is, so the card stayed blank. iPlayer images were all fine.
+- Fixed: `best_thumbnail` takes the largest of the five documented sizes only; a data migration rewrites the stored `fhd`/`qhd`/`uhd` URLs to `maxresdefault`; and a card whose YouTube thumbnail fails tries `hqdefault` (which every video has) before reporting the video, so a size YouTube stops serving costs a smaller picture, not a blank.
+
 ## 2026-11-12: films, and other iPlayer categories, followed like a channel
 
 - Asked for: a way to keep one-offs such as films, which have no programme behind them. ibl lists a category's programmes 200 a page (`categories/<id>/programmes`); a one-off's `initial_children` is the whole episode (versions, availability, images), so every film iPlayer offers comes in two calls. Measured on the home server: Films listed 284 programmes, 277 of them one-offs; following it and syncing took 0.6 s.
