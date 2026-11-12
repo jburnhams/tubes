@@ -56,6 +56,16 @@ def test_system_and_settings(client, monkeypatch):
     assert client.put('/api/settings', json=dict(colour='red')).json() == dict(detail="unknown setting 'colour'")
 
 
+def test_quota_counts_what_the_server_asked_youtube(client, fake_youtube):
+    q = client.get('/api/quota').json()
+    assert (q['used'], q['limit'], q['remaining'], q['refused'], q['configured'], len(q['days'])) == (0, 10_000, 10_000, None, True, 30)
+    fake_youtube.channel('UCaaaaaaaaaaaaaaaaaaaaaa', 'Workshop', handle='@workshop')
+    client.post('/api/library', json=dict(input='@workshop')); client.app.state.sync.wait(10)
+    q = client.get('/api/quota').json()
+    assert q['used'] == len(fake_youtube.calls) > 1
+    assert {p['purpose'] for p in q['today']['purposes']} == {'add', 'sync'} and q['remaining'] == 10_000 - q['used']
+
+
 def test_library_channels_and_videos(client, monkeypatch):
     seed()
     assert client.get('/api/library').json() == dict(synced='2026-11-09T12:00:00+00:00', channels=2, videos=4, hidden=0, live=0, configured=False)

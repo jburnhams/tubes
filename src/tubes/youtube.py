@@ -5,10 +5,13 @@ before Tubes did.
 The key is the environment's `YOUTUBE_API_KEY`, never the settings file. A key can be restricted to HTTP referrers in Google's console;
 `YOUTUBE_API_REFERER` is then sent as the Referer header (without it such a key gets 403). `TUBES_YOUTUBE_API` points the calls at another
 address (the tests' stand-in). Each call costs one unit of the key's daily quota (10,000 by default): a page of 50 uploads is one, the
-details of up to 50 videos are one more.
+details of up to 50 videos are one more. Every call that reaches Google is counted by quota.py, under the purpose it was made for, because
+Google gives no way to ask how much of the quota is left.
 
 `parse` reads what a person pastes (a channel or video link, an id, a handle) so one field can add either."""
 import json, os, re, urllib.error, urllib.parse, urllib.request
+
+from tubes import quota
 
 API = 'https://www.googleapis.com/youtube/v3'
 TIMEOUT = 30
@@ -39,11 +42,14 @@ def call(endpoint, **params):
     headers = {'Accept': 'application/json'}
     if os.environ.get('YOUTUBE_API_REFERER'): headers['Referer'] = os.environ['YOUTUBE_API_REFERER']
     try:
-        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=TIMEOUT) as r: return json.loads(r.read())
+        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=TIMEOUT) as r: body = r.read()
+        quota.record(endpoint)
+        return json.loads(body)
     except urllib.error.HTTPError as e:
         try: err = json.loads(e.read()).get('error') or {}
         except ValueError: err = {}
         reason = next((x.get('reason') for x in err.get('errors') or [] if x.get('reason')), None)
+        quota.record(endpoint, failed=True, refused=reason in ('quotaExceeded', 'dailyLimitExceeded'))        # Google charges an answered error too
         why = err.get('message') or reason
         if reason == 'quotaExceeded': why = 'the key has used its quota for today (it resets at midnight Pacific time)'
         raise YoutubeError(f'YouTube refused the request ({e.code}{": " + why if why else ""}).', e.code) from None

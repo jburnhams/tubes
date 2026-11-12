@@ -57,6 +57,44 @@ export interface Channel {
   added?: string | null
 }
 
+/** Calls to the YouTube Data API, and the quota units they cost, in one slice (a purpose, an endpoint, an hour, a day). */
+export interface QuotaTotals {
+  calls: number
+  units: number
+  /** Calls YouTube answered with an error (they still cost their units). */
+  failed: number
+  /** Of those, the ones refused because the quota was spent. */
+  refused: number
+}
+
+/** What a YouTube call was made for, as the server names it (quota.py); `other` when no purpose was set. */
+export type QuotaPurpose = 'sync' | 'recheck' | 'add' | 'reported' | 'past' | 'suggestions' | 'related' | 'history' | 'other' | (string & {})
+
+/** `GET /api/quota`: the YouTube key's daily quota as this server has counted it. Google has no call that says how much is left. */
+export interface QuotaUsage {
+  /** The YouTube key is in the server's environment. */
+  configured: boolean
+  /** The key's daily quota in units (YOUTUBE_API_QUOTA, else Google's 10,000). */
+  limit: number
+  /** Today, as the quota counts days: YYYY-MM-DD in Pacific time. */
+  day: string
+  used: number
+  /** What is left of the limit; 0 once YouTube has refused a call today, whoever spent it. */
+  remaining: number
+  /** When the quota next resets (midnight Pacific), as an ISO time. */
+  resets: string
+  /** When YouTube last refused a call today because the quota was spent, else null. */
+  refused: string | null
+  today: QuotaTotals & {
+    purposes: (QuotaTotals & { purpose: QuotaPurpose })[]
+    endpoints: (QuotaTotals & { endpoint: string })[]
+    /** Pacific hours (0-23) that had calls, in order. */
+    hours: (QuotaTotals & { hour: number })[]
+  }
+  /** The last 30 days, today first, each with its units by purpose. */
+  days: (QuotaTotals & { day: string; purposes: Record<string, number> })[]
+}
+
 /** `GET /api/library/sync`: the background sync, one at a time. */
 export interface SyncJob {
   running: boolean
@@ -301,6 +339,7 @@ export const paths = {
   system: '/api/system',
   settings: '/api/settings',
   library: '/api/library',
+  quota: '/api/quota',
   sync: '/api/library/sync',
   channels: '/api/channels',
   channel: (id: string) => `/api/channels/${encodeURIComponent(id)}`,
@@ -332,6 +371,7 @@ export const keys = {
   channels: ['channels'],
   sync: ['sync'],
   library: ['library'],
+  quota: ['quota'],
   channel: (id: string) => ['channels', id],
   videos: ['videos'],
   list: (filter: VideoFilter) => ['videos', 'list', filter.channel ?? '', filter.q?.trim() ?? ''],
@@ -372,6 +412,7 @@ export const api = {
   settings: () => fetchJson<Settings>(withBase(paths.settings)),
   saveSettings: (s: Partial<Settings>) => callJson<Settings>(withBase(paths.settings), send('PUT', s)),
   library: () => fetchJson<LibraryStatus>(withBase(paths.library)),
+  quota: () => fetchJson<QuotaUsage>(withBase(paths.quota)),
   add: (input: string) => callJson<Added>(withBase(paths.library), send('POST', { input })),
   syncJob: () => fetchJson<SyncJob>(withBase(paths.sync)),
   /** Sync these channels, or every followed one. */

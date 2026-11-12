@@ -112,6 +112,7 @@ export function SystemScreen() {
               <LinkCardList label="Places to go from here">
                 <LinkCard to="/admin/library" title="Library" description="The channels followed, adding a channel or a video, and Sync." />
                 <LinkCard to="/admin/cache" title="Cache" description="What is saved, what goes first when it fills, and Trim now." />
+                <LinkCard to="/admin/quota" title="YouTube quota" description="How much of the key’s daily quota is used and left, and what used it." />
                 <LinkCard to="/admin/settings" title="Settings" description="The cache limit and folder, quality, signing in, the tools' paths." />
                 <LinkCard href={withBase('/api/docs')} title="API reference" description="Every endpoint the server answers, with a form to try each one." />
                 <LinkCard href={withBase(paths.health)} title="Health check" description="The JSON a monitor polls to see that the server is up." />

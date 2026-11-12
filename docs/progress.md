@@ -1,5 +1,13 @@
 # Progress log
 
+## 2026-11-12: YouTube quota counted and shown
+
+- Asked for: track how much of the YouTube Data API's daily limit is used and left, and what used it, on its own admin page. Google has no API for a key's remaining quota (only its Cloud console shows it), so Tubes counts its own calls.
+- `quota.py`: every call `youtube.call` makes that reaches Google is counted in `api_usage`, by Pacific day and hour (the quota resets at midnight Pacific; the US clock rule is worked out in code so Windows needs no tzdata), purpose and endpoint: calls, units (1 per list call; `search` would be 100), failed (Google charges an answered error too) and refused (`quotaExceeded`). A refusal also stamps `meta.youtube_quota_refused`, so the page says the quota is spent even when another user of the same key spent it. Rows older than 90 days are dropped. Counting never fails a call.
+- Purposes come from `quota.purpose(...)` around the work, innermost first: `sync`, `recheck` (also the one a sync runs), `add`, `reported` (the watching side found a video missing), `past` (past streams rechecked when read), `suggestions` (history look-ups); the CLI wraps each command in its name, so `tubes related` (PR #59) counts as `related` without changes; anything else is `other`. The limit is `YOUTUBE_API_QUOTA`, else 10,000.
+- `GET /api/quota`, `tubes quota`, and Admin > YouTube quota: the finding (used, left, reset in the viewer's clock; spent; nothing yet; no key), a Meter warning at 80% and 95%, today's units by purpose (CompositionBar) and by endpoint, and 30 days as a line and a table. The System page links to it.
+- Not shown: what other apps using the same key spend (only visible through a refusal). Shares under 1% read "0%" in the CompositionBar: the installed strata-react (0.1.17) has no `format.share` yet.
+
 ## 2026-11-12: BBC iPlayer programmes and episodes
 
 - Asked for: BBC iPlayer alongside YouTube, blending in on every screen. Tubes runs in the UK, which iPlayer requires (it also needs a TV licence, which is the owner's to hold).

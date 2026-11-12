@@ -18,12 +18,13 @@ yt-dlp and ffmpeg must be on the service's `PATH` or set with `./tubes set ytdlp
 
 ## 2. Credentials
 
-The library comes from the YouTube Data API v3: a key from a Google Cloud project with that API enabled (10,000 units a day by default; a sync of an up-to-date channel costs about 2). If the key is restricted to HTTP referrers, `YOUTUBE_API_REFERER` is sent as the Referer header. Put them in a file only the service user can read, never in the repo or the settings file:
+The library comes from the YouTube Data API v3: a key from a Google Cloud project with that API enabled (10,000 units a day by default; a sync of an up-to-date channel costs about 2). If the key is restricted to HTTP referrers, `YOUTUBE_API_REFERER` is sent as the Referer header. Google offers no call that says how much of the quota is left, so Tubes counts each call it makes (Admin > YouTube quota, `./tubes quota`); if the key's quota is not 10,000, set `YOUTUBE_API_QUOTA`. Put them in a file only the service user can read, never in the repo or the settings file:
 
 ```
 # ~/.config/<somewhere>/env  (chmod 600)
 YOUTUBE_API_KEY=...
 YOUTUBE_API_REFERER=https://<an allowed site>/    # only for a referrer-restricted key
+YOUTUBE_API_QUOTA=10000                           # only if Google granted the key a different daily quota
 ```
 
 Moving over from the storage service needed no import: the tables already held the library copied from it, so the first `./tubes sync` on the new code read each channel back to its first upload (about one quota unit per 50 videos) and added what was missing. Nothing reads storage's D1 any more, so no Cloudflare credentials are needed.

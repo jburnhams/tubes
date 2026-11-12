@@ -80,6 +80,7 @@ export default defineVisualConfig({
           },
         },
       },
+      { name: 'admin-quota', path: '/admin/quota' },
       { name: 'admin-system', path: '/admin/system' },
       {
         name: 'admin-settings',
