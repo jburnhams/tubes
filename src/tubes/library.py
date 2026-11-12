@@ -11,15 +11,51 @@ shown, and rechecked daily in case its recording goes. An
 iPlayer episode is left out the same way once it is gone from the programme's list or its `expires` has passed, except while its copy is
 ready in the cache: one already fetched stays watchable until the cache evicts it.
 
+On top of that, Admin's Settings page chooses which of the rest the watching side shows (`filters`, kept in `meta` under 'shown', so in the
+database for every server that reads it): a shortest and a longest length (a video whose length is not known is kept), and whether past
+streams and premieres are shown too. They only narrow the lists; nothing is changed or deleted, so changing them back brings the videos back.
+
 `now` (an ISO string, default the present) is what `expires` is compared with."""
-import datetime
+import datetime, json
 
 from tubes import db, youtube
 
 VIDEO_COLUMNS = """v.id, v.platform, v.channel_id, c.title AS channel, v.title, v.published, v.duration, v.thumbnail, v.views,
                    k.state AS cache_state, k.bytes AS cache_bytes, v.gone, v.live, v.expires, v.series, v.episode"""
-SHOWN = ("((v.gone IS NULL AND COALESCE(v.live, '') NOT IN ('live', 'upcoming') AND (v.expires IS NULL OR v.expires > ?)) OR (v.platform = 'iplayer' AND COALESCE(k.state, '') = 'ready'))")
-# what the lists show (one `now` argument; needs the copies joined as k): not gone, not a stream live now or scheduled, not expired from iPlayer unless cached. Never NULL, so NOT works.
+AVAILABLE = "((v.gone IS NULL AND (v.expires IS NULL OR v.expires > ?)) OR (v.platform = 'iplayer' AND COALESCE(k.state, '') = 'ready'))"
+# still offered (one `now` argument; needs the copies joined as k): not gone, not expired from iPlayer unless cached
+STREAMING = "(v.gone IS NULL AND v.live IN ('live', 'upcoming'))"        # a stream live now or scheduled: cannot be played, so never shown
+NOT_STREAMING = "COALESCE(v.live, '') NOT IN ('live', 'upcoming')"
+
+FILTERS = dict(min_seconds=None, max_seconds=None, streams='current')
+# streams: 'current' hides those live now or scheduled (they cannot be played); 'all' hides past streams and premieres too
+STREAMS = ('current', 'all')
+
+
+def filters():
+    """Which videos the watching side shows, as Admin set them: `{min_seconds, max_seconds, streams}` (None: no limit)."""
+    with db.connect() as con: row = con.execute("SELECT value FROM meta WHERE key = 'shown'").fetchone()
+    try: saved = json.loads(row[0]) if row and row[0] else {}
+    except ValueError: saved = {}
+    return {k: saved.get(k, v) for k, v in FILTERS.items()} if isinstance(saved, dict) else dict(FILTERS)
+
+
+def _chosen(f):
+    """The SQL (and its arguments) for what `f` leaves in, never NULL so NOT works."""
+    parts, args = [], []
+    if f['streams'] == 'all': parts.append('v.live IS NULL')
+    if f['min_seconds'] is not None: parts.append('(v.duration IS NULL OR v.duration >= ?)'); args.append(f['min_seconds'])
+    if f['max_seconds'] is not None: parts.append('(v.duration IS NULL OR v.duration <= ?)'); args.append(f['max_seconds'])
+    return ('(' + ' AND '.join(parts) + ')' if parts else '(1 = 1)'), args
+
+
+def shown(now=None, f=None):
+    """What the lists show, as SQL and its arguments (needs the copies joined as k): still offered, not a stream live now or scheduled, and
+    let through by Admin's filters. Never NULL, so NOT works."""
+    chosen, args = _chosen(f or filters())
+    return f'({AVAILABLE} AND {NOT_STREAMING} AND {chosen})', [_now(now)] + args
+
+
 CHANNEL_COLUMNS = """c.id, c.platform, c.title, c.handle, c.thumbnail, c.synced, c.published, c.country, c.subscribers, c.total_videos, c.views, c.complete, c.follow,
                      c.added, c.sync_token IS NOT NULL AS resumable"""
 
@@ -28,26 +64,33 @@ def _now(now=None): return now or datetime.datetime.now(datetime.timezone.utc).i
 
 
 def status(now=None):
-    """`{synced, channels, videos, hidden, live, configured}`: when every followed channel was last synced (None: never), what the library
-    holds (videos that can be watched, those hidden because YouTube no longer has them or iPlayer no longer offers them, and streams live
-    now or scheduled, hidden until they end), and whether the YouTube key is in the environment (without it nothing can be added or synced from YouTube)."""
+    """`{synced, channels, videos, hidden, live, filtered, configured}`: when every followed channel was last synced (None: never), what the
+    library holds (videos that can be watched; those hidden because YouTube no longer has them or iPlayer no longer offers them; streams live
+    now or scheduled, hidden until they end; and those Admin's filters leave out), and whether the YouTube key is in the environment
+    (without it nothing can be added or synced from YouTube)."""
+    sql, args = shown(now)
+    chosen, chosen_args = _chosen(filters())
     with db.connect() as con:
         synced = con.execute("SELECT value FROM meta WHERE key = 'library_synced'").fetchone()
-        counts = con.execute(f"""SELECT (SELECT COUNT(*) FROM channels), COALESCE(SUM(CASE WHEN {SHOWN} THEN 1 ELSE 0 END), 0),
-                                        COALESCE(SUM(CASE WHEN {SHOWN} OR (v.gone IS NULL AND v.live IN ('live', 'upcoming')) THEN 0 ELSE 1 END), 0),
-                                        COALESCE(SUM(CASE WHEN v.gone IS NULL AND v.live IN ('live', 'upcoming') THEN 1 ELSE 0 END), 0)
-                                 FROM videos v LEFT JOIN copies k ON k.video_id = v.id""", (_now(now),) * 2).fetchone()
-    return dict(synced=synced[0] if synced else None, channels=counts[0], videos=counts[1], hidden=counts[2], live=counts[3], configured=youtube.configured())
+        counts = con.execute(f"""SELECT (SELECT COUNT(*) FROM channels), COUNT(v.id), COALESCE(SUM(CASE WHEN {sql} THEN 1 ELSE 0 END), 0),
+                                        COALESCE(SUM(CASE WHEN {STREAMING} THEN 1 ELSE 0 END), 0),
+                                        COALESCE(SUM(CASE WHEN {AVAILABLE} AND {NOT_STREAMING} AND NOT {chosen} THEN 1 ELSE 0 END), 0)
+                                 FROM videos v LEFT JOIN copies k ON k.video_id = v.id""", args + [_now(now)] + chosen_args).fetchone()
+    channel_count, total, videos_, live, filtered = counts
+    return dict(synced=synced[0] if synced else None, channels=channel_count, videos=videos_, hidden=total - videos_ - live - filtered, live=live, filtered=filtered,
+                configured=youtube.configured())
 
 
 def channels(now=None):
-    """Every channel with how many videos it has here to watch, how many are hidden (gone, streams not over yet, or expired from iPlayer) and its newest one's date, by title."""
+    """Every channel with how many videos it has here to watch, how many are hidden (gone, streams not over yet, expired from iPlayer, or
+    left out by Admin's filters) and its newest one's date, by title."""
+    ok, args = shown(now)
     with db.connect() as con:
-        rows = db.rows(con.execute(f"""SELECT {CHANNEL_COLUMNS}, COALESCE(SUM(CASE WHEN v.id IS NOT NULL AND {SHOWN} THEN 1 ELSE 0 END), 0) AS videos,
-                                       COALESCE(SUM(CASE WHEN v.id IS NOT NULL AND NOT {SHOWN} THEN 1 ELSE 0 END), 0) AS hidden,
-                                       MAX(CASE WHEN v.id IS NOT NULL AND {SHOWN} THEN v.published END) AS latest
+        rows = db.rows(con.execute(f"""SELECT {CHANNEL_COLUMNS}, COALESCE(SUM(CASE WHEN v.id IS NOT NULL AND {ok} THEN 1 ELSE 0 END), 0) AS videos,
+                                       COALESCE(SUM(CASE WHEN v.id IS NOT NULL AND NOT {ok} THEN 1 ELSE 0 END), 0) AS hidden,
+                                       MAX(CASE WHEN v.id IS NOT NULL AND {ok} THEN v.published END) AS latest
                                        FROM channels c LEFT JOIN videos v ON v.channel_id = c.id LEFT JOIN copies k ON k.video_id = v.id
-                                       GROUP BY c.id ORDER BY LOWER(c.title), c.id""", (_now(now),) * 3))
+                                       GROUP BY c.id ORDER BY LOWER(c.title), c.id""", args * 3))
     for r in rows: r.update(complete=bool(r['complete']), follow=bool(r['follow']), resumable=bool(r['resumable']))   # SQLite answers 0 and 1
     return rows
 
@@ -63,7 +106,8 @@ def cursor(v):
 
 def videos(channel_id=None, search=None, after=None, limit=24, now=None):
     """One page of videos, newest first: `{videos, has_more}`. `search` matches words in the title, in any order; `after` is a cursor."""
-    where, args = [SHOWN], [_now(now)]
+    ok, args = shown(now)
+    where = [ok]
     if channel_id: where.append('v.channel_id = ?'); args.append(channel_id)
     for word in (search or '').split():
         where.append("LOWER(v.title) LIKE LOWER(?) ESCAPE '\\'"); args.append('%' + word.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%')
@@ -78,7 +122,8 @@ def videos(channel_id=None, search=None, after=None, limit=24, now=None):
 
 def shuffle(count=24, channel_id=None, now=None):
     """`count` videos picked at random (from one channel, if given), for a page that offers something different on every visit."""
-    where, args = (f'WHERE {SHOWN} AND v.channel_id = ?', [_now(now), channel_id]) if channel_id else (f'WHERE {SHOWN}', [_now(now)])
+    ok, args = shown(now)
+    where, args = (f'WHERE {ok} AND v.channel_id = ?', args + [channel_id]) if channel_id else (f'WHERE {ok}', args)
     with db.connect() as con:
         return db.rows(con.execute(f'SELECT {VIDEO_COLUMNS} FROM videos v LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = v.id {where} ORDER BY RANDOM() LIMIT ?', args + [count]))
 

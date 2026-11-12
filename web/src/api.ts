@@ -19,6 +19,33 @@ export interface Settings {
   protect_days: number
   ytdlp: string
   ffmpeg: string
+  /** What the player does in each kind of segment (`skip_sponsor`, `skip_intro` ...): off, ask or auto. */
+  [skip: `skip_${string}`]: SkipMode | undefined
+}
+
+export type SkipMode = 'off' | 'ask' | 'auto'
+
+/** A part of a video the player can skip, under SponsorBlock's categories (src/tubes/segments.py). `mute` parts are muted rather than skipped when skipped automatically. */
+export interface Segment {
+  category: string
+  start: number
+  end: number
+  action: 'skip' | 'mute'
+}
+
+/** A kind of segment, with the server's setting for it. */
+export interface SegmentKind {
+  id: string
+  label: string
+  detail: string
+  mode: SkipMode
+}
+
+/** `GET /api/videos/{id}/segments`: what can be skipped, and `error` when its source could not be asked just now. */
+export interface Segments {
+  segments: Segment[]
+  categories: SegmentKind[]
+  error: string | null
 }
 
 /** `GET /api/library`: what the library holds. `synced` is when every followed channel was last synced, null before the first. */
@@ -30,8 +57,22 @@ export interface LibraryStatus {
   hidden: number
   /** Streams live now or scheduled, hidden from every list until they end (a past one is shown). Absent from older servers. */
   live?: number
+  /** Videos Admin's filters (Settings, Shown videos) leave out: too short, too long, or past streams. Absent from older servers. */
+  filtered?: number
   /** The YouTube key is in the server's environment, so YouTube channels can be added and synced. iPlayer programmes need no key. */
   configured: boolean
+}
+
+/** Which streams the watching side leaves out: 'current' those live now or scheduled (they cannot be played), 'all' past streams and premieres too. */
+export type StreamFilter = 'current' | 'all'
+
+/** `GET /api/library/shown`: which videos the watching side shows, kept in the server's database. Lengths in seconds, null for no limit. */
+export interface ShownFilters {
+  min_seconds: number | null
+  max_seconds: number | null
+  streams: StreamFilter
+  /** How many videos these leave out now. */
+  filtered: number
 }
 
 /** Where a channel or video comes from. A BBC iPlayer programme is kept as a channel and its episodes as videos. Absent from older servers (YouTube). */
@@ -365,6 +406,7 @@ export const paths = {
   system: '/api/system',
   settings: '/api/settings',
   library: '/api/library',
+  shown: '/api/library/shown',
   sync: '/api/library/sync',
   channels: '/api/channels',
   channel: (id: string) => `/api/channels/${encodeURIComponent(id)}`,
@@ -375,6 +417,8 @@ export const paths = {
   video: (id: string) => `/api/videos/${encodeURIComponent(id)}`,
   play: (id: string) => `/api/videos/${encodeURIComponent(id)}/play`,
   stream: (id: string) => `/api/videos/${encodeURIComponent(id)}/stream`,
+  segments: (id: string) => `/api/videos/${encodeURIComponent(id)}/segments`,
+  skipping: '/api/skipping',
   check: '/api/videos/check',
   playlist: (id: string) => `/api/media/${encodeURIComponent(id)}/index.m3u8`,
   cache: '/api/cache',
@@ -398,6 +442,7 @@ export const keys = {
   channels: ['channels'],
   sync: ['sync'],
   library: ['library'],
+  shown: ['library', 'shown'],
   channel: (id: string) => ['channels', id],
   videos: ['videos'],
   list: (filter: VideoFilter) => ['videos', 'list', filter.channel ?? '', filter.q?.trim() ?? ''],
@@ -405,6 +450,8 @@ export const keys = {
   video: (id: string) => ['videos', 'one', id],
   play: (id: string) => ['play', id],
   stream: (id: string) => ['stream', id],
+  segments: (id: string) => ['segments', id],
+  skipping: ['settings', 'skipping'],
   cache: ['cache'],
   suggestions: ['suggestions'],
   history: (f: HistoryFilter) => ['suggestions', 'history', f.start ?? '', f.end ?? '', f.source ?? ''],
@@ -439,6 +486,8 @@ export const api = {
   settings: () => fetchJson<Settings>(withBase(paths.settings)),
   saveSettings: (s: Partial<Settings>) => callJson<Settings>(withBase(paths.settings), send('PUT', s)),
   library: () => fetchJson<LibraryStatus>(withBase(paths.library)),
+  shown: () => fetchJson<ShownFilters>(withBase(paths.shown)),
+  saveShown: (f: Partial<Omit<ShownFilters, 'filtered'>>) => callJson<ShownFilters>(withBase(paths.shown), send('PUT', f)),
   add: (input: string) => callJson<Added>(withBase(paths.library), send('POST', { input })),
   syncJob: () => fetchJson<SyncJob>(withBase(paths.sync)),
   /** Sync these channels, or every followed one. */
@@ -454,6 +503,8 @@ export const api = {
   check: (ids: string[]) => callJson<Checked>(withBase(paths.check), send('POST', { ids })),
   play: (id: string) => callJson<Stream>(withBase(paths.play(id)), { method: 'POST' }),
   stream: (id: string) => fetchJson<Stream>(withBase(paths.stream(id))),
+  segments: (id: string) => fetchJson<Segments>(withBase(paths.segments(id))),
+  skipping: () => fetchJson<SegmentKind[]>(withBase(paths.skipping)),
   cache: () => fetchJson<CacheReport>(withBase(paths.cache)),
   pin: (id: string, pinned: boolean) => fetchJson<unknown>(withBase(paths.cacheItem(id)), send('PUT', { pinned })),
   dropCopy: (id: string) => fetchJson<{ video_id: string; freed: number }>(withBase(paths.cacheItem(id)), { method: 'DELETE' }),

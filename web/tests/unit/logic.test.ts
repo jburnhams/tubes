@@ -6,13 +6,15 @@ import { channels, library, libraryEmpty, syncJobs, longChannel, report, streams
 import { videoPage } from '../../src/mocks/handlers'
 import { attach, problemText, type HlsClass, type HlsInstance, type Media } from '../../src/player'
 import { describeCache, describeEvicted } from '../../src/screens/CacheScreen'
-import { settingsProblems } from '../../src/screens/SettingsScreen'
+import { describeShown, settingsProblems, shownProblems } from '../../src/screens/SettingsScreen'
 import { describeSystem, usable } from '../../src/screens/SystemScreen'
 import { channelState, describeAdded, describeJob, describeLibrary } from '../../src/screens/LibraryScreen'
 import { ago, countFor, episodeLabel, iplayerText, leaving, videoCount, views, viewsAndAge } from '../../src/watch/format'
 import { bySeries } from '../../src/watch/ChannelScreen'
+import { at, modesOf, place, segmentKey, shown, skippedText, skipText } from '../../src/watch/skip'
+import { defaultSettings, kindsFor, sampleSegments } from '../../src/mocks/fixtures'
 import { episodes } from '../../src/mocks/fixtures'
-import { isPlaceholder } from '../../src/watch/missing'
+import { fallbackThumbnail, isPlaceholder } from '../../src/watch/missing'
 import { savedText, settled, waitingText } from '../../src/watch/WatchScreen'
 import { describePasted, describeRelated, describeSuggestedBy, describeSuggestions, describeWatched, filterOf, groupChoices, placeOf } from '../../src/screens/SuggestionsScreen'
 import { historyUrl, suggestionsUrl } from '../../src/api'
@@ -67,6 +69,13 @@ describe('missing videos', () => {
     expect(isPlaceholder(img('https://i.ytimg.com/vi/x/default.jpg?v=2'))).toBe(false)
     expect(isPlaceholder(img('https://i.ytimg.com/vi/x/hqdefault.jpg', 480, 360))).toBe(false)
     expect(isPlaceholder({ ...img('a'), currentSrc: 'https://i.ytimg.com/vi/x/default.jpg' })).toBe(false)
+  })
+
+  it('falls back to hqdefault for a YouTube thumbnail of another size, and to nothing otherwise', () => {
+    expect(fallbackThumbnail('https://i.ytimg.com/vi/a-b_c/fhddefault.jpg')).toBe('https://i.ytimg.com/vi/a-b_c/hqdefault.jpg')
+    expect(fallbackThumbnail('https://i.ytimg.com/vi_webp/x/uhddefault.webp?v=3')).toBe('https://i.ytimg.com/vi/x/hqdefault.jpg')
+    expect(fallbackThumbnail('https://i.ytimg.com/vi/x/hqdefault.jpg')).toBeNull()
+    expect(fallbackThumbnail('https://ichef.bbci.co.uk/images/ic/1280x720/p0pkv1q3.jpg')).toBeNull()
   })
 })
 
@@ -163,12 +172,22 @@ describe('the findings', () => {
     expect(describeSystem({ ...systemStatus, disk: { total: 100, used: 98, free: 2 } })).toMatch(/nearly full/)
   })
 
+  it('Shown videos checks its lengths and says what the filters leave out', () => {
+    expect(shownProblems({ min: '', max: '', streams: 'current' })).toEqual({ min: undefined, max: undefined })
+    expect(shownProblems({ min: '0', max: '90.5', streams: 'all' })).toEqual({ min: undefined, max: undefined })
+    expect(shownProblems({ min: 'short', max: '-1', streams: 'current' })).toEqual({ min: 'Enter the shortest length in minutes, or leave it empty for no limit.', max: 'Enter the longest length in minutes, or leave it empty for no limit.' })
+    expect(shownProblems({ min: '10', max: '5', streams: 'current' })).toEqual({ min: undefined, max: 'Make this at least the shortest length.' })
+    expect(describeShown({ min_seconds: null, max_seconds: null, streams: 'current', filtered: 0 })).toBe('These leave no video out now.')
+    expect(describeShown({ min_seconds: 180, max_seconds: null, streams: 'current', filtered: 1 })).toMatch(/^1\svideo is left out by these now\./)
+  })
+
   it('Library says what it follows, how far a sync has got and what each channel is doing', () => {
     expect(describeLibrary(channels, library)).toMatch(/^24\svideos from 3\sfollowed channels\. 1\schannel is still being read back to the first upload\. Every channel was last synced on /)
     expect(describeLibrary(channels.filter(c => c.complete), { ...library, synced: null })).toMatch(/^12\svideos from 2\sfollowed channels\. Not every channel has been synced yet\. 3\svideos are hidden because YouTube no longer has them\.$/)
     expect(describeLibrary(channels, { ...library, hidden: 0 })).toMatch(/synced on [^.]+\.$/)
     expect(describeLibrary(channels, { ...library, hidden: 0, live: 1 })).toMatch(/\. 1\slive or scheduled stream is hidden until it ends\.$/)
     expect(describeLibrary(channels, { ...library, live: 4 })).toMatch(/no longer has them\. 4\slive or scheduled streams are hidden until they end\.$/)
+    expect(describeLibrary(channels, { ...library, hidden: 0, filtered: 7 })).toMatch(/\. 7\svideos are left out by the filters in Settings, Shown videos\.$/)
     expect(describeLibrary([], library)).toMatch(/^The library follows no channels yet/)
     expect(describeLibrary(channels, { ...library, configured: false })).toMatch(/YOUTUBE_API_KEY/)
     expect(describeJob(syncJobs.idle)).toBeUndefined()
@@ -250,6 +269,9 @@ describe('suggestions', () => {
     expect(describeWatched({ ...lathe, total_videos: null })).toBe('Never watched')
     expect([0, 1, 2, 3].map(n => describeSuggestedBy({ ...lathe, suggested_by: n, suggested_from: lathe.suggested_from.slice(0, Math.min(n, 2)) }))).toEqual(['', 'Pointed at by Workshop Notes', 'Pointed at by Workshop Notes and Bike Repairs', 'Pointed at by Workshop Notes, Bike Repairs and 1 more'])
     expect(describeSuggestedBy({ ...lathe, suggested_by: 2, suggested_from: [] })).toMatch(/^Pointed at by 2\srelated channels$/)
+    expect(describeSuggestedBy({ ...lathe, platform: 'iplayer', suggested_by: 1, suggested_from: ['Deep Ocean', 'your YouTube history'] })).toBe('Like Deep Ocean and your YouTube history')
+    expect(describeSuggestedBy({ ...lathe, platform: 'iplayer', suggested_by: 2, suggested_from: ['Deep Ocean'] })).toBe('Like Deep Ocean')
+    expect(describeSuggestedBy({ ...lathe, platform: 'iplayer', suggested_by: 1, suggested_from: [] })).toBe('Like programmes you follow')
     expect(filterOf(new URLSearchParams('order=suggested')).order).toBe('suggested')
     expect(filterOf(new URLSearchParams('order=other')).order).toBeUndefined()
     expect(suggestionsUrl({ order: 'suggested' })).toBe('/api/suggestions?order=suggested')
@@ -352,5 +374,34 @@ describe('channel panel', () => {
     expect(elsewhere(o)).toEqual({ href: 'https://www.youtube.com/channel/UCx', label: 'Open on YouTube' })
     expect(elsewhere({ channel_id: 'b0000001', library: { ...channels[0], id: 'b0000001', platform: 'iplayer' } })).toEqual({ href: 'https://www.bbc.co.uk/iplayer/episodes/b0000001', label: 'Open on iPlayer' })
     expect(elsewhere({ channel_id: 'iplayer-films', library: { ...channels[0], id: 'iplayer-films', platform: 'iplayer' } })).toEqual({ href: 'https://www.bbc.co.uk/iplayer/categories/films/featured', label: 'Open on iPlayer' })
+  })
+})
+
+describe('skipping', () => {
+  const kinds = kindsFor(defaultSettings)
+  const modes = modesOf(kinds)
+  it('acts on the parts whose kind is not off, earliest first', () => {
+    const parts = [...sampleSegments, { category: 'filler', start: 5, end: 9, action: 'skip' as const }, { category: 'mystery', start: 1, end: 2, action: 'skip' as const }]
+    expect(shown(parts, modes).map(s => s.category)).toEqual(['intro', 'sponsor', 'outro'])
+    expect(shown([{ ...sampleSegments[0], start: 0, end: 20 }, sampleSegments[0]], modes).map(s => s.end)).toEqual([12, 20])
+    expect(modes.sponsor).toBe('auto')
+  })
+  it('finds the part playing, the longer of two, its end outside it', () => {
+    const two = [{ category: 'intro', start: 0, end: 12, action: 'skip' as const }, { category: 'outro', start: 5, end: 30, action: 'skip' as const }]
+    expect(at(two, 3)?.category).toBe('intro')
+    expect(at(two, 6)?.category).toBe('outro')
+    expect(at(two, 30)).toBeUndefined()
+    expect(segmentKey(two[0])).toBe('intro@0')
+  })
+  it('says what is skipped, and places it on the timeline', () => {
+    expect(skipText(sampleSegments[0], kinds)).toBe('Skip intro')
+    expect(skipText({ ...sampleSegments[0], category: 'mystery' }, kinds)).toBe('Skip segment')
+    expect(skippedText(sampleSegments[1], kinds)).toBe('Skipped sponsor')
+    expect(skippedText({ category: 'music_offtopic', start: 0, end: 1, action: 'mute' }, kinds)).toBe('Muted non-music section')
+    expect(skippedText({ category: 'mystery', start: 0, end: 1, action: 'skip' }, kinds)).toBe('Skipped segment')
+    expect(place(sampleSegments[1], 400)).toEqual({ left: 15, width: 8.75 })
+    expect(place({ ...sampleSegments[2], end: 500 }, 400)).toEqual({ left: 90, width: 10 })
+    expect(place(sampleSegments[0], null)).toBeUndefined()
+    expect(place(sampleSegments[0], 0)).toBeUndefined()
   })
 })

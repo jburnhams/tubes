@@ -94,12 +94,16 @@ def seconds(duration):
 
 
 def best_thumbnail(thumbnails):
-    """The largest thumbnail's URL, by pixels (names are not trusted to be in order), else the first by name."""
-    ts = [t for t in (thumbnails or {}).values() if isinstance(t, dict) and t.get('url')]
+    """The largest of the five sizes YouTube documents (THUMBS), by pixels (names are not trusted to be in order), else the first by name;
+    another size only when none of those is there. Since 2026-11 the Data API also lists `fhddefault`, `qhddefault` and `uhddefault` (1080p
+    and up) for many new uploads and streams, and i.ytimg.com answers 404 for them while `maxresdefault` is there, so the largest listed size
+    left 3% of the library (and nearly half the newest videos) with a blank card."""
+    known = {k: t for k, t in (thumbnails or {}).items() if k in THUMBS and isinstance(t, dict) and t.get('url')}
+    ts = list(known.values()) or [t for t in (thumbnails or {}).values() if isinstance(t, dict) and t.get('url')]
     if not ts: return None
     sized = [t for t in ts if t.get('width') and t.get('height')]
     if sized: return max(sized, key=lambda t: t['width'] * t['height'])['url']
-    return next((thumbnails[k]['url'] for k in THUMBS if (thumbnails.get(k) or {}).get('url')), ts[0]['url'])
+    return next((known[k]['url'] for k in THUMBS if k in known), ts[0]['url'])
 
 
 def _int(v):

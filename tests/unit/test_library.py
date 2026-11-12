@@ -1,9 +1,9 @@
 from library import CHANNELS, VIDEOS, seed
-from tubes import cache, db, library
+from tubes import cache, catalogue, db, library
 
 
 def test_status_before_any_sync(monkeypatch):
-    assert library.status() == dict(synced=None, channels=0, videos=0, hidden=0, live=0, configured=False)
+    assert library.status() == dict(synced=None, channels=0, videos=0, hidden=0, live=0, filtered=0, configured=False)
     monkeypatch.setenv('YOUTUBE_API_KEY', 'k')
     assert library.status()['configured'] is True
 
@@ -63,3 +63,34 @@ def test_streams_not_over_are_hidden_but_still_open():
     assert [(c['videos'], c['hidden']) for c in library.channels()] == [(1, 1), (1, 1)]
     assert {k: library.status()[k] for k in ('videos', 'hidden', 'live')} == dict(videos=2, hidden=1, live=1)      # a gone stream counts once, as gone
     assert library.video('aaaaaaaaaaa')['live'] == 'live'
+
+
+def test_filters_hide_by_length_and_streams_and_come_back():
+    seed()
+    with db.connect() as con:
+        con.execute("UPDATE videos SET duration = 45 WHERE id = 'aaaaaaaaaaa'"); con.execute("UPDATE videos SET duration = 7200 WHERE id = 'bbbbbbbbbbb'")
+        con.execute("UPDATE videos SET duration = NULL, live = 'was' WHERE id = 'ccccccccccc'")                       # length not known: kept by the length limits
+        con.execute("UPDATE videos SET gone = 'then', duration = 30 WHERE id = 'ddddddddddd'")                        # gone: counted as gone, not filtered
+    assert library.filters() == dict(min_seconds=None, max_seconds=None, streams='current')
+    assert catalogue.save_filters(dict(min_seconds=60, max_seconds=3600)) == dict(min_seconds=60, max_seconds=3600, streams='current')
+    assert [v['id'] for v in library.videos()['videos']] == ['ccccccccccc'] and [v['id'] for v in library.shuffle(10)] == ['ccccccccccc']
+    assert [v['id'] for v in library.videos(search='shelf')['videos']] == []
+    assert {k: library.status()[k] for k in ('videos', 'hidden', 'live', 'filtered')} == dict(videos=1, hidden=1, live=0, filtered=2)
+    assert [(c['videos'], c['hidden']) for c in library.channels()] == [(1, 1), (0, 2)]
+    catalogue.save_filters(dict(streams='all'))                                                                       # past streams too; the lengths stay
+    assert library.videos()['videos'] == [] and library.status()['filtered'] == 3
+    assert library.video('ccccccccccc')['id'] == 'ccccccccccc'                                                          # a link still opens
+    catalogue.save_filters(dict(min_seconds=None, max_seconds=None, streams='current'))
+    assert sorted(v['id'] for v in library.videos()['videos']) == ['aaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc'] and library.status()['filtered'] == 0
+
+
+def test_filters_refuse_what_cannot_be_used_and_save_nothing():
+    for bad, why in [(dict(min_seconds=-1), 'A length must be a number of seconds, 0 or more.'), (dict(max_seconds='long'), 'A length must be a number of seconds, 0 or more.'),
+                     (dict(min_seconds=True), 'A length must be a number of seconds, 0 or more.'), (dict(min_seconds=float('inf')), 'A length must be a number of seconds, 0 or more.'), (dict(max_seconds=float('nan')), 'A length must be a number of seconds, 0 or more.'), (dict(streams='none'), 'streams must be one of current, all.'),
+                     (dict(min_seconds=600, max_seconds=60), 'The shortest length must not be longer than the longest.'), (dict(colour='red'), 'There is no filter called colour.')]:
+        try: catalogue.save_filters(bad); raise AssertionError(bad)
+        except catalogue.FilterError as e: assert str(e) == why
+    assert library.filters() == library.FILTERS
+    catalogue.save_filters(dict(max_seconds=90.5)); assert library.filters()['max_seconds'] == 90.5
+    with db.connect() as con: con.execute("UPDATE meta SET value = 'not json' WHERE key = 'shown'")
+    assert library.filters() == library.FILTERS                                                                      # a broken row reads as the defaults

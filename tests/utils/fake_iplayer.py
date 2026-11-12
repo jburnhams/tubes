@@ -24,6 +24,7 @@ class FakeIplayer:
         self.programmes, self.episodes, self.order, self.calls = {}, {}, {}, []
         self.categories = {'films': ('Films', []), 'documentaries': ('Documentaries', [])}     # id -> (title, the programme or one-off ids it lists, in order)
         self.region, self.fhd, self.media_dir, self.lock = None, True, None, threading.Lock()
+        self.atoz_fails = None                                                       # a letter whose A to Z page answers 500
         fake = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -43,9 +44,10 @@ class FakeIplayer:
 
     # What iPlayer holds.
 
-    def programme(self, pid, title, episodes=0, network=('bbc_one', 'BBC One')):
-        self.programmes[pid] = dict(id=pid, type='programme_large', title=title, synopses=dict(small=f'About {title}', medium=f'All about {title}'),
-                                    images=dict(type='image', standard=f'https://img.test/ic/{{recipe}}/{pid}.jpg'), categories=['drama'], count=0,
+    def programme(self, pid, title, episodes=0, network=('bbc_one', 'BBC One'), categories=('drama',), label=None, synopsis=None):
+        self.programmes[pid] = dict(id=pid, type='programme_large', title=title, synopses=dict(small=f'About {title}', medium=synopsis or f'All about {title}'),
+                                    images=dict(type='image', standard=f'https://img.test/ic/{{recipe}}/{pid}.jpg'), categories=list(categories), count=0,
+                                    labels=dict(category=label) if label else {},
                                     master_brand=dict(id=network[0], titles=dict(large=network[1])), tleo_type='brand')
         self.order.setdefault(pid, [])
         for n in range(1, episodes + 1): self.episode(pid, n)
@@ -83,6 +85,15 @@ class FakeIplayer:
     # The answers.
 
     def answer(self, path, q, base):
+        m = re.match(r'^/ibl/v1/atoz/([^/]+)/programmes$', path)                 # every programme and one-off, by the first letter of its title
+        if m:
+            first = lambda t: t[:1].lower() if t[:1].isalpha() else '0-9'
+            items = sorted([p for p in self.programmes.values() if first(p['title']) == m[1]] +
+                           [dict(id=e['id'], type='programme_large', title=e['title'], tleo_type='episode', count=1, categories=e.get('categories') or [], synopses=e.get('synopses'),
+                                 images=e.get('images'), master_brand=e.get('master_brand')) for e in self.episodes.values() if e.get('tleo_type') == 'episode' and first(e['title']) == m[1]], key=lambda p: p['title'])
+            size, page = int(q.get('per_page', 20)), int(q.get('page', 1))
+            if self.atoz_fails and m[1] == self.atoz_fails: return 500, 'application/json', dict(error=dict(details='Internal', http_response_code=500))
+            return 200, 'application/json', dict(atoz_programmes=dict(character=m[1], count=len(items), page=page, per_page=size, elements=items[(page - 1) * size:page * size]))
         if path == '/ibl/v1/categories':
             return 200, 'application/json', dict(categories=[dict(id=k, title=t, type='category', kind='genre') for k, (t, _) in self.categories.items()])
         m = re.match(r'^/ibl/v1/categories/([^/]+)/programmes$', path)

@@ -3,7 +3,7 @@ watch history that suggestions are made from; `related` asks YouTube which chann
 A timer on the server runs `tubes sync; tubes related; tubes evict` every few hours (docs/deploy.md)."""
 import argparse, importlib, json, os, sys
 
-from tubes import __version__, cache, catalogue, fetcher, history, iplayer, library, oslib, related, settings, youtube, ytdlp
+from tubes import __version__, cache, catalogue, fetcher, history, iplayer, iplayer_suggest, library, oslib, related, settings, youtube, ytdlp
 
 CHECKS = (('fastapi', 'fastapi'), ('uvicorn', 'uvicorn'), ('pydantic', 'pydantic'))
 
@@ -113,10 +113,17 @@ def cmd_related(args):
     if youtube.configured():
         try: r['looked_up'] = history.look_up()['looked_up']
         except youtube.YoutubeError as e: r['lookup_error'] = str(e)
+    try: r['iplayer'] = iplayer_suggest.run(force=getattr(args, 'all', False))
+    except iplayer.IplayerError as e: r['iplayer'] = dict(error=str(e))
     lines = [f"  {e['channel']:26} FAILED  {e['error']}" for e in r['errors'][:20]]
     lines.append(f"  asked about {r['asked']} channel(s) ({r['failed']} failed), {r['due']} still due; {r['suggested']} channel(s) suggested by them, {r['added']} new")
     if r['looked_up']: lines.append(f"  YouTube asked about {r['looked_up']} channel(s)")
     if r['lookup_error']: lines.append(f"  YouTube could not be asked about the channels: {r['lookup_error']}")
+    ip = r['iplayer']
+    if ip.get('error'): lines.append(f"  iPlayer's catalogue could not be read: {ip['error']}")
+    else:
+        cat = ip['catalogue']; read = f"read at {cat['skipped']}" if 'skipped' in cat else f"read: {cat['read']} programmes, {cat['new']} new, {cat['dropped']} dropped"
+        lines.append(f"  iPlayer catalogue {read}; {ip['suggested']} programme(s) suggested from {ip['sources']} source(s), {ip['added']} new")
     out(args, r, '\n'.join(lines))
     return 1 if r['asked'] and r['failed'] == r['asked'] else 0
 

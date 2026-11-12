@@ -74,9 +74,13 @@ export function describeWatched(x: Suggestion): string {
   return parts.join(' · ')
 }
 
-/** Which of your channels point at a suggestion, the strongest first: "Pointed at by A, B and 3 more", or '' for none. */
+/** Which of your channels point at a suggestion, the strongest first: "Pointed at by A, B and 3 more", or '' for none. An iPlayer programme
+ *  is suggested for what it is like (its categories and synopsis, against the programmes followed or played and the YouTube history's topics):
+ *  "Like A and B". */
 export function describeSuggestedBy(x: Suggestion): string {
   if (!x.suggested_by) return ''
+  const and = (names: string[]) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0])
+  if (x.platform === 'iplayer') return x.suggested_from.length ? `Like ${and(x.suggested_from)}` : 'Like programmes you follow'
   const names = x.suggested_from.slice(0, x.suggested_by)
   const more = x.suggested_by - names.length
   if (!names.length) return `Pointed at by ${format.count(x.suggested_by, 'related channel')}`

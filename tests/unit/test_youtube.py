@@ -32,6 +32,8 @@ def test_seconds_and_best_thumbnail():
     sized = dict(default=dict(url='s', width=120, height=90), high=dict(url='h', width=480, height=360), medium=dict(url='m', width=320, height=180))
     assert youtube.best_thumbnail(sized) == 'h'
     assert youtube.best_thumbnail(dict(default=dict(url='d'), high=dict(url='h'))) == 'h'                   # no sizes: by name
+    listed = dict(high=dict(url='h', width=480, height=360), maxres=dict(url='mx', width=1280, height=720), fhd=dict(url='f', width=1920, height=1080), uhd=dict(url='u', width=3840, height=2160))
+    assert youtube.best_thumbnail(listed) == 'mx'                                                                   # sizes YouTube lists but i.ytimg.com does not serve are passed over
     assert youtube.best_thumbnail(dict(odd=dict(url='o'))) == 'o' and youtube.best_thumbnail(None) is None and youtube.best_thumbnail(dict(x=dict())) is None
 
 
