@@ -223,6 +223,13 @@ def episodes_page(pid, page=1):
     return items, page * PAGE < (r.get('count') or 0) and bool(items)
 
 
+def atoz_page(letter, page=1):
+    """One page (up to PAGE) of iPlayer's A to Z for a letter (`a`-`z`, `0-9`): (programmes, whether there are more)."""
+    r = call(f'atoz/{letter}/programmes', per_page=PAGE, page=page).get('atoz_programmes') or {}
+    items = [p for p in r.get('elements') or [] if p.get('id')]
+    return items, page * PAGE < (r.get('count') or 0) and bool(items)
+
+
 def episode_url(pid): return f'https://www.bbc.co.uk/iplayer/episode/{pid}'
 
 
