@@ -1,5 +1,11 @@
 # Progress log
 
+## 2026-11-12: a failed download is tried once more
+
+- Asked for: a video failed with "unable to write data: [Errno 32] Broken pipe" and played on Play again, so retry by itself.
+- That message is yt-dlp's, written when ffmpeg has already quit and closed its pipe; ffmpeg's own reason was in the video's `fetch.log`, which goes with the folder when a fetch fails, so it was not kept. Re-running the same probe, downloads and ffmpeg by hand worked.
+- `fetcher.attempts` runs a download (`pipeline`, or `direct_pipeline` for iPlayer) up to `ATTEMPTS` (2) times; a stopped fetch is not run again, and a probe failure keeps its own handling (`choose` already probes twice). The retry reuses the probe and the same streams, so ffmpeg cuts the same segments under the same names, overwriting them while the player keeps playing; both runs append to the one `fetch.log`, with a `[tubes] attempt 1 failed: ...` line between. Only when the second fails is the copy marked failed, with that run's reason.
+
 ## 2026-11-12: region, language and subtitle filters
 
 - Asked for: always avoid videos YouTube will not play here ("The uploader has not made this video available in your country"), optionally leave out non-English ones, and see whether subtitles and dubbing can be filtered too, for YouTube and iPlayer.

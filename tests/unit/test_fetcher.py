@@ -85,6 +85,51 @@ def test_failures_are_recorded_on_the_copy(monkeypatch, probe, pipeline_result, 
     assert (st['state'], st['error']) == ('failed', error)
 
 
+def test_a_failed_download_is_run_once_more_with_the_same_streams(monkeypatch):
+    seed()
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: INFO)
+    runs = []
+    def flaky(job, info_path, v, a, duration, signed_in):
+        runs.append((v, a, os.path.exists(info_path)))
+        if len(runs) == 1: write_playlist(job.video_id, 1, False); return 'unable to write data: [Errno 32] Broken pipe'
+        write_playlist(job.video_id, 2, True); return None
+    monkeypatch.setattr(fetcher, 'pipeline', flaky); monkeypatch.setattr(cache, 'evict', lambda now: None)
+    st = fetcher.start('aaaaaaaaaaa', background=False)
+    assert runs == [('399', '140', True)] * 2 and (st['state'], st['error'], st['segments']) == ('ready', None, 2)
+    with open(os.path.join(cache.folder('aaaaaaaaaaa'), fetcher.LOG), encoding='utf8') as f: assert 'attempt 1 failed: unable to write data' in f.read()
+
+
+def test_a_download_failing_every_attempt_records_the_last_reason(monkeypatch):
+    seed()
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: INFO)
+    reasons = ['Broken pipe', 'Only 4 s of 8 s arrived.']
+    monkeypatch.setattr(fetcher, 'pipeline', lambda *a: reasons.pop(0))
+    st = fetcher.start('aaaaaaaaaaa', background=False)
+    assert (st['state'], st['error'], reasons) == ('failed', 'Only 4 s of 8 s arrived.', [])
+
+
+def test_a_stopped_download_is_not_run_again(monkeypatch):
+    seed()
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: INFO)
+    runs = []
+    def stopped(job, *a):
+        runs.append(1); job.cancelled = True; return 'The fetch was stopped.'
+    monkeypatch.setattr(fetcher, 'pipeline', stopped)
+    assert fetcher.start('aaaaaaaaaaa', background=False)['error'] == 'The fetch was stopped.' and runs == [1]
+
+
+def test_a_failed_iplayer_download_is_run_once_more(monkeypatch):
+    seed_episode()
+    monkeypatch.setattr(iplayer, 'stream', lambda pid, h: dict(url='u', label='720p50 H.264 + AAC'))
+    runs = []
+    def flaky(job, url, duration):
+        runs.append(url)
+        if len(runs) == 1: return 'Server returned 403 Forbidden'
+        write_playlist(job.video_id, 2, True); return None
+    monkeypatch.setattr(fetcher, 'direct_pipeline', flaky); monkeypatch.setattr(cache, 'evict', lambda now: None)
+    assert fetcher.start(E, background=False)['state'] == 'ready' and runs == ['u', 'u']
+
+
 def test_a_video_youtube_no_longer_has_is_hidden_until_a_fetch_finds_it(monkeypatch):
     seed()
     def gone(url, signed_in=False): raise ytdlp.YtdlpError('[youtube] aaaaaaaaaaa: Video unavailable. This video has been removed by the uploader')
