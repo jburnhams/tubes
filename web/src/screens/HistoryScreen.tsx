@@ -4,7 +4,8 @@
 // next: how watching rose and fell over the timeframe (a line of watches per day, or per month
 // over longer spans), the channels watched most, and the videos watched most.
 //
-// A channel watched a lot but not in the library can be followed from its row (as Library's Add
+// A channel's row opens in place to the shared channel panel (ChannelDetail: its history, numbers
+// and options). A channel watched a lot but not in the library can also be followed from its row (as Library's Add
 // does: every upload, synced at once, or after the channels a running sync has first).
 //
 // The timeframe and the account live in the URL (?range=12m&source=main), so a view can be linked.
@@ -14,7 +15,8 @@ import { Link, useSearchParams } from 'react-router'
 import { describeFollowed } from './SuggestionsScreen'
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { DataTable, DataView, EmptyState, Field, LineChart, NativeSelect, PageHeader, RowAction, Skeleton, Status, TableSkeleton, format, useAsyncAction, useLoad, type Column } from 'strata-react'
+import { DataTable, DataView, EmptyState, Field, LineChart, NativeSelect, PageHeader, RowAction, Skeleton, Status, TableSkeleton, format, useAsyncAction, useExpanded, useLoad, type Column } from 'strata-react'
+import { ChannelDetail } from './ChannelDetail'
 import { api, describeError, keys, withBase, type Added, type HistoryFilter, type HistorySource, type HistoryStats } from '../api'
 
 type TopChannel = HistoryStats['channels_top'][number]
@@ -116,6 +118,7 @@ function Watched({ h }: { h: HistoryStats }) {
     setSaid(describeFollowed(channelName(c), (r as Extract<Added, { kind: 'channel' }>).sync))
     for (const queryKey of [keys.suggestions, keys.channels, keys.library, keys.videos]) await queryClient.invalidateQueries({ queryKey })
   }, { describeError })
+  const open = useExpanded({ param: 'open', single: true })               // a channel opened in place, in the URL so it can be linked
   const periods = fillPeriods(h)
   const ticks = periods.map((_, i) => i)
   const channels: Column<TopChannel>[] = [
@@ -160,7 +163,8 @@ function Watched({ h }: { h: HistoryStats }) {
           <h2 id="top-channels" className="type-heading">Channels watched most</h2>
           {follow.phase === 'error' && <p role="alert" className="type-body-sm text-danger">{follow.error}</p>}
           {said && follow.phase !== 'error' && <p role="status" className="type-body-sm">{said}</p>}
-          <DataTable caption="Channels watched most in this timeframe" columns={channels} rows={h.channels_top} rowKey={c => c.channel_id} />
+          <DataTable caption="Channels watched most in this timeframe" columns={channels} rows={h.channels_top} rowKey={c => c.channel_id}
+            expansion={{ ...open, rowLabel: c => `More about ${channelName(c)}`, detail: c => <ChannelDetail id={c.channel_id} /> }} />
         </section>
         <section aria-labelledby="top-videos" className="grid content-start gap-3">
           <h2 id="top-videos" className="type-heading">Videos watched most</h2>

@@ -2,7 +2,7 @@
 // tests, every Storybook story and the visual suite's screenshots, so a screen looks the same in
 // each. Dates are fixed, so screenshots do not change from day to day. Pictures are flat SVG
 // tiles as data URLs, so nothing is fetched from outside.
-import type { CacheItem, CacheReport, Channel, HistorySource, HistoryStats, LibraryStatus, Settings, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video } from '../api'
+import type { CacheItem, CacheReport, Channel, ChannelOverview, HistorySource, HistoryStats, LibraryStatus, Settings, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video } from '../api'
 
 export const GB = 1e9
 
@@ -194,4 +194,18 @@ export const historyStats: Omit<HistoryStats, 'sources'> = {
 export const historyDays: Omit<HistoryStats, 'sources'> = {
   ...historyStats, watches: 64, videos: 50, channels: 12, by: 'day', first: '2026-10-11T08:00:00+00:00',
   periods: Array.from({ length: 20 }, (_, i) => ({ period: `2026-10-${String(i + 11).padStart(2, '0')}`, watches: (i * 7) % 6 + (i % 4 === 0 ? 0 : 1) })).filter(p => p.watches > 0),
+}
+
+/** A channel's watch history for the overview: two accounts, a quiet month, and three videos (one in the library). */
+export function channelHistory(title: string): ChannelOverview['history'] {
+  return {
+    watches: 58, videos: 41, first: '2025-12-02T18:00:00+00:00', last: '2026-10-28T19:00:00+00:00',
+    sources: [{ source: 'home', watches: 50 }, { source: 'work', watches: 8 }],
+    periods: [['2025-12', 6], ['2026-01', 12], ['2026-03', 9], ['2026-04', 14], ['2026-05', 7], ['2026-06', 10]].map(([period, watches]) => ({ period: String(period), watches: Number(watches) })),
+    videos_top: [
+      { video_id: 'wo000000000', title: `${title}: the one watched most`, watches: 6, last: '2026-10-28T19:00:00+00:00', in_library: true },
+      { video_id: 'xx000000001', title: `${title}: a favourite`, watches: 4, last: '2026-06-01T19:00:00+00:00', in_library: false },
+      { video_id: 'xx000000002', title: null, watches: 1, last: '2026-01-01T19:00:00+00:00', in_library: false },
+    ],
+  }
 }
