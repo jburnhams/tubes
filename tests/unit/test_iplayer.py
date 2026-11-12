@@ -22,7 +22,7 @@ def test_parse(text, expected):
 
 
 def test_parse_refuses_a_bbc_link_to_no_programme():
-    with pytest.raises(ValueError, match='not to an iPlayer programme or episode'): iplayer.parse('https://www.bbc.co.uk/news')
+    with pytest.raises(ValueError, match='not to an iPlayer programme, episode or category'): iplayer.parse('https://www.bbc.co.uk/news')
     with pytest.raises(ValueError, match='not to an iPlayer'): iplayer.parse('https://www.bbc.co.uk/iplayer/episode/NOT-A-PID')
 
 
@@ -170,3 +170,27 @@ def test_reachable(fake_iplayer, monkeypatch):
     assert here is False and 'could not be reached' in why
     monkeypatch.setattr(iplayer, 'mediaselector', lambda vpid: ['x'])
     assert iplayer.reachable() == (True, None)
+
+
+def test_categories(fake_iplayer, monkeypatch):
+    assert iplayer.parse('https://www.bbc.co.uk/iplayer/categories/films/featured') == ('category', 'films')
+    assert iplayer.parse('https://www.bbc.co.uk/iplayer/browse/documentaries') == ('category', 'documentaries')
+    with pytest.raises(ValueError, match='programme, episode or category'): iplayer.parse('https://www.bbc.co.uk/iplayer/categories/NOPE')
+    assert iplayer.category('films') == dict(id='films', title='Films', type='category', kind='genre') and iplayer.category('nope') is None
+    row = iplayer.category_row(dict(id='films', title='Films'), 'now')
+    assert (row['id'], row['title'], row['platform'], row['description']) == ('iplayer-films', 'Films', 'iplayer', "Every one-off in iPlayer's Films, as iPlayer offers them.")
+    assert iplayer.category_row(dict(id='x'), 'now')['title'] == 'x'
+    assert iplayer.category_id('iplayer-films') == 'films' and iplayer.category_id('b0000001') is None and iplayer.category_id(None) is None
+    assert iplayer.programme_url('iplayer-films') == 'https://www.bbc.co.uk/iplayer/categories/films/featured'
+    fake_iplayer.programme(P, 'Harbour Lights', episodes=1); fake_iplayer.categories['films'][1].append(P)           # a series filed under Films
+    for n in range(3): fake_iplayer.one_off(f'p000000{n}', f'Film {n}', categories=('films',))
+    monkeypatch.setattr(iplayer, 'PAGE', 2)
+    (a, more), (b, more2) = iplayer.category_page('films', 1), iplayer.category_page('films', 2)
+    assert [e['id'] for e in a] == ['p0000002', 'p0000001'] and more is True and [e['id'] for e in b] == ['p0000000'] and more2 is False     # the series is left out
+    assert iplayer.category_page('films', 3) == ([], False)
+
+
+def test_a_film_is_filed_under_films_and_another_one_off_under_its_network(fake_iplayer):
+    film = iplayer.episode(fake_iplayer.one_off('p0000001', 'A Film', categories=('films',)))
+    doc = iplayer.episode(fake_iplayer.one_off('p0000002', 'A Documentary', categories=('documentaries',)))
+    assert iplayer.channel_of(film) == 'iplayer-films' and iplayer.channel_of(doc) == 'bbc_two'

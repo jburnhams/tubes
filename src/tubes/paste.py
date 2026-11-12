@@ -64,6 +64,7 @@ def resolve(text, searches):
     except ValueError as e: return [], str(e)
     if bbc:
         kind, pid = bbc
+        if kind == 'category': return [], 'That is an iPlayer category; follow it in Library instead.'
         prog = iplayer.programme(pid) if kind in ('programme', 'pid') else None
         if prog: return [_iplayer(prog)], None
         if kind == 'programme': return [], 'iPlayer has no such programme.'

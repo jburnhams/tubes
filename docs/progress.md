@@ -1,5 +1,10 @@
 # Progress log
 
+## 2026-11-12: films, and other iPlayer categories, followed like a channel
+
+- Asked for: a way to keep one-offs such as films, which have no programme behind them. ibl lists a category's programmes 200 a page (`categories/<id>/programmes`); a one-off's `initial_children` is the whole episode (versions, availability, images), so every film iPlayer offers comes in two calls. Measured on the home server: Films listed 284 programmes, 277 of them one-offs; following it and syncing took 0.6 s.
+- Built: an iPlayer category link (`/iplayer/categories/<id>/...` or `/iplayer/browse/<id>`) adds a channel `iplayer-<id>` (title from ibl's category list), followed. Its sync takes the category's one-offs and leaves its series (followed as programmes); a one-off it no longer lists is marked gone (a saved copy stays, as for any iPlayer episode). A film added on its own (in the `films` category) is kept under the Films channel, unfollowed until Films is followed; other one-offs stay under their network. A family film iPlayer labels "Film - Family" but files under children's categories, not Films, stays under its network. Pasting a category into Suggestions says to follow it in Library.
+
 ## 2026-11-12: a pasted list of channels to follow
 
 - Asked for: a box on the Suggestions page to paste a list of links or channel names, shown as suggestions that are easy to follow, for YouTube and iPlayer. Built on the iPlayer work (PR #54, merged into this branch: programmes kept as channels with `platform` 'iplayer', `iplayer.parse` for links).

@@ -358,3 +358,33 @@ def test_needs_youtube(fake_iplayer, fake_youtube):
     assert catalogue.needs_youtube(['UCnotinthelibraryatallxxx']) is True
     fake_youtube.channel(A, 'Workshop'); catalogue.add(A)
     assert catalogue.needs_youtube() is True and catalogue.needs_youtube([P, A]) is True and catalogue.needs_youtube([P]) is False
+
+
+def test_follow_an_iplayer_category_takes_its_one_offs(fake_iplayer, monkeypatch):
+    fake_iplayer.programme(P, 'Harbour Lights', episodes=2); fake_iplayer.categories['films'][1].append(P)       # a series filed under Films: left to be followed itself
+    for n in range(3): fake_iplayer.one_off(f'p000000{n}', f'Film {n}', categories=('films',))
+    r = catalogue.add('https://www.bbc.co.uk/iplayer/categories/films/featured', now='2026-11-12T10:00:00+00:00')
+    assert r['kind'] == 'channel' and (r['channel']['id'], r['channel']['title'], r['channel']['follow']) == ('iplayer-films', 'Films', True)
+    monkeypatch.setattr(iplayer, 'PAGE', 2)
+    assert catalogue.sync_channel('iplayer-films', now='2026-11-12T10:00:00+00:00')['added'] == 3
+    assert sorted(v['id'] for v in videos_of('iplayer-films')) == ['p0000000', 'p0000001', 'p0000002'] and library.channel(P) is None
+    fake_iplayer.drop('p0000000'); fake_iplayer.categories['films'][1].remove('p0000000'); fake_iplayer.one_off('p0000009', 'Film 9', categories=('films',))
+    r = catalogue.sync_channel('iplayer-films', now='2026-11-13T10:00:00+00:00')
+    assert r['added'] == 1 and library.video('p0000000')['gone'] == '2026-11-13T10:00:00+00:00'
+    with pytest.raises(catalogue.NotFound, match='iPlayer has no category nope'): catalogue.add('https://www.bbc.co.uk/iplayer/browse/nope')
+    del fake_iplayer.categories['films']
+    with pytest.raises(catalogue.NotFound, match='no category films any more'): catalogue.sync_channel('iplayer-films')
+
+
+def test_a_category_keeps_every_one_off_it_lists(fake_iplayer):
+    fake_iplayer.one_off('p0000001', 'A Documentary', categories=('documentaries',))
+    catalogue.add('https://www.bbc.co.uk/iplayer/browse/documentaries'); catalogue.sync_channel('iplayer-documentaries')
+    assert [v['channel_id'] for v in videos_of('iplayer-documentaries')] == ['iplayer-documentaries']
+
+
+def test_one_film_added_on_its_own_goes_under_films(fake_iplayer):
+    film = fake_iplayer.one_off('p0000001', 'A Film', categories=('films',))
+    r = catalogue.add(f'https://www.bbc.co.uk/iplayer/episode/{film}/a-film')
+    assert r['video']['channel'] == 'Films' and library.channel('iplayer-films')['follow'] is False
+    catalogue.add('https://www.bbc.co.uk/iplayer/categories/films/featured')                     # following Films later keeps the film where it is
+    assert library.channel('iplayer-films')['follow'] is True and [v['id'] for v in videos_of('iplayer-films')] == [film]

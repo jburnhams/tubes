@@ -304,5 +304,6 @@ describe('channel panel', () => {
     expect(libraryState(o).word).toBe('Not in the library')
     expect(elsewhere(o)).toEqual({ href: 'https://www.youtube.com/channel/UCx', label: 'Open on YouTube' })
     expect(elsewhere({ channel_id: 'b0000001', library: { ...channels[0], id: 'b0000001', platform: 'iplayer' } })).toEqual({ href: 'https://www.bbc.co.uk/iplayer/episodes/b0000001', label: 'Open on iPlayer' })
+    expect(elsewhere({ channel_id: 'iplayer-films', library: { ...channels[0], id: 'iplayer-films', platform: 'iplayer' } })).toEqual({ href: 'https://www.bbc.co.uk/iplayer/categories/films/featured', label: 'Open on iPlayer' })
   })
 })

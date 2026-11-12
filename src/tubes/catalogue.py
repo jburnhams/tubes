@@ -97,8 +97,15 @@ def add(text, now=None):
 
 
 def add_iplayer(kind, pid, now=None):
-    """Add an iPlayer programme (followed) or one episode (its programme comes in unfollowed, or its network for a one-off), as `add`."""
+    """Add an iPlayer programme or category (followed) or one episode (its programme comes in unfollowed, or for a one-off its category's
+    channel or its network), as `add`."""
     now = now or cache.stamp()
+    if kind == 'category':
+        cat = iplayer.category(pid)
+        if cat is None: raise NotFound(f'iPlayer has no category {pid}.')
+        row = iplayer.category_row(cat, now)
+        with db.connect() as con: save_channel(con, row, follow=True)
+        return dict(kind='channel', channel=library.channel(row['id']))
     prog = iplayer.programme(pid) if kind in ('programme', 'pid') else None
     if prog is None and kind == 'programme': raise NotFound(f'iPlayer has no programme {pid}.')
     if prog is not None:
@@ -111,7 +118,8 @@ def add_iplayer(kind, pid, now=None):
     with db.connect() as con: known = con.execute('SELECT 1 FROM channels WHERE id = ?', (row['channel_id'],)).fetchone()
     if not known:
         tleo = iplayer.programme(row['channel_id']) if row['channel_id'] == ep.get('tleo_id') else None
-        ch = iplayer.channel_row(tleo, now) if tleo else iplayer.network_row(ep, now)
+        cat = iplayer.category(iplayer.category_id(row['channel_id'])) if iplayer.category_id(row['channel_id']) else None
+        ch = iplayer.channel_row(tleo, now) if tleo else iplayer.category_row(cat, now) if cat else iplayer.network_row(ep, now)
         row['channel_id'] = ch['id']                                             # its programme is not offered: kept under its network, where it can be found
         with db.connect() as con: save_channel(con, ch, follow=False)
     with db.connect() as con: save_videos(con, [row])
@@ -210,19 +218,26 @@ def sync_channel(channel_id, now=None, progress=None):
 
 
 def sync_programme(channel_id, now=None, progress=None):
-    """Bring one iPlayer programme up to date (see the module's notes); returns what `sync_channel` does."""
+    """Bring one iPlayer programme, or category (its one-offs), up to date (see the module's notes); returns what `sync_channel` does."""
     now = now or cache.stamp()
-    prog = iplayer.programme(channel_id)
-    if prog is None: raise NotFound(f'iPlayer has no programme {channel_id} any more.')
-    row = iplayer.channel_row(prog, now)
+    cat = iplayer.category_id(channel_id)
+    if cat:
+        found = iplayer.category(cat)
+        if found is None: raise NotFound(f'iPlayer has no category {cat} any more.')
+        row, pages = iplayer.category_row(found, now), lambda page: iplayer.category_page(cat, page)
+    else:
+        prog = iplayer.programme(channel_id)
+        if prog is None: raise NotFound(f'iPlayer has no programme {channel_id} any more.')
+        row, pages = iplayer.channel_row(prog, now), lambda page: iplayer.episodes_page(channel_id, page)
     with db.connect() as con:
         held = con.execute(f"UPDATE channels SET {', '.join(f'{f} = :{f}' for f in CHANNEL_FIELDS)} WHERE id = :id", {k: row[k] for k in ('id', *CHANNEL_FIELDS)}).rowcount
     if not held: raise _gone(channel_id)
     seen, added, page, more, whole = [], 0, 0, True, False
     while more:
         page += 1
-        eps, more = iplayer.episodes_page(channel_id, page)
-        rows = [r for r in (iplayer.video_row(e, now) for e in eps) if r['channel_id'] == channel_id]     # a programme's list holds only its own; never move one elsewhere
+        eps, more = pages(page)
+        rows = [r for r in (iplayer.video_row(e, now) for e in eps) if cat or r['channel_id'] == channel_id]     # a programme's list holds only its own; never move one elsewhere
+        for r in rows: r['channel_id'] = channel_id                             # a category keeps every one-off it lists (a one-off documentary's network would be its own)
         if not rows: break                                                       # an empty page: the list may be cut short, so nothing is marked gone
         ids = [r['id'] for r in rows]; seen += ids
         with db.connect() as con:
