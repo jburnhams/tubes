@@ -86,7 +86,7 @@ def test_filters_hide_by_length_and_streams_and_come_back():
 
 def test_filters_refuse_what_cannot_be_used_and_save_nothing():
     for bad, why in [(dict(min_seconds=-1), 'A length must be a number of seconds, 0 or more.'), (dict(max_seconds='long'), 'A length must be a number of seconds, 0 or more.'),
-                     (dict(min_seconds=True), 'A length must be a number of seconds, 0 or more.'), (dict(streams='none'), 'streams must be one of current, all.'),
+                     (dict(min_seconds=True), 'A length must be a number of seconds, 0 or more.'), (dict(min_seconds=float('inf')), 'A length must be a number of seconds, 0 or more.'), (dict(max_seconds=float('nan')), 'A length must be a number of seconds, 0 or more.'), (dict(streams='none'), 'streams must be one of current, all.'),
                      (dict(min_seconds=600, max_seconds=60), 'The shortest length must not be longer than the longest.'), (dict(colour='red'), 'There is no filter called colour.')]:
         try: catalogue.save_filters(bad); raise AssertionError(bad)
         except catalogue.FilterError as e: assert str(e) == why

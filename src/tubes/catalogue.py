@@ -34,7 +34,7 @@ side's reports leave iPlayer episodes alone.
 
 `Job` runs a sync of several channels in a background thread for the web server, one at a time, and reports how far it has got; the timer
 runs `tubes sync` (cli.py), which calls `sync` directly."""
-import datetime, json, threading
+import datetime, json, math, threading
 
 from tubes import cache, db, iplayer, library, youtube
 
@@ -325,7 +325,7 @@ def save_filters(changes):
         if k == 'streams':
             if v not in library.STREAMS: raise FilterError(f'streams must be one of {", ".join(library.STREAMS)}.')
         elif v is not None:
-            if isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0: raise FilterError('A length must be a number of seconds, 0 or more.')
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0: raise FilterError('A length must be a number of seconds, 0 or more.')   # 1e309 parses as infinity, which JSON cannot carry back
             v = int(v) if float(v).is_integer() else float(v)
         f[k] = v
     if f['min_seconds'] is not None and f['max_seconds'] is not None and f['min_seconds'] > f['max_seconds']:
