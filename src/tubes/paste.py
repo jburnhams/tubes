@@ -13,7 +13,7 @@ What is found goes into `suggestions` (platform, title, picture, `pasted` now), 
 again that had been dismissed comes back. One already followed is said, not suggested. Nothing is followed here: that is the page's Follow."""
 import datetime, re
 
-from tubes import cache, db, iplayer, youtube
+from tubes import cache, db, iplayer, quota, youtube
 
 MAX_LINES = 100
 NAME_SEARCHES = 20
@@ -141,6 +141,7 @@ def resolve(text, searches):
 FIELDS = ('platform', 'title', 'handle', 'thumbnail', 'subscribers', 'total_videos', 'topics', 'made_for_kids')
 
 
+@quota.purpose('paste')
 def paste(text, now=None):
     """Read a pasted list (see the module's notes) into the suggestions. Returns `{found: [{input, platform, channel_id, title}], already:
     [{input, title}], problems: [{input, error}]}`: `found` are now suggested (pasted now, and no longer dismissed), `already` are followed."""

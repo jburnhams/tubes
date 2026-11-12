@@ -1,6 +1,6 @@
 import importlib, json
 import pytest
-from tubes import cache, catalogue, cli, fetcher, oslib, settings, youtube, ytdlp
+from tubes import cache, catalogue, cli, fetcher, oslib, quota, settings, youtube, ytdlp
 from library import seed
 from test_cache import write_playlist
 
@@ -175,3 +175,15 @@ def test_an_iplayer_programme_is_added_and_synced_without_a_youtube_key(capsys, 
     assert 'following b0000001: Harbour Lights' in out and '1 channel(s) synced, 2 new video(s)' in out
     assert cli.main(['sync']) == 0
     with pytest.raises(SystemExit, match='YOUTUBE_API_KEY is not in the environment'): cli.main(['sync', 'UCaaaaaaaaaaaaaaaaaaaaaa'])
+
+
+def test_quota_counts_a_command_under_its_name(capsys, fake_youtube):
+    fake_youtube.channel('UCaaaaaaaaaaaaaaaaaaaaaa', 'Workshop', handle='@workshop')
+    assert cli.main(['recheck']) == 0 and cli.main(['add', '@workshop', '--no-sync']) == 0; capsys.readouterr()
+    with quota.purpose('history'): youtube.channels(['UCaaaaaaaaaaaaaaaaaaaaaa'])
+    fake_youtube.quota_left = 0
+    with pytest.raises(youtube.YoutubeError): youtube.videos(['Ab1-Cd2_Ef3'])
+    assert cli.main(['quota']) == 0
+    out = capsys.readouterr().out
+    assert 'units used on' in out and 'YouTube refused a call for want of quota' in out and 'add' in out and 'history' in out
+    assert cli.main(['quota', '--json']) == 0 and json.loads(capsys.readouterr().out)['remaining'] == 0

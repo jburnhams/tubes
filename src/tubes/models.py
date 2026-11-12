@@ -21,6 +21,8 @@ carry them, so they sort and compare as text on both engines.
                      `source` it was imported as: what suggestions are made from. Not plays: they never touch the eviction score.
   suggestions        one row per channel in the history: how often and how lately it was watched (`score` fades a watch by its age), its
                      group, YouTube's topics for it, and whether it was dismissed (kept when the history is imported again).
+  api_usage          the YouTube Data API calls made, counted by Pacific day and hour, purpose and endpoint: units, calls, how many failed and
+                     how many were refused for want of quota (quota.py). Nothing else in Google's API says how much of the daily quota is left.
   suggestion_groups  groups of channels watched in the same sittings, found from the history; `name` is made up from its channels until
                      someone names it (`named`), and a regrouping keeps a group's id and name for the group that overlaps it most.
                      A channel can also be here only because channels the library follows or the history watches point at it
@@ -217,3 +219,15 @@ class SuggestionGroup(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
     name: Mapped[str]
     named: Mapped[bool] = mapped_column(server_default=false(), default=False)
+
+
+class ApiUsage(Base):
+    __tablename__ = 'api_usage'
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)             # YYYY-MM-DD in Pacific time, the quota's day
+    hour: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)   # 0-23, Pacific
+    purpose: Mapped[str] = mapped_column(String(32), primary_key=True)         # sync, recheck, add... (quota.purpose)
+    endpoint: Mapped[str] = mapped_column(String(32), primary_key=True)        # channels, videos, playlistItems...
+    calls: Mapped[int] = mapped_column(server_default='0', default=0)
+    units: Mapped[int] = mapped_column(server_default='0', default=0)
+    failed: Mapped[int] = mapped_column(server_default='0', default=0)
+    refused: Mapped[int] = mapped_column(server_default='0', default=0)

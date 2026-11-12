@@ -2,7 +2,7 @@
 // tests, every Storybook story and the visual suite's screenshots, so a screen looks the same in
 // each. Dates are fixed, so screenshots do not change from day to day. Pictures are flat SVG
 // tiles as data URLs, so nothing is fetched from outside.
-import type { CacheItem, CacheReport, Channel, Segment, SegmentKind, ChannelOverview, HistorySource, HistoryStats, LibraryStatus, RelatedStatus, Settings, ShownFilters, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video } from '../api'
+import type { CacheItem, CacheReport, Channel, Segment, SegmentKind, ChannelOverview, HistorySource, HistoryStats, LibraryStatus, QuotaTotals, QuotaUsage, RelatedStatus, Settings, ShownFilters, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video } from '../api'
 
 export const GB = 1e9
 
@@ -239,6 +239,53 @@ export const historyDays: Omit<HistoryStats, 'sources'> = {
   ...historyStats, watches: 64, videos: 50, channels: 12, by: 'day', first: '2026-10-11T08:00:00+00:00',
   periods: Array.from({ length: 20 }, (_, i) => ({ period: `2026-10-${String(i + 11).padStart(2, '0')}`, watches: (i * 7) % 6 + (i % 4 === 0 ? 0 : 1) })).filter(p => p.watches > 0),
 }
+
+const totals = (units: number, failed = 0, refused = 0): QuotaTotals => ({ calls: units, units, failed, refused })
+/** A day's units split the way a sync-heavy day splits, all from 1-unit calls. */
+const quotaDay = (day: string, units: number, refused = 0): QuotaUsage['days'][number] => ({
+  day, ...totals(units, refused, refused),
+  purposes: units ? { sync: Math.round(units * 0.9), recheck: 50, past: units - Math.round(units * 0.9) - 50 } : ({} as Record<string, number>),
+})
+
+/** The quota at 04:00 Pacific on 9 November (12:00 UTC, the visual suite's clock): the night's syncs and a few adds, with the last 30 days behind it. */
+export const quotaUsage: QuotaUsage = {
+  configured: true, limit: 10_000, day: '2026-11-09', used: 1_712, remaining: 8_288, resets: '2026-11-10T08:00:00+00:00', refused: null,
+  today: {
+    ...totals(1_712, 2),
+    purposes: [{ purpose: 'sync', ...totals(1_640) }, { purpose: 'recheck', ...totals(50) }, { purpose: 'past', ...totals(12) }, { purpose: 'add', ...totals(8, 2) }, { purpose: 'reported', ...totals(2) }],
+    endpoints: [{ endpoint: 'playlistItems', ...totals(1_198) }, { endpoint: 'videos', ...totals(502) }, { endpoint: 'channels', ...totals(12, 2) }],
+    hours: [{ hour: 0, ...totals(820, 2) }, { hour: 2, ...totals(14) }, { hour: 3, ...totals(878) }],
+  },
+  days: [
+    quotaDay('2026-11-09', 1_712),
+    ...Array.from({ length: 29 }, (_, i) => {
+      const d = new Date(Date.UTC(2026, 10, 8 - i)).toISOString().slice(0, 10)
+      if (d === '2026-11-01') return quotaDay(d, 10_000, 3)                                    // the first full sync of the library ran out
+      if (d === '2026-11-02') return quotaDay(d, 7_400)                                        // and finished the next day
+      if (d < '2026-10-31') return quotaDay(d, 0)                                              // before the library was managed here
+      return quotaDay(d, 2_100 + ((i * 337) % 900))
+    }),
+  ],
+}
+
+/** YouTube refused a call at 11:20 UTC: the quota is spent (by another user of the key too) until the reset. */
+export const quotaSpent: QuotaUsage = {
+  ...quotaUsage, used: 9_870, remaining: 0, refused: '2026-11-09T11:20:00+00:00',
+  today: {
+    ...quotaUsage.today, ...totals(9_870, 4, 3),
+    purposes: [{ purpose: 'sync', ...totals(9_420, 3, 3) }, { purpose: 'recheck', ...totals(450, 1) }],
+    endpoints: [{ endpoint: 'playlistItems', ...totals(6_930, 3, 3) }, { endpoint: 'videos', ...totals(2_928, 1) }, { endpoint: 'channels', ...totals(12) }],
+  },
+  days: [quotaDay('2026-11-09', 9_870, 3), ...quotaUsage.days.slice(1)],
+}
+
+/** A key and nothing asked yet today. */
+export const quotaUnused: QuotaUsage = {
+  ...quotaUsage, used: 0, remaining: 10_000, today: { ...totals(0), purposes: [], endpoints: [], hours: [] }, days: [quotaDay('2026-11-09', 0), ...quotaUsage.days.slice(1)],
+}
+
+/** No key on the server and nothing ever counted. */
+export const quotaNoKey: QuotaUsage = { ...quotaUnused, configured: false, days: quotaUnused.days.map(d => quotaDay(d.day, 0)) }
 
 /** A channel's watch history for the overview: two accounts, a quiet month, and three videos (one in the library). */
 export function channelHistory(title: string): ChannelOverview['history'] {

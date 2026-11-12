@@ -8,7 +8,7 @@
 // `states: { error: [videosError] }` in the visual config.
 import { delay, http, HttpResponse } from 'msw'
 import { cursorOf, paths, type CacheItem, type Channel, type HistorySource, type Pasted, type Settings, type ShownFilters, type Stream, type Suggestion, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Video, type VideoPage } from '../api'
-import { cacheItems, channelHistory, channels, defaultSettings, defaultShown, kindsFor, sampleSegments, episodes, programme, historyDays, historySources, historyStats, library, libraryNew, longChannel, pasteable, relatedStatus, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
+import { cacheItems, channelHistory, channels, defaultSettings, defaultShown, kindsFor, sampleSegments, episodes, programme, historyDays, historySources, historyStats, library, libraryNew, longChannel, pasteable, quotaNoKey, quotaSpent, quotaUnused, quotaUsage, relatedStatus, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
 
 /** What the mock server holds. Writes change it, so a test can pin a copy and see it pinned. */
 export const mock = {
@@ -126,6 +126,7 @@ const shown = () => videos.filter(v => !mock.gone.includes(v.id))
 
 export const handlers = [
   http.get(at(paths.health), () => HttpResponse.json({ ok: true, version: systemStatus.version })),
+  http.get(at(paths.quota), () => HttpResponse.json(quotaUsage)),
   http.get(at(paths.system), () => HttpResponse.json({ ...systemStatus, cache_dir: mock.settings.cache_dir, library: { ...library, synced: mock.synced } })),
   http.get(at(paths.settings), () => HttpResponse.json(mock.settings)),
   http.get(at(paths.shown), () => HttpResponse.json(mock.shown)),
@@ -305,6 +306,13 @@ export const handlers = [
 export const systemLoading = http.get(at(paths.system), () => delay('infinite'))
 export const systemError = http.get(at(paths.system), down)
 export const systemInTrouble = http.get(at(paths.system), () => HttpResponse.json(systemTrouble))
+
+export const quotaLoading = http.get(at(paths.quota), () => delay('infinite'))
+export const quotaError = http.get(at(paths.quota), down)
+/** YouTube refused a call today: nothing more until the reset. */
+export const quotaIsSpent = http.get(at(paths.quota), () => HttpResponse.json(quotaSpent))
+export const quotaNothingYet = http.get(at(paths.quota), () => HttpResponse.json(quotaUnused))
+export const quotaWithoutKey = http.get(at(paths.quota), () => HttpResponse.json(quotaNoKey))
 
 export const settingsLoading = http.get(at(paths.settings), () => delay('infinite'))
 export const settingsError = http.get(at(paths.settings), down)

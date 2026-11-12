@@ -1,7 +1,7 @@
 // The admin area's frame: Strata's AppShell (product name, side nav, main region) around the
-// screens that run the server (Library, Suggestions, History, Cache, System, Settings), in Strata's look. The watching side has
+// screens that run the server (Library, Suggestions, History, Cache, YouTube quota, System, Settings), in Strata's look. The watching side has
 // its own frame (watch/Shell.tsx) in the old Tubes look; the first nav item goes back to it.
-import { ChartLine, HardDrive, History, Library, Server, Settings, Tv } from 'lucide-react'
+import { ChartLine, Gauge, HardDrive, History, Library, Server, Settings, Tv } from 'lucide-react'
 import { Outlet } from 'react-router'
 import { AppShell, type NavItem } from 'strata-react'
 
@@ -11,6 +11,7 @@ export const nav: NavItem[] = [
   { to: '/admin/suggestions', label: 'Suggestions', icon: History },
   { to: '/admin/history', label: 'History', icon: ChartLine },
   { to: '/admin/cache', label: 'Cache', icon: HardDrive },
+  { to: '/admin/quota', label: 'YouTube quota', icon: Gauge },
   { to: '/admin/system', label: 'System', icon: Server },
   { to: '/admin/settings', label: 'Settings', icon: Settings },
 ]

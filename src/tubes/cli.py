@@ -1,9 +1,9 @@
 """Command line. `doctor` checks the environment; `add`, `remove`, `sync` and `channels` manage the library from YouTube and BBC iPlayer; `history` imports a
-watch history that suggestions are made from; `related` asks YouTube which channels the followed and watched ones point at; `fetch`, `cache`, `evict` the cache; `set` the settings; `serve` starts the web server.
+watch history that suggestions are made from; `related` asks YouTube which channels the followed and watched ones point at; `fetch`, `cache`, `evict` the cache; `quota` what the YouTube key has used today; `set` the settings; `serve` starts the web server.
 A timer on the server runs `tubes sync; tubes related; tubes evict` every few hours (docs/deploy.md)."""
 import argparse, importlib, json, os, sys
 
-from tubes import __version__, cache, catalogue, fetcher, history, iplayer, iplayer_suggest, library, oslib, related, settings, youtube, ytdlp
+from tubes import __version__, cache, catalogue, fetcher, history, iplayer, iplayer_suggest, library, oslib, quota, related, settings, youtube, ytdlp
 
 CHECKS = (('fastapi', 'fastapi'), ('uvicorn', 'uvicorn'), ('pydantic', 'pydantic'))
 
@@ -73,6 +73,14 @@ def cmd_channels(args):
     if not items and not args.json: print('  (no channels yet: ./tubes add <channel link or @handle>)'); return 0
     state = lambda c: 'complete' if c['complete'] else 'backfilling' if c['follow'] else 'not followed'
     return out(args, items, '\n'.join(f"  {c['id']:26} {c['videos']:>6} videos  {state(c):12} {c['title'][:50]}" for c in items))
+
+
+def cmd_quota(args):
+    u = quota.usage()
+    lines = [f"  {u['used']:,} of {u['limit']:,} units used on {u['day']} (Pacific), {u['remaining']:,} left; resets {u['resets']}"]
+    if u['refused']: lines.append(f"  YouTube refused a call for want of quota at {u['refused']}: nothing more until the reset")
+    lines += [f"  {p['purpose']:14} {p['units']:>6} units  {p['calls']:>6} calls  {p['failed']:>4} failed" for p in u['today']['purposes']]
+    return out(args, u, '\n'.join(lines))
 
 
 def describe_refresh(r):
@@ -180,6 +188,9 @@ def main(argv=None):
     f = sub.add_parser('fetch', help='fetch one video into the cache now (waits until it is done)'); f.add_argument('video'); f.add_argument('--json', action='store_true'); f.set_defaults(fn=cmd_fetch)
     c = sub.add_parser('cache', help='show the cache: use, limit and every copy with its score'); c.add_argument('--json', action='store_true'); c.set_defaults(fn=cmd_cache)
     e = sub.add_parser('evict', help='trim the cache when it is over 95%% of its limit'); e.add_argument('--dry-run', action='store_true'); e.add_argument('--json', action='store_true'); e.set_defaults(fn=cmd_evict)
+    q = sub.add_parser('quota', help="show how much of the YouTube Data API's daily quota has been used today, and on what"); q.add_argument('--json', action='store_true'); q.set_defaults(fn=cmd_quota)
     t = sub.add_parser('set', help='show or change a setting; value "default" resets it'); t.add_argument('key'); t.add_argument('value', nargs='?'); t.set_defaults(fn=cmd_set)
     v = sub.add_parser('serve', help='start the web server'); v.add_argument('--host', default='127.0.0.1'); v.add_argument('--port', type=int, default=8367); v.set_defaults(fn=cmd_serve)
-    args = p.parse_args(argv); return args.fn(args)
+    args = p.parse_args(argv)
+    if args.cmd == 'serve': return args.fn(args)                 # the server's requests name their own purposes, or count as `other`
+    with quota.purpose(args.cmd): return args.fn(args)          # YouTube calls a command makes count under its name unless its work names its own

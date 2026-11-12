@@ -36,7 +36,7 @@ side's reports leave iPlayer episodes alone.
 runs `tubes sync` (cli.py), which calls `sync` directly."""
 import datetime, json, math, threading
 
-from tubes import cache, db, iplayer, library, youtube
+from tubes import cache, db, iplayer, library, quota, youtube
 
 RECHECK = 2500                                                                   # videos per recheck: 50 quota units of the 10,000 a day
 LIVE_GAP = datetime.timedelta(days=1)                                          # a past stream is asked about again after this (see the notes)
@@ -72,6 +72,7 @@ def _channel(kind, value):
     return item
 
 
+@quota.purpose('add')
 def add(text, now=None):
     """Add what a person pasted: a channel (followed, and synced by the caller) or one video. Returns `{kind, channel}` or `{kind, video}`;
     adding something already there refreshes it (and follows a channel that was only there for one of its videos)."""
@@ -126,6 +127,7 @@ def add_iplayer(kind, pid, now=None):
     return dict(kind='video', video=library.video(row['id']))
 
 
+@quota.purpose('add')
 def add_videos(ids, now=None):
     """Add these videos (say, the ones of a channel watched before, from history.py) without following anything: each one's channel comes in
     unfollowed if the library does not have it. Returns `{added, already, missing}`: new to the library, held already (refreshed), and those
@@ -182,6 +184,7 @@ def _store(channel_id, ids, now):
     return len(rows)
 
 
+@quota.purpose('sync')
 def sync_channel(channel_id, now=None, progress=None):
     """Bring one channel up to date (see the module's notes); returns `{channel, title, added, pages, complete}`. `progress(added)` is
     called after each page."""
@@ -259,7 +262,13 @@ def sync_programme(channel_id, now=None, progress=None):
     return dict(channel=channel_id, title=row['title'], added=added, pages=page, complete=True)
 
 
+@quota.purpose('recheck')
 def recheck(limit=None, now=None, ids=None, since=None):
+    """The rolling recheck (also the one a sync runs at its end), counted as `recheck` in the quota; see `_recheck`."""
+    return _recheck(limit, now, ids, since)
+
+
+def _recheck(limit=None, now=None, ids=None, since=None):          # undecorated: report and recheck_past keep their own quota purpose
     """Ask YouTube about the `limit` (default RECHECK; 0 for every one) videos checked longest ago, after every stream not over, or about these `ids` (those the library holds, and not checked since `since`): refresh the ones it has (clearing `gone`), mark the rest `gone`. Returns `{checked, gone, back}`:
     how many were asked about, newly hidden, and found again."""
     now = now or cache.stamp(); limit = RECHECK if limit is None else limit
@@ -282,24 +291,31 @@ def recheck(limit=None, now=None, ids=None, since=None):
     return dict(checked=len(was), gone=sum(1 for i in missing if not was[i]), back=sum(1 for i in found if was[i]))
 
 
+@quota.purpose('reported')
 def report(ids, now=None, gap=REPORT_GAP):
+    """The watching side found these videos missing, counted as `reported` in the quota; see `_report`."""
+    return _report(ids, now, gap)
+
+
+def _report(ids, now=None, gap=REPORT_GAP):
     """The watching side found these videos missing: recheck those not asked about in `gap` (see the module's notes). Returns the
     recheck's counts and `hidden`, the ids among them that are hidden now, so the page can drop them at once."""
     now = now or cache.stamp(); ids = list(dict.fromkeys(ids))
     since = (datetime.datetime.fromisoformat(now) - gap).isoformat(timespec='seconds')
-    r = recheck(now=now, ids=ids, since=since)
+    r = _recheck(now=now, ids=ids, since=since)
     with db.connect() as con:
         gone = {row[0] for row in con.execute(f"SELECT id FROM videos WHERE gone IS NOT NULL AND id IN ({', '.join('?' * len(ids))})", tuple(ids))} if ids else set()
     return dict(r, hidden=[i for i in ids if i in gone])
 
 
+@quota.purpose('past')
 def recheck_past(videos, now=None):
     """Of these video rows a page is about to show, ask YouTube again about the past streams not asked about in LIVE_GAP, and return the ids
     it no longer has (now hidden), for the caller to leave out. Without a key, or when YouTube refuses, nothing is asked and the page shows
     them as they are: the next read tries again, and a fetch that fails still hides one."""
     ids = [v['id'] for v in videos if v.get('live') == 'was' and not v.get('gone')]
     if not ids or not youtube.configured(): return set()
-    try: return set(report(ids, now, LIVE_GAP)['hidden'])
+    try: return set(_report(ids, now, LIVE_GAP)['hidden'])
     except youtube.YoutubeError: return set()
 
 
@@ -351,6 +367,7 @@ def followed():
     with db.connect() as con: return [tuple(r) for r in con.execute('SELECT id, title FROM channels WHERE follow = ? ORDER BY LOWER(title), id', (True,))]
 
 
+@quota.purpose('sync')
 def sync(channel_ids=None, now=None, on_channel=None, progress=None):
     """Sync these channels (default: every followed one) in turn; returns `{channels: [...], errors: [...], added, synced}`. A failure on one
     channel is noted (with the videos it had added before it failed, which are kept and counted) and the next goes on, except running out of

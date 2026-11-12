@@ -15,6 +15,8 @@ API (JSON):
   GET  /api/library/shown, PUT            which videos the watching side shows (library.filters): {min_seconds, max_seconds, streams, filtered}; PUT takes any subset, null for no limit; filtered is how many they leave out
   GET  /api/library/sync                   the background sync: {running, total, done, current, added, errors, started, finished}
   POST /api/library/sync {channels}        start one for these channel ids (default: every followed channel); 409 while one runs
+  GET  /api/quota                         the YouTube Data API quota: today's units used of the limit, what remains, when it resets, today by
+                                           purpose, endpoint and hour, and the last 30 days (quota.py; Google has no call that says this)
   GET  /api/channels, GET /api/channels/{id}   channels with their video counts and sync state
   GET  /api/channels/{id}/overview         a channel's library state, watch history (per month, per account, videos watched most) and suggestion
   DELETE /api/channels/{id}                remove a channel and its videos
@@ -51,7 +53,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from tubes import __version__, cache, catalogue, fetcher, history, iplayer, library, oslib, paste, segments, settings, youtube, ytdlp
+from tubes import __version__, cache, catalogue, fetcher, history, iplayer, library, oslib, paste, quota, segments, settings, youtube, ytdlp
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 LANDING = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'landing.html')
@@ -163,6 +165,9 @@ def create_app():
     def post_sync(b: SyncIn | None = None):
         if not youtube.configured() and catalogue.needs_youtube(b.channels if b else None): raise HTTPException(503, 'YouTube cannot be asked without YOUTUBE_API_KEY in the server’s environment.')
         return guard(job.start, b.channels if b else None)
+
+    @app.get('/api/quota')
+    def get_quota(): return quota.usage()
 
     @app.delete('/api/channels/{channel_id}')
     def delete_channel(channel_id: str): return guard(catalogue.remove, channel_id)

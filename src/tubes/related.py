@@ -21,7 +21,7 @@ the share of its watch pages that listed the channel (plus FEATURED for a featur
 Channels the history has no watches for are added to `suggestions` with none, and take the group most of their sources are in."""
 import collections, datetime, json, os, re, time, urllib.error, urllib.request
 
-from tubes import cache, db, youtube
+from tubes import cache, db, quota, youtube
 
 WEB = 'https://www.youtube.com'
 CLIENT = {'clientName': 'WEB', 'clientVersion': '2.20251101.00.00', 'hl': 'en', 'gl': 'GB'}
@@ -192,6 +192,7 @@ def save_source(channel_id, got, now):
                        videos = CASE WHEN excluded.error IS NULL THEN excluded.videos ELSE related_sources.videos END''', (channel_id, now, got['videos'], got['error']))
 
 
+@quota.purpose('related')
 def refresh(now=None, limit=RUN_LIMIT, force=False, pause=None, progress=None):
     """Ask about the sources that are due (every source with `force`), at most `limit` of them, then count everything up (`aggregate`).
     Returns `{asked, failed, due, links, errors: [{channel, error}], ...aggregate}`; `due` counts what is still waiting for a later run."""

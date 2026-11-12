@@ -18,6 +18,7 @@ import { CacheScreen } from './screens/CacheScreen'
 import { LibraryScreen } from './screens/LibraryScreen'
 import { SuggestionsScreen } from './screens/SuggestionsScreen'
 import { HistoryScreen } from './screens/HistoryScreen'
+import { QuotaScreen } from './screens/QuotaScreen'
 import { SystemScreen } from './screens/SystemScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
 
@@ -31,6 +32,7 @@ export const routes: RouteObject[] = [
       { path: 'suggestions', element: <SuggestionsScreen /> },
       { path: 'history', element: <HistoryScreen /> },
       { path: 'cache', element: <CacheScreen /> },
+      { path: 'quota', element: <QuotaScreen /> },
       { path: 'system', element: <SystemScreen /> },
       { path: 'settings', element: <SettingsScreen /> },
     ],

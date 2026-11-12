@@ -28,7 +28,7 @@ The list leaves out channels the library follows (following one is accepting it)
 kept when the history is imported again."""
 import collections, datetime, html, itertools, json, math, re
 
-from tubes import cache, db, iplayer, iplayer_suggest, related, settings, youtube
+from tubes import cache, db, iplayer, iplayer_suggest, quota, related, settings, youtube
 
 HALF_LIFE_DAYS = 365.0
 SITTING_GAP = datetime.timedelta(minutes=30)
@@ -274,6 +274,7 @@ def refresh(now=None, lookup=True):
     return out
 
 
+@quota.purpose('suggestions')
 def look_up(now=None, limit=None):
     """Ask YouTube about the channels watched at least LOOKUP_MIN times, or that a related channel points at, that it has not been asked about
     for LOOKUP_DAYS, most watched first (at most `limit`): see the module's notes. Returns `{looked_up, missing}`."""
