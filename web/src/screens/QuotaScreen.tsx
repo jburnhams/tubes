@@ -26,6 +26,7 @@ const purposes: Record<string, string> = {
   suggestions: 'Looking up suggestions',
   history: 'Importing history',
   related: 'Finding related channels',
+  paste: 'Pasted channels',
   other: 'Other',
 }
 

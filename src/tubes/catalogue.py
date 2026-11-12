@@ -248,6 +248,11 @@ def sync_programme(channel_id, now=None, progress=None):
 
 @quota.purpose('recheck')
 def recheck(limit=None, now=None, ids=None, since=None):
+    """The rolling recheck (also the one a sync runs at its end), counted as `recheck` in the quota; see `_recheck`."""
+    return _recheck(limit, now, ids, since)
+
+
+def _recheck(limit=None, now=None, ids=None, since=None):          # undecorated: report and recheck_past keep their own quota purpose
     """Ask YouTube about the `limit` (default RECHECK; 0 for every one) videos checked longest ago, after every stream not over, or about these `ids` (those the library holds, and not checked since `since`): refresh the ones it has (clearing `gone`), mark the rest `gone`. Returns `{checked, gone, back}`:
     how many were asked about, newly hidden, and found again."""
     now = now or cache.stamp(); limit = RECHECK if limit is None else limit
@@ -272,11 +277,16 @@ def recheck(limit=None, now=None, ids=None, since=None):
 
 @quota.purpose('reported')
 def report(ids, now=None, gap=REPORT_GAP):
+    """The watching side found these videos missing, counted as `reported` in the quota; see `_report`."""
+    return _report(ids, now, gap)
+
+
+def _report(ids, now=None, gap=REPORT_GAP):
     """The watching side found these videos missing: recheck those not asked about in `gap` (see the module's notes). Returns the
     recheck's counts and `hidden`, the ids among them that are hidden now, so the page can drop them at once."""
     now = now or cache.stamp(); ids = list(dict.fromkeys(ids))
     since = (datetime.datetime.fromisoformat(now) - gap).isoformat(timespec='seconds')
-    r = recheck(now=now, ids=ids, since=since)
+    r = _recheck(now=now, ids=ids, since=since)
     with db.connect() as con:
         gone = {row[0] for row in con.execute(f"SELECT id FROM videos WHERE gone IS NOT NULL AND id IN ({', '.join('?' * len(ids))})", tuple(ids))} if ids else set()
     return dict(r, hidden=[i for i in ids if i in gone])
@@ -289,7 +299,7 @@ def recheck_past(videos, now=None):
     them as they are: the next read tries again, and a fetch that fails still hides one."""
     ids = [v['id'] for v in videos if v.get('live') == 'was' and not v.get('gone')]
     if not ids or not youtube.configured(): return set()
-    try: return set(report(ids, now, LIVE_GAP)['hidden'])
+    try: return set(_report(ids, now, LIVE_GAP)['hidden'])
     except youtube.YoutubeError: return set()
 
 

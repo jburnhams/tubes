@@ -1,7 +1,7 @@
 """youtube api usage
 
 Revision ID: 376f815cfb64
-Revises: c34aa161ab66
+Revises: 7a2c4e91d0b3
 Create Date: 2026-11-12 05:03:05.652050
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '376f815cfb64'
-down_revision: Union[str, Sequence[str], None] = 'c34aa161ab66'
+down_revision: Union[str, Sequence[str], None] = '7a2c4e91d0b3'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

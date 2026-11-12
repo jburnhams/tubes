@@ -28,16 +28,19 @@ API (JSON):
   PUT  /api/cache/{id} {pinned}            pin or unpin a copy
   DELETE /api/cache/{id}                   delete a copy now
   POST /api/cache/evict {dry_run}          run eviction
-  GET  /api/suggestions?group=&topic=&kids=&q=&dismissed=&limit=   channels from the imported watch history, best first: {items, total}
+  GET  /api/suggestions?group=&topic=&kids=&q=&dismissed=&order=&pasted=&limit=   channels from the watch history, those related channels point at
+                                           and those pasted in (order=watched, best score first, or suggested, most pointed at first; pasted=true
+                                           only the pasted ones, latest first): {items, total}; each item's `link` is what Follow adds
   GET  /api/suggestions/summary            the histories, groups, topics and counts around that list (`database`: a history database is set)
   POST /api/suggestions/refresh            read the history database again if one is set, remake the suggestions, ask YouTube about new channels
   GET  /api/history?start=&end=&source=    what was watched then: counts, watches per day or month, top channels and videos (`configured`: channels can be followed)
+  POST /api/suggestions/paste {text}       links, @handles or names (YouTube or iPlayer), one a line, into the suggestions: {found, already, problems}
   POST /api/suggestions/import {source, text}   import a Takeout watch history (its file's text) under a name, then refresh
   DELETE /api/suggestions/sources/{source}  forget an imported history
   PUT  /api/suggestions/groups/{id} {name}  name a group (empty: back to the made-up name)
   PUT  /api/suggestions/{channel} {dismissed}   dismiss a suggestion or bring it back
   POST /api/suggestions/{channel}/videos   add the channel's watched videos to the library without following it: {added, already, missing}
-  (following a suggestion is POST /api/library with its channel id)
+  (following a suggestion is POST /api/library with its `link`)
 Every other path serves the web app (`src/tubes/server/static/index.html` when built with `cd web && npm run build`, else the plain stand-in
 `landing.html`), so a reload or a shared link opens that screen: the app routes in the browser (React Router)."""
 import os, platform, shutil
@@ -47,7 +50,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from tubes import __version__, cache, catalogue, fetcher, history, iplayer, library, oslib, quota, settings, youtube, ytdlp
+from tubes import __version__, cache, catalogue, fetcher, history, iplayer, library, oslib, paste, quota, settings, youtube, ytdlp
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 LANDING = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'landing.html')
@@ -77,6 +80,10 @@ class DismissIn(BaseModel):
 
 class NameIn(BaseModel):
     name: str
+
+
+class PasteIn(BaseModel):
+    text: str
 
 
 class ImportIn(BaseModel):
@@ -239,8 +246,8 @@ def create_app():
     def post_evict(b: EvictIn): return cache.evict(cache.utcnow(), dry_run=b.dry_run)
 
     @app.get('/api/suggestions')
-    def get_suggestions(group: str | None = None, topic: str | None = None, kids: bool | None = None, q: str | None = None, dismissed: bool = False, limit: int = Query(history.LIST_LIMIT, ge=1, le=1000)):
-        return guard(history.suggestions, group, topic, kids, q, dismissed, limit)
+    def get_suggestions(group: str | None = None, topic: str | None = None, kids: bool | None = None, q: str | None = None, dismissed: bool = False, limit: int = Query(history.LIST_LIMIT, ge=1, le=1000), order: str = 'watched', pasted: bool = False):
+        return guard(history.suggestions, group, topic, kids, q, dismissed, limit, order, pasted)
 
     @app.get('/api/suggestions/summary')
     def get_suggestions_summary(): return history.summary()
@@ -253,6 +260,9 @@ def create_app():
     @app.get('/api/history')
     def get_history(start: str | None = None, end: str | None = None, source: str | None = None, top: int = Query(history.TOP, ge=1, le=200)):
         return dict(history.stats(start, end, source, top), sources=history.sources(), configured=youtube.configured())
+
+    @app.post('/api/suggestions/paste')
+    def post_suggestions_paste(b: PasteIn): return guard(paste.paste, b.text)
 
     @app.post('/api/suggestions/import')
     def post_suggestions_import(b: ImportIn): return guard(history.import_text, b.text, b.source)

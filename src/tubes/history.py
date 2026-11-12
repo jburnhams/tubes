@@ -21,11 +21,14 @@ Then YouTube is asked about the channels watched at least LOOKUP_MIN times that 
 their picture, counts, topics (YouTube's own broad categories, such as Music or Hobby) and whether the channel says it is made for kids. A
 channel YouTube no longer has is marked `missing` and left out of the list.
 
+Related channels (related.py) add to this: what the library's followed channels and the history's most watched ones point at, counted up
+into `suggested_by`, so a channel never watched can be suggested too (it has no watches, and borrows the group most of its pointers are in).
+
 The list leaves out channels the library follows (following one is accepting it) and those dismissed, unless asked for those. Dismissing is
 kept when the history is imported again."""
 import collections, datetime, html, itertools, json, math, re
 
-from tubes import cache, db, quota, settings, youtube
+from tubes import cache, db, iplayer, quota, related, settings, youtube
 
 HALF_LIFE_DAYS = 365.0
 SITTING_GAP = datetime.timedelta(minutes=30)
@@ -234,7 +237,7 @@ def refresh(now=None, lookup=True):
     now = now or cache.stamp()
     with db.connect() as con:
         rows = [tuple(r) for r in con.execute('SELECT source, at, channel_id, channel_title, video_id FROM watches WHERE channel_id IS NOT NULL ORDER BY source, at, id')]
-        old = dict(tuple(r) for r in con.execute('SELECT channel_id, group_id FROM suggestions WHERE group_id IS NOT NULL'))
+        old = dict(tuple(r) for r in con.execute('SELECT channel_id, group_id FROM suggestions WHERE group_id IS NOT NULL AND watches > ?', (0,)))   # an unwatched one's group is borrowed (related.py)
         named = {r[0]: r[1] for r in con.execute('SELECT id, name FROM suggestion_groups WHERE named = ?', (True,))}
         all_ids = [r[0] for r in con.execute('SELECT id FROM suggestion_groups')]
     per = collections.defaultdict(list); title, videos = {}, collections.defaultdict(set)
@@ -258,8 +261,12 @@ def refresh(now=None, lookup=True):
         con.executemany(f"INSERT INTO suggestions (channel_id, {', '.join(fields)}) VALUES (:channel_id, {', '.join(':' + f for f in fields)}) ON CONFLICT (channel_id) DO UPDATE SET {', '.join(f'{f} = excluded.{f}' for f in fields)}", stats)
         held = {r[0] for r in con.execute('SELECT channel_id FROM suggestions')}
         gone = sorted(held - set(per))
-        for i in range(0, len(gone), 500): con.execute(f"DELETE FROM suggestions WHERE channel_id IN ({', '.join('?' * len(gone[i:i + 500]))})", tuple(gone[i:i + 500]))
+        for i in range(0, len(gone), 500):                                      # one the related channels still point at stays, with no watches
+            part, marks = tuple(gone[i:i + 500]), ', '.join('?' * len(gone[i:i + 500]))
+            con.execute(f'DELETE FROM suggestions WHERE suggested_by = ? AND pasted IS NULL AND channel_id IN ({marks})', (0,) + part)   # a pasted one stays too
+            con.execute(f'UPDATE suggestions SET watches = ?, videos = ?, first = NULL, last = NULL, score = ?, group_id = NULL WHERE channel_id IN ({marks})', (0, 0, 0.0) + part)
         con.execute("INSERT INTO meta (key, value) VALUES ('suggestions_refreshed', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (now,))
+    related.aggregate()                                                         # groups moved, so the related channels' borrowed ones do too
     out = dict(channels=len(stats), groups=len(groups), grouped=len(group_of), looked_up=0, missing=0, error=None)
     if lookup and youtube.configured():
         try: out.update(look_up(now))
@@ -269,13 +276,13 @@ def refresh(now=None, lookup=True):
 
 @quota.purpose('suggestions')
 def look_up(now=None, limit=None):
-    """Ask YouTube about the channels watched at least LOOKUP_MIN times that it has not been asked about for LOOKUP_DAYS, most watched first
-    (at most `limit`): see the module's notes. Returns `{looked_up, missing}`."""
+    """Ask YouTube about the channels watched at least LOOKUP_MIN times, or that a related channel points at, that it has not been asked about
+    for LOOKUP_DAYS, most watched first (at most `limit`): see the module's notes. Returns `{looked_up, missing}`."""
     now = now or cache.stamp()
     since = (datetime.datetime.fromisoformat(now) - datetime.timedelta(days=LOOKUP_DAYS)).isoformat(timespec='seconds')
     with db.connect() as con:
-        sql = 'SELECT channel_id FROM suggestions WHERE watches >= ? AND (looked_up IS NULL OR looked_up < ?) ORDER BY score DESC, channel_id' + (' LIMIT ?' if limit else '')
-        ids = [r[0] for r in con.execute(sql, (LOOKUP_MIN, since, limit) if limit else (LOOKUP_MIN, since))]
+        sql = 'SELECT channel_id FROM suggestions WHERE platform = ? AND (watches >= ? OR suggested_by > ?) AND (looked_up IS NULL OR looked_up < ?) ORDER BY score DESC, related_score DESC, channel_id' + (' LIMIT ?' if limit else '')
+        ids = [r[0] for r in con.execute(sql, ('youtube', LOOKUP_MIN, 0, since, limit) if limit else ('youtube', LOOKUP_MIN, 0, since))]
     if not ids: return dict(looked_up=0, missing=0)
     found = {}
     for i in range(0, len(ids), 50):                                            # saved a call at a time, so running out of quota keeps what came
@@ -293,20 +300,24 @@ def look_up(now=None, limit=None):
 def _topics(raw): return [t for t in (raw or '').split('|') if t]
 
 
-def _item(r):
-    r = dict(r); r['topics'] = _topics(r['topics'])
+def _item(r, by=None):
+    r = dict(r); r['topics'] = _topics(r['topics']); r['suggested_from'] = (by or {}).get(r['channel_id'], [])
+    r['link'] = iplayer.programme_url(r['channel_id']) if r['platform'] == 'iplayer' else f"https://www.youtube.com/channel/{r['channel_id']}"   # what Follow adds, and where its title goes
     for k in ('missing', 'in_library'): r[k] = bool(r[k])
     r['made_for_kids'] = None if r['made_for_kids'] is None else bool(r['made_for_kids'])
     return r
 
 
 COLUMNS = """s.channel_id, s.title, s.handle, s.thumbnail, s.watches, s.videos, s.first, s.last, s.score, s.group_id, s.subscribers, s.total_videos,
-             s.topics, s.made_for_kids, s.missing, s.dismissed, c.id IS NOT NULL AS in_library"""
+             s.topics, s.made_for_kids, s.missing, s.dismissed, s.suggested_by, s.related_score, s.platform, s.pasted, c.id IS NOT NULL AS in_library"""
+ORDERS = {'watched': 's.score DESC, s.related_score DESC, s.channel_id', 'suggested': 's.suggested_by DESC, s.related_score DESC, s.score DESC, s.channel_id'}
+PASTED_ORDER = 's.pasted DESC, s.score DESC, s.related_score DESC, s.channel_id'   # the latest paste first
 
 
-def _where(group=None, topic=None, kids=None, q=None, dismissed=False):
+def _where(group=None, topic=None, kids=None, q=None, dismissed=False, pasted=False):
     where, args = ['s.missing = ?', '(c.id IS NULL OR c.follow = ?)'], [False, False]   # following a channel is accepting it
     where.append('s.dismissed IS NOT NULL' if dismissed else 's.dismissed IS NULL')
+    if pasted: where.append('s.pasted IS NOT NULL')
     if group == 'none': where.append('s.group_id IS NULL')
     elif group not in (None, ''):
         try: where.append('s.group_id = ?'); args.append(int(group))
@@ -318,22 +329,27 @@ def _where(group=None, topic=None, kids=None, q=None, dismissed=False):
     return ' AND '.join(where), args
 
 
-def suggestions(group=None, topic=None, kids=None, q=None, dismissed=False, limit=LIST_LIMIT):
+def suggestions(group=None, topic=None, kids=None, q=None, dismissed=False, limit=LIST_LIMIT, order='watched', pasted=False):
     """The channels to consider, best score first: `{items, total}` (`total` counts every match, `items` holds the first `limit`). `group` is a
     group's id or 'none' for the ungrouped; `topic` one of YouTube's topics; `kids` True or False for what the channel says of its audience
-    (False includes channels that say nothing); `q` words in the title; `dismissed` lists the dismissed ones instead."""
-    where, args = _where(group, topic, kids, q, dismissed)
+    (False includes channels that say nothing); `q` words in the title; `dismissed` lists the dismissed ones instead. `order` is 'watched'
+    (best score first) or 'suggested' (pointed at by the most of the library's and the history's channels first, related.py); each item's
+    `suggested_from` names up to three of those. `pasted` lists only what was pasted in (paste.py), the latest paste first."""
+    if order not in ORDERS: raise ValueError(f"Order by {' or '.join(ORDERS)}, not {order}.")
+    where, args = _where(group, topic, kids, q, dismissed, pasted)
     with db.connect() as con:
         total = con.execute(f'SELECT COUNT(*) FROM suggestions s LEFT JOIN channels c ON c.id = s.channel_id WHERE {where}', tuple(args)).fetchone()[0]
-        rows = db.rows(con.execute(f'SELECT {COLUMNS} FROM suggestions s LEFT JOIN channels c ON c.id = s.channel_id WHERE {where} ORDER BY s.score DESC, s.channel_id LIMIT ?', tuple(args) + (limit,)))
-    return dict(items=[_item(r) for r in rows], total=total)
+        rows = db.rows(con.execute(f'SELECT {COLUMNS} FROM suggestions s LEFT JOIN channels c ON c.id = s.channel_id WHERE {where} ORDER BY {PASTED_ORDER if pasted else ORDERS[order]} LIMIT ?', tuple(args) + (limit,)))
+    by = related.pointers([r['channel_id'] for r in rows if r['suggested_by']])
+    return dict(items=[_item(r, by) for r in rows], total=total)
 
 
 def summary():
     """What the Suggestions page shows around its list: the imported histories, the groups and topics among the channels still to consider
-    (with how many each holds), how many are open, dismissed and followed, and when the suggestions were last made."""
+    (with how many each holds), how many are open, dismissed and followed, and when the suggestions were last made; `suggested` counts the
+    open ones a related channel points at, `unwatched` those with no watches, and `related` says how far asking about them has got (related.status)."""
     with db.connect() as con:
-        rows = db.rows(con.execute('''SELECT s.group_id, s.topics, s.made_for_kids, s.dismissed, s.watches, c.id IS NOT NULL AND c.follow = ? AS followed
+        rows = db.rows(con.execute('''SELECT s.group_id, s.topics, s.made_for_kids, s.dismissed, s.watches, s.suggested_by, s.pasted, c.id IS NOT NULL AND c.follow = ? AS followed
                                       FROM suggestions s LEFT JOIN channels c ON c.id = s.channel_id WHERE s.missing = ?''', (True, False)))
         groups = db.rows(con.execute('SELECT id, name, named FROM suggestion_groups ORDER BY id'))
         refreshed = con.execute("SELECT value FROM meta WHERE key = 'suggestions_refreshed'").fetchone()
@@ -343,14 +359,15 @@ def summary():
     return dict(sources=sources(), groups=sorted(groups, key=lambda g: (-g['channels'], g['id'])), ungrouped=per_group.get(None, 0),
                 topics=[dict(name=t, channels=n) for t, n in sorted(topics.items(), key=lambda x: (-x[1], x[0]))],
                 kids=sum(1 for r in open_ if r['made_for_kids']), open=len(open_), dismissed=sum(1 for r in rows if r['dismissed'] and not r['followed']),
-                followed=sum(1 for r in rows if r['followed']), refreshed=refreshed[0] if refreshed else None, configured=youtube.configured(), database=database_configured())
+                followed=sum(1 for r in rows if r['followed']), refreshed=refreshed[0] if refreshed else None, configured=youtube.configured(), database=database_configured(),
+                suggested=sum(1 for r in open_ if r['suggested_by']), unwatched=sum(1 for r in open_ if not r['watches']), pasted=sum(1 for r in open_ if r['pasted']), related=related.status())
 
 
 def suggestion(channel_id):
     with db.connect() as con:
         r = db.row(con.execute(f'SELECT {COLUMNS} FROM suggestions s LEFT JOIN channels c ON c.id = s.channel_id WHERE s.channel_id = ?', (channel_id,)))
     if r is None: raise NotFound(f'There is no suggestion {channel_id}.')
-    return _item(r)
+    return _item(r, related.pointers([channel_id]) if r['suggested_by'] else None)
 
 
 def dismiss(channel_id, dismissed=True, now=None):

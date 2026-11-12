@@ -155,6 +155,13 @@ def lookup_row(item):
                 topics='|'.join(topics) or None, made_for_kids=(item.get('status') or {}).get('madeForKids'))
 
 
+def search_channels(text, n=1):
+    """The channels YouTube's search finds for some words, best first (at most `n`). Costs 100 quota units a call, a hundred times a
+    lookup, so callers try a handle first and search only when that misses."""
+    items = call('search', part='snippet', type='channel', maxResults=n, q=text).get('items') or []
+    return [i['id']['channelId'] for i in items if (i.get('id') or {}).get('channelId')]
+
+
 def videos(ids):
     """The video resources for these ids (YouTube leaves out any it does not have, such as private or removed ones), 50 per call."""
     ids, out = list(ids), []

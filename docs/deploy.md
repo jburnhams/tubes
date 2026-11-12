@@ -48,7 +48,7 @@ Restart=on-failure
 WantedBy=default.target
 ```
 
-`tubes-sync.service` (`Type=oneshot`, same `WorkingDirectory` and `EnvironmentFile`, `ExecStart=/bin/sh -c './tubes sync; ./tubes evict'`) and `tubes-sync.timer` (`OnCalendar=*-*-* 00/4:00:00`, `Persistent=true`). Then `systemctl --user daemon-reload && systemctl --user enable --now tubes.service tubes-sync.timer`, and `loginctl enable-linger` so they run without a login.
+`tubes-sync.service` (`Type=oneshot`, same `WorkingDirectory` and `EnvironmentFile`, `ExecStart=/bin/sh -c './tubes sync; ./tubes related; ./tubes evict'`) and `tubes-sync.timer` (`OnCalendar=*-*-* 00/4:00:00`, `Persistent=true`). Then `systemctl --user daemon-reload && systemctl --user enable --now tubes.service tubes-sync.timer`, and `loginctl enable-linger` so they run without a login.
 
 ## 4. Reverse proxy
 
@@ -79,8 +79,10 @@ If another database already keeps the history (a table or view with the columns 
 ```
 ./tubes set history_url 'postgresql+psycopg:///<database>'
 ./tubes set history_table '<schema>.<table>'
-./tubes history sync       # also worth adding to the sync timer: ./tubes sync; ./tubes history sync; ./tubes evict
+./tubes history sync       # also worth adding to the sync timer: ./tubes sync; ./tubes history sync; ./tubes related; ./tubes evict
 ```
+
+Related channels add to the list: `./tubes related` asks YouTube which channels the followed ones and the history's 100 most watched point at (what their watch pages list next, read signed out from three videos each, and the channels each features itself, one quota unit), 40 channels a run and each again after a week, then looks up the new ones' details. Run it from the sync timer, as above; `./tubes related --all -v` asks about every one now (about a second a page). If YouTube changes its watch page so nothing can be read, the run exits 1 and says so per channel, and what was found before is kept.
 
 A Takeout from a second account (a brand account included) is made after switching to it in Takeout; import it under another name. The import asks YouTube about every channel watched at least twice, 50 per quota unit.
 

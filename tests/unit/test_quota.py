@@ -1,4 +1,5 @@
 """quota.py: the Pacific day and its reset, counting calls by purpose, and what the Quota page reads; then the real calls through the stand-in YouTube."""
+import datetime
 import pytest
 from fake_youtube import vid
 from tubes import catalogue, db, quota, youtube
@@ -106,3 +107,13 @@ def test_real_calls_count_under_the_work_they_were_for(fake_youtube):
     assert got['add'] == (1, 0, 0) and got['history'] == (1, 0, 0) and got['other'] == (1, 1, 1)
     assert got['sync'][0] >= 4 and got['recheck'][0] >= 1                       # the channel, two pages of uploads and their details; the recheck's batches
     assert u['used'] == len(fake_youtube.calls) and u['remaining'] == 0 and u['refused']
+
+
+def test_watching_side_rechecks_keep_their_own_purpose(fake_youtube):
+    """report and recheck_past run the recheck's work, but count as what started them, not as the rolling recheck."""
+    fake_youtube.channel(A, 'Workshop', handle='@workshop', videos=2).uploads(A, 2)
+    catalogue.add('@workshop'); catalogue.sync([A])
+    catalogue.report([vid(A, 0)], gap=datetime.timedelta(0))
+    catalogue.recheck_past([dict(id=vid(A, 1), live='was', gone=None)], now='2099-01-01T00:00:00+00:00')
+    got = {p['purpose']: p['calls'] for p in quota.usage()['today']['purposes']}
+    assert got.get('reported') == 1 and got.get('past') == 1 and 'recheck' not in got

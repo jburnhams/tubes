@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { addWatchedFails, followFails, suggestionsError, suggestionsFirstVisit, suggestionsLoading, suggestionsNoKey, summaryLoading } from '../src/mocks/handlers'
+import { addWatchedFails, followFails, relatedNotAsked, suggestionsError, suggestionsFirstVisit, suggestionsLoading, suggestionsNoKey, suggestionsPasted, suggestionsRelatedOnly, summaryLoading } from '../src/mocks/handlers'
 import { AppAt } from './app-at'
 
 const meta = {
@@ -12,6 +12,14 @@ type Story = StoryObj<typeof meta>
 
 /** Channels from two histories, best first: the first is active, with the keys that answer it. */
 export const Ready: Story = {}
+/** Most pointed at by the followed and most watched channels first: the channels their watch pages keep listing. */
+export const MostPointedAt: Story = { render: () => <AppAt route="/admin/suggestions?order=suggested" /> }
+/** No history imported yet: only what the followed channels point at, with the import form below. */
+export const RelatedOnly: Story = { beforeEach: ({ msw }) => msw.use(...suggestionsRelatedOnly), render: () => <AppAt route="/admin/suggestions?order=suggested" /> }
+/** YouTube has not been asked about related channels yet: the finding says the server will. */
+export const RelatedNotAsked: Story = { beforeEach: ({ msw }) => msw.use(relatedNotAsked) }
+/** A list was pasted in: only what it named, latest first, one of them an iPlayer programme. */
+export const Pasted: Story = { beforeEach: ({ msw }) => msw.use(...suggestionsPasted), render: () => <AppAt route="/admin/suggestions?pasted=true" /> }
 /** One group: its name can be changed here. */
 export const OneGroup: Story = { render: () => <AppAt route="/admin/suggestions?group=2" /> }
 export const Dismissed: Story = { render: () => <AppAt route="/admin/suggestions?view=dismissed" /> }
