@@ -146,3 +146,12 @@ def test_a_copy_over_2_gb_is_recorded(monkeypatch):
     monkeypatch.setattr(cache, 'folder_bytes', lambda path: 5_000_000_000)
     cache.finish('aaaaaaaaaaa', cache.stamp())
     assert cache.entry('aaaaaaaaaaa')['bytes'] == 5_000_000_000
+
+
+def test_a_fetching_copy_is_never_served_as_ended():
+    assert cache.served_playlist('aaaaaaaaaaa') is None
+    cache.begin('aaaaaaaaaaa', cache.stamp()); write_playlist('aaaaaaaaaaa', 2, True)     # a first attempt that ended short; the fetcher may run it again
+    assert '#EXT-X-ENDLIST' not in cache.served_playlist('aaaaaaaaaaa') and 'seg_00001.m4s' in cache.served_playlist('aaaaaaaaaaa')
+    assert cache.status('aaaaaaaaaaa')['complete'] is False and cache.read_playlist('aaaaaaaaaaa')['complete'] is True
+    cache.finish('aaaaaaaaaaa', cache.stamp())
+    assert cache.served_playlist('aaaaaaaaaaa').endswith('#EXT-X-ENDLIST\n') and cache.status('aaaaaaaaaaa')['complete'] is True

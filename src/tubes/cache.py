@@ -53,6 +53,18 @@ def read_playlist(video_id):
     return dict(segments=len(lengths), seconds=round(sum(lengths), 3), complete='#EXT-X-ENDLIST' in text)
 
 
+def served_playlist(video_id):
+    """The playlist as the player is given it, or None when there is none: while the copy is fetching, without `#EXT-X-ENDLIST`. A download
+    that ends short also ends its playlist, and the fetcher then runs it again (fetcher.attempts) into the same names; a player that read the
+    end would stop following and never see the rest."""
+    try:
+        with open(os.path.join(folder(video_id), PLAYLIST), encoding='utf8') as f: text = f.read()
+    except OSError: return None
+    e = entry(video_id)
+    if e and e['state'] == 'fetching': text = ''.join(ln for ln in text.splitlines(keepends=True) if ln.strip() != '#EXT-X-ENDLIST')
+    return text
+
+
 def entry(video_id):
     with db.connect() as con: return db.row(con.execute('SELECT * FROM copies WHERE video_id = ?', (video_id,)))
 
@@ -62,6 +74,7 @@ def status(video_id):
     e = entry(video_id)
     if e is None: return dict(state='none', segments=0, seconds=0.0, complete=False, playable=False, error=None, formats=None)
     p = read_playlist(video_id) if e['state'] != 'failed' else dict(segments=0, seconds=0.0, complete=False)
+    if e['state'] == 'fetching': p['complete'] = False        # a failed attempt's playlist ends too, and the fetcher may yet run the download again
     return dict(state=e['state'], **p, playable=p['segments'] > 0, error=e['error'], formats=e['formats'])
 
 

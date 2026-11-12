@@ -5,6 +5,7 @@
 - Asked for: a video failed with "unable to write data: [Errno 32] Broken pipe" and played on Play again, so retry by itself.
 - That message is yt-dlp's, written when ffmpeg has already quit and closed its pipe; ffmpeg's own reason was in the video's `fetch.log`, which goes with the folder when a fetch fails, so it was not kept. Re-running the same probe, downloads and ffmpeg by hand worked.
 - `fetcher.attempts` runs a download (`pipeline`, or `direct_pipeline` for iPlayer) up to `ATTEMPTS` (2) times; a stopped fetch is not run again, and a probe failure keeps its own handling (`choose` already probes twice). The retry reuses the probe and the same streams, so ffmpeg cuts the same segments under the same names, overwriting them while the player keeps playing; both runs append to the one `fetch.log`, with a `[tubes] attempt 1 failed: ...` line between. Only when the second fails is the copy marked failed, with that run's reason.
+- Review (Codex): a first attempt that ends short still writes `#EXT-X-ENDLIST`, so during the retry the copy read as complete, the player stopped polling, and the playlist went out cached for a day; a player that read the end would never follow the retry. Now nothing is ended while the copy is `fetching`: `cache.status` says `complete` false, `cache.served_playlist` serves the playlist without `#EXT-X-ENDLIST`, and the playlist and segments go out `no-store` (a retry rewrites them under the same names); the day's caching starts once the copy is ready.
 
 ## 2026-11-12: region, language and subtitle filters
 
