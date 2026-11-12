@@ -15,14 +15,14 @@ import { useQueryClient } from '@tanstack/react-query'
 import Hls from 'hls.js'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
-import { HttpError, describeHttpError, useAsyncAction, useLoad } from 'strata-react'
-import { api, describeError, keys, paths, withBase, type Segment, type SegmentKind, type Stream, type VideoDetail } from '../api'
+import { HttpError, describeHttpError, useAsyncAction, useLoad, type Load } from 'strata-react'
+import { api, describeError, keys, paths, withBase, type Segment, type SegmentKind, type Segments, type Stream, type VideoDetail } from '../api'
 import { attach, type HlsClass } from '../player'
 import { Avatar, RowsSkeleton, VideoRow, useChannelsById } from './cards'
 import { countFor, iplayerText, runningTime, viewsAndAge } from './format'
 import { reportMissing, useHidden } from './missing'
 import { at, modesOf, place, segmentKey, shown, skippedText, skipText } from './skip'
-import { Shown } from './Shown'
+import { Pill, Shown } from './Shown'
 
 /** How often the copy's progress is read while it is still arriving. */
 export const POLL_MS = 1000
@@ -58,21 +58,23 @@ export function Player({ src, title, segments, kinds, length }: { src: string; t
   useEffect(() => attach(ref.current!, src, Hls as unknown as HlsClass, setProblem), [src])
   const parts = shown(segments, modesOf(kinds))
   const modes = modesOf(kinds)
-  const now = at(parts, t)
+  // An automatic part is acted on whatever else plays at the time (an Ask intro around an automatic sponsor read does not hold it back).
+  const auto = parts.find(s => modes[s.category] === 'auto' && t >= s.start && t < s.end && !done.current.has(segmentKey(s)))
+  const leftMute = !!muted.current && !(t >= muted.current.start && t < muted.current.end)
   useEffect(() => {
     const video = ref.current!
-    if (muted.current && (!now || segmentKey(now) !== segmentKey(muted.current))) { video.muted = false; muted.current = undefined }
-    if (!now || modes[now.category] !== 'auto' || done.current.has(segmentKey(now))) return
-    done.current.add(segmentKey(now))
-    if (now.action === 'mute') { video.muted = true; muted.current = now } else video.currentTime = now.end
-    setNotice(now)
-  }, [now, modes])
+    if (leftMute) { video.muted = false; muted.current = undefined }
+    if (!auto) return
+    done.current.add(segmentKey(auto))
+    if (auto.action === 'mute') { video.muted = true; muted.current = auto } else video.currentTime = auto.end
+    setNotice(auto)
+  }, [auto, leftMute])
   useEffect(() => {
     if (!notice) return
     const timer = setTimeout(() => setNotice(undefined), NOTICE_MS)
     return () => clearTimeout(timer)
   }, [notice])
-  const asking = now && modes[now.category] === 'ask' && !done.current.has(segmentKey(now)) ? now : undefined
+  const asking = at(parts.filter(s => modes[s.category] === 'ask' && !done.current.has(segmentKey(s))), t)
   const skip = (s: Segment) => { done.current.add(segmentKey(s)); ref.current!.currentTime = s.end; setT(s.end) }
   const undo = (s: Segment) => { setNotice(undefined); if (s.action === 'mute') { ref.current!.muted = false; muted.current = undefined } else { ref.current!.currentTime = s.start; setT(s.start) } }
   const overlay = 'absolute right-3 bottom-16 rounded-tube-sm bg-tube-badge px-4 py-2 text-tube-sm font-medium text-tube-on-screen'
@@ -96,6 +98,14 @@ export function Player({ src, title, segments, kinds, length }: { src: string; t
 }
 
 const NOTICE_MS = 5000
+
+/** Why the skippable parts are not known, or '' when they are (or are still being asked for): the read failed, or the server could not ask
+ *  their source just now (it still sends what it had). */
+export function skipTrouble(load: Load<Segments>): string {
+  if (load.status === 'error') return `The parts to skip could not be read: ${load.message}`
+  if (load.status === 'ready' && load.data.error) return `The parts to skip could not be looked up: ${load.data.error}`
+  return ''
+}
 
 /** The skippable parts as coloured marks along a strip the width of the picture (in SponsorBlock's colours), named for screen readers. */
 function Timeline({ parts, kinds, duration }: { parts: Segment[]; kinds: SegmentKind[]; duration: number | null }) {
@@ -157,6 +167,12 @@ function Stage({ v }: { v: VideoDetail }) {
         <Player src={withBase(paths.playlist(v.id))} title={v.title} segments={skips.status === 'ready' ? skips.data.segments : []} kinds={skips.status === 'ready' ? skips.data.categories : []} length={v.duration} />
       ) : (
         <Frame><p role="status" className="text-tube-base opacity-80">{waitingText(s)}</p></Frame>
+      )}
+      {s?.playable && !failed && skipTrouble(skips) && (
+        <p role="status" className="flex flex-wrap items-center gap-3 text-tube-xs text-tube-quiet">
+          {skipTrouble(skips)} The video plays as it is.
+          {skips.status === 'error' && <Pill onClick={skips.retry}>Try again</Pill>}
+        </p>
       )}
 
       <h1 className="text-tube-lg font-bold">{v.title}</h1>

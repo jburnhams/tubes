@@ -43,7 +43,7 @@ def sponsorblock(video_id):
     """SponsorBlock's segments for a YouTube video: `[{category, start, end, action, votes}]` (see the module's notes)."""
     prefix = hashlib.sha256(video_id.encode()).hexdigest()[:4]
     cats = json.dumps(list(settings.SKIP_DEFAULTS), separators=(',', ':'))
-    url = f"{os.environ.get('TUBES_SPONSORBLOCK', API).rstrip('/')}/api/skipSegments/{prefix}?{urllib.parse.urlencode(dict(categories=cats))}"
+    url = f"{os.environ.get('TUBES_SPONSORBLOCK', API).rstrip('/')}/api/skipSegments/{prefix}?{urllib.parse.urlencode(dict(categories=cats, actionTypes=json.dumps(list(ACTIONS), separators=(',', ':'))))}"   # actionTypes defaults to skip only
     try:
         with urllib.request.urlopen(urllib.request.Request(url, headers={'Accept': 'application/json', 'User-Agent': 'tubes'}), timeout=TIMEOUT) as r: data = json.loads(r.read())
     except urllib.error.HTTPError as e:

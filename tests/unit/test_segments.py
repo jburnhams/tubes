@@ -23,8 +23,11 @@ def sponsorblock(monkeypatch):
 
         def do_GET(self):
             u = urllib.parse.urlparse(self.path); prefix = u.path.rsplit('/', 1)[-1]
-            fake.calls.append((prefix, urllib.parse.parse_qs(u.query).get('categories', [''])[0]))
-            hits = [dict(videoID=v, hash=hashlib.sha256(v.encode()).hexdigest(), segments=s) for v, s in fake.videos.items() if hashlib.sha256(v.encode()).hexdigest().startswith(prefix)]
+            q = urllib.parse.parse_qs(u.query)
+            fake.calls.append((prefix, q.get('categories', [''])[0]))
+            actions = json.loads(q.get('actionTypes', ['["skip"]'])[0])                   # as SponsorBlock: skip only unless asked
+            hits = [dict(videoID=v, hash=hashlib.sha256(v.encode()).hexdigest(), segments=[x for x in s if x['actionType'] in actions or x['actionType'] in ('poi', 'chapter')])
+                    for v, s in fake.videos.items() if hashlib.sha256(v.encode()).hexdigest().startswith(prefix)]
             status = fake.status if fake.status != 200 else (200 if hits else 404)
             b = fake.body if fake.body is not None else (json.dumps(hits) if status == 200 else 'Not Found').encode()
             self.send_response(status); self.send_header('Content-Length', str(len(b))); self.end_headers(); self.wfile.write(b)

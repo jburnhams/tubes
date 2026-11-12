@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
-import { episodes, kindsFor, streams, videos } from '../../src/mocks/fixtures'
+import userEvent from '@testing-library/user-event'
+import { episodes, kindsFor, sampleSegments, streams, videos } from '../../src/mocks/fixtures'
 import { channelsLoading, playFails, playLoading, shuffleError, videoLoading, withProgramme } from '../../src/mocks/handlers'
 import { act, openApp, screen, waitFor, within } from '../utils/render'
 import { mock, server } from '../utils/server'
@@ -199,8 +200,32 @@ describe('Skipping parts of a video', () => {
   it('plays on with nothing drawn when the segments cannot be read', async () => {
     server.use(http.get('*/api/videos/:id/segments', () => new HttpResponse(null, { status: 503 })))
     openApp(`/watch/${id}`)
-    await screen.findByRole('alert')
+    expect(await screen.findByText(/^The parts to skip could not be read: .* The video plays as it is\.$/)).toBeInTheDocument()
     expect(screen.queryByRole('img', { name: /Parts that can be skipped/ })).not.toBeInTheDocument()
+    server.use(http.get('*/api/videos/:id/segments', () => HttpResponse.json({ segments: sampleSegments, categories: kindsFor(mock.settings), error: null })))
+    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(await screen.findByRole('img', { name: /Parts that can be skipped/ })).toBeInTheDocument()
+    expect(screen.queryByText(/could not be read/)).not.toBeInTheDocument()
+  })
+
+  it('says when the server could not ask the source, and still draws what it had', async () => {
+    server.use(http.get('*/api/videos/:id/segments', () => HttpResponse.json({ segments: sampleSegments, categories: kindsFor(mock.settings), error: 'SponsorBlock could not be reached: timed out.' })))
+    openApp(`/watch/${id}`)
+    expect(await screen.findByText('The parts to skip could not be looked up: SponsorBlock could not be reached: timed out. The video plays as it is.')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /Parts that can be skipped/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
+  })
+
+  it('skips an automatic part inside an Ask one', async () => {
+    server.use(http.get('*/api/videos/:id/segments', () => HttpResponse.json({ segments: [{ category: 'intro', start: 0, end: 30, action: 'skip' }, { category: 'sponsor', start: 10, end: 20, action: 'skip' }], categories: kindsFor(mock.settings), error: null })))
+    openApp(`/watch/${id}`)
+    await screen.findByRole('img', { name: /Intro 0:00–0:30/ })
+    playTo(5)
+    expect(screen.getByRole('button', { name: 'Skip intro ›' })).toBeInTheDocument()
+    playTo(11)
+    expect(video().currentTime).toBe(20)
+    playTo(21)
+    expect(screen.getByRole('button', { name: 'Skip intro ›' })).toBeInTheDocument()
   })
 
   it('draws nothing when there is nothing to skip, or the length is not known', async () => {
