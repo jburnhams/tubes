@@ -96,7 +96,7 @@ def test_sources_are_asked_again_after_a_week_and_failures_after_a_day(two_follo
     two_followed.web_down = True; two_followed.quota_left = 0                  # nothing answers: a failure, and the links are kept
     r = related.refresh(later(8), pause=0)
     assert (r['asked'], r['failed']) == (2, 2) and 'refused the watch page' in r['errors'][0]['error']
-    assert history.suggestion(P)['suggested_by'] == 2
+    assert history.suggestion(P)['suggested_by'] == 2 and history.suggestion(P)['related_score'] == 1.5   # the old pages still count, as many as they were
     assert related.status(later(8))['failed'] == 2
     assert related.refresh(later(8.5), pause=0)['asked'] == 0                   # a failure waits a day
     two_followed.web_down = False; two_followed.quota_left = None
@@ -183,3 +183,15 @@ def test_parse_next_takes_no_name_where_the_listing_gives_none():
     by = dict(compactVideoRenderer=dict(shortBylineText=dict(runs=[]), longBylineText=dict(runs=[dict(navigationEndpoint=dict(browseEndpoint=dict(browseId='FEwhat'))), dict(navigationEndpoint=dict(browseEndpoint=dict(browseId=Q)))])))
     page = dict(secondaryResults=dict(results=[item, by, dict(compactVideoRenderer=dict(title='no channel'))]))
     assert related.parse_next(page) == [dict(channel_id=P, title=None, handle=None), dict(channel_id=Q, title=None, handle=None)]
+
+
+def test_a_dismissed_channel_stays_dismissed_when_it_drops_out_and_comes_back(two_followed):
+    related.refresh(NOW, pause=0)
+    history.dismiss(Q)
+    del two_followed.next[newest(X)[0]]                                         # the only page that listed Q
+    two_followed.watch_next(newest(X)[0], [(P, 'Channel p', '@p')])
+    related.refresh(later(8), pause=0)
+    assert history.suggestion(Q)['suggested_by'] == 0 and history.suggestion(Q)['dismissed'] is not None
+    two_followed.watch_next(newest(X)[0], [(Q, 'Channel q', None)])
+    related.refresh(later(16), pause=0)
+    assert history.suggestion(Q)['suggested_by'] == 1 and history.suggestion(Q)['dismissed'] is not None

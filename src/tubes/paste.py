@@ -9,7 +9,7 @@ suggested from both, and the one not wanted is dismissed.
 
 What is found goes into `suggestions` (platform, title, picture, `pasted` now), so the page lists it with the rest, and a channel pasted
 again that had been dismissed comes back. One already followed is said, not suggested. Nothing is followed here: that is the page's Follow."""
-import re
+import datetime, re
 
 from tubes import cache, db, iplayer, youtube
 
@@ -120,11 +120,12 @@ def paste(text, now=None):
             rows[f['channel_id']] = f
     with db.connect() as con:
         held = {r[0] for r in con.execute('SELECT channel_id FROM suggestions')}
-        for cid, f in rows.items():
-            vals = {k: f.get(k) for k in FIELDS} | dict(c=cid, now=now)
+        start = datetime.datetime.fromisoformat(now)
+        for i, (cid, f) in enumerate(rows.items()):                             # a second apart, so latest-first keeps the paste's order on any engine
+            vals = {k: f.get(k) for k in FIELDS} | dict(c=cid, now=(start - datetime.timedelta(seconds=i)).isoformat(timespec='seconds'))
             if cid in held:
                 con.execute(f"UPDATE suggestions SET {', '.join(f'{k} = COALESCE(:{k}, {k})' for k in FIELDS)}, pasted = :now, dismissed = NULL, missing = :no WHERE channel_id = :c", vals | dict(no=False))
             else:
                 con.execute(f"INSERT INTO suggestions (channel_id, {', '.join(FIELDS)}, pasted, looked_up) VALUES (:c, {', '.join(':' + k for k in FIELDS)}, :now, :looked)",
-                            vals | dict(looked=now if f['platform'] == 'youtube' else None))
+                            vals | dict(looked=vals['now'] if f['platform'] == 'youtube' else None))
     return out

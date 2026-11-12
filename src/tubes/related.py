@@ -182,13 +182,14 @@ def fetch_source(channel_id, video_ids, use_api=True, pause=None):
 
 def save_source(channel_id, got, now):
     """Keep what one source pointed at (replacing what it pointed at before, unless this ask failed outright)."""
-    with db.connect() as con:
+    with db.connect() as con:                                               # a failure keeps the links, so the page count they were made from too
         if not got['error']:
             con.execute('DELETE FROM related_links WHERE source_id = ?', (channel_id,))
             con.executemany('INSERT INTO related_links (source_id, channel_id, title, handle, hits, featured) VALUES (:s, :c, :title, :handle, :hits, :featured)',
                             [dict(l, s=channel_id, c=c) for c, l in got['links'].items()])
         con.execute('''INSERT INTO related_sources (channel_id, fetched, videos, error) VALUES (?, ?, ?, ?)
-                       ON CONFLICT (channel_id) DO UPDATE SET fetched = excluded.fetched, videos = excluded.videos, error = excluded.error''', (channel_id, now, got['videos'], got['error']))
+                       ON CONFLICT (channel_id) DO UPDATE SET fetched = excluded.fetched, error = excluded.error,
+                       videos = CASE WHEN excluded.error IS NULL THEN excluded.videos ELSE related_sources.videos END''', (channel_id, now, got['videos'], got['error']))
 
 
 def refresh(now=None, limit=RUN_LIMIT, force=False, pause=None, progress=None):
@@ -231,7 +232,7 @@ def aggregate():
         con.executemany('UPDATE suggestions SET suggested_by = :n, related_score = :s WHERE channel_id = :c', [dict(c=c, n=len(s), s=round(score[c], 4)) for c, s in by.items()])
         unwatched = [c for c in by if not held.get(c)]                     # a channel with watches keeps the group its sittings gave it
         con.executemany('UPDATE suggestions SET group_id = :g WHERE channel_id = :c', [dict(c=c, g=min(votes[c].items(), key=lambda x: (-x[1], x[0]))[0] if votes[c] else None) for c in unwatched])
-        con.execute('DELETE FROM suggestions WHERE watches = ? AND suggested_by = ? AND pasted IS NULL', (0, 0))
+        con.execute('DELETE FROM suggestions WHERE watches = ? AND suggested_by = ? AND pasted IS NULL AND dismissed IS NULL', (0, 0))   # a dismissal is kept, should YouTube point at it again
         con.execute("INSERT INTO meta (key, value) VALUES ('related_counted', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (cache.stamp(),))
     return dict(suggested=len(by), added=len(new))
 
