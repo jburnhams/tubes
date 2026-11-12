@@ -62,11 +62,19 @@ def run_json(args, timeout, signed_in=False):
     except ValueError: raise YtdlpError('yt-dlp did not return JSON.') from None
 
 
+BROKEN_PIPE = re.compile(r'Broken pipe|Errno 32', re.I)
+CHATTER = re.compile(r'^(\[(info|download|tubes)\]|WARNING:)')
+
+
 def last_error(text):
-    """The most telling line of yt-dlp's or ffmpeg's error output: the last `ERROR:` line, else the last line."""
+    """The most telling line of yt-dlp's or ffmpeg's error output: the last `ERROR:` line, else the last line that is not yt-dlp's progress.
+    yt-dlp's "unable to write data: [Errno 32] Broken pipe" only says ffmpeg stopped reading its stdout, so ffmpeg's own line (which has no
+    `ERROR:` prefix) is preferred to it; it is kept only when nothing else was said."""
     lines = [ln.strip() for ln in (text or '').splitlines() if ln.strip()]
-    errors = [ln for ln in lines if ln.startswith('ERROR:')]
-    pick = (errors or lines or [''])[-1]
+    telling = [ln for ln in lines if not BROKEN_PIPE.search(ln)]
+    errors = [ln for ln in telling if ln.startswith('ERROR:')]
+    other = [ln for ln in telling if not CHATTER.match(ln)]
+    pick = (errors or other or [ln for ln in lines if BROKEN_PIPE.search(ln)] or [''])[-1]
     return pick.removeprefix('ERROR:').strip()[:500]
 
 

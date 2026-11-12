@@ -86,3 +86,7 @@ Related channels add to the list: `./tubes related` asks YouTube which channels 
 
 A Takeout from a second account (a brand account included) is made after switching to it in Takeout; import it under another name. The import asks YouTube about every channel watched at least twice, 50 per quota unit.
 
+
+## Logs
+
+`journalctl --user -u tubes.service` has a line for each failed fetch (`tubes: fetching <id> failed: <reason>`); the yt-dlp and ffmpeg output of the last failed fetch of each video is in `failed-fetches/<id>.log` in the data folder (the copy itself is deleted).
