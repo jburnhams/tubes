@@ -10,7 +10,7 @@ const meta = {
 export default meta
 type Story = StoryObj<typeof meta>
 
-/** A saved copy plays at once. Not screenshotted: what the video element draws depends on how far it got. */
+/** A saved copy plays at once (the test card, src/mocks/testcard.ts). Shot by the visual suite as the watch route's `playing` state, held on its first frame; here it plays. */
 export const Playing: Story = { tags: ['no-visual'] }
 /** The fetch has started; the frame says what it is waiting for. */
 export const Fetching: Story = { beforeEach: ({ msw }) => msw.use(...streamIn('fetching')) }

@@ -4,7 +4,8 @@ import { HttpError, colorSchemeScript, format } from 'strata-react'
 import { Refused, cursorOf, describeError, folderProblem, numberProblem, runningTime, videosUrl, withBase } from '../../src/api'
 import { channels, library, libraryEmpty, syncJobs, longChannel, report, streams, systemStatus, systemTrouble, tile, videos } from '../../src/mocks/fixtures'
 import { videoPage } from '../../src/mocks/handlers'
-import { attach, problemText, type HlsClass, type HlsInstance, type Media } from '../../src/player'
+import { createHlsAttacher, type HlsEngine } from 'strata-react/hls'
+import { fromTheStart } from '../../src/player'
 import { describeCache, describeEvicted } from '../../src/screens/CacheScreen'
 import { describeShown, languageName, settingsProblems, shownProblems } from '../../src/screens/SettingsScreen'
 import { describeSystem, usable } from '../../src/screens/SystemScreen'
@@ -80,55 +81,31 @@ describe('missing videos', () => {
 })
 
 describe('the player', () => {
-  const media = (native = '') => {
-    const calls: string[] = []
-    const m: Media = { src: '', canPlayType: () => native as CanPlayTypeResult, removeAttribute: n => { calls.push(`remove ${n}`) }, load: () => { calls.push('load') } }
-    return { m, calls }
+  // The engine strata-react's attacher builds: records each config it was made with.
+  const made: { startPosition?: number }[] = []
+  class FakeHls {
+    static isSupported() { return true }
+    static Events = { ERROR: 'hlsError', FRAG_LOADED: 'hlsFragLoaded' }
+    static ErrorTypes = { NETWORK_ERROR: 'networkError', MEDIA_ERROR: 'mediaError' }
+    constructor(config: { startPosition?: number } = {}) { made.push(config) }
+    on() {}
+    loadSource() {}
+    attachMedia() {}
+    destroy() {}
   }
 
-  it('plays through hls.js from the start, and says why when it gives up', () => {
-    const made: { config: unknown; calls: string[]; listener?: (e: string, d: { fatal?: boolean; type?: string; details?: string }) => void }[] = []
-    class FakeHls implements HlsInstance {
-      static isSupported() { return true }
-      static Events = { ERROR: 'hlsError' }
-      rec: (typeof made)[number]
-      constructor(config: unknown) { this.rec = { config, calls: [] }; made.push(this.rec) }
-      loadSource(src: string) { this.rec.calls.push(`load ${src}`) }
-      attachMedia() { this.rec.calls.push('attach') }
-      on(event: string, l: (e: string, d: { fatal?: boolean }) => void) { this.rec.calls.push(`on ${event}`); this.rec.listener = l }
-      destroy() { this.rec.calls.push('destroy') }
-    }
-    const problems: string[] = []
-    const { m } = media()
-    const detach = attach(m, '/api/media/x/index.m3u8', FakeHls as unknown as HlsClass, p => problems.push(p))
-    expect(made[0].config).toEqual({ startPosition: 0, lowLatencyMode: false })
-    expect(made[0].calls).toEqual(['on hlsError', 'load /api/media/x/index.m3u8', 'attach'])
-    made[0].listener!('hlsError', { fatal: false, type: 'networkError' })
-    expect(problems).toEqual([])
-    made[0].listener!('hlsError', { fatal: true, type: 'networkError' })
-    expect(problems).toEqual(['The video stopped arriving from the server. Reload the page to try again.'])
-    detach()
-    expect(made[0].calls.at(-1)).toBe('destroy')
-  })
-
-  it('plays natively where the browser plays HLS, and says when it cannot', () => {
-    const none = { isSupported: () => false, Events: { ERROR: 'e' } } as unknown as HlsClass
-    const native = media('maybe')
-    const detach = attach(native.m, '/p.m3u8', none, () => {})
-    expect(native.m.src).toBe('/p.m3u8')
-    detach()
-    expect(native.calls).toEqual(['remove src', 'load'])
-    const problems: string[] = []
-    attach(media().m, '/p.m3u8', none, p => problems.push(p))()
-    expect(problems).toEqual(['This browser cannot play the stream. Open it in an up-to-date Chrome.'])
-  })
-
-  it('turns hls.js errors into sentences', () => {
-    expect(problemText({ type: 'mediaError' })).toMatch(/could not decode/)
-    expect(problemText({ type: 'otherError', details: 'manifestParsingError' })).toBe('The video could not be played (manifestParsingError).')
-    expect(problemText({})).toBe('The video could not be played (unknown error).')
+  it('starts a growing stream at its beginning, and a restart where playback had reached', () => {
+    made.length = 0
+    const Engine = fromTheStart(FakeHls as unknown as HlsEngine)
+    const el = { canPlayType: () => '' } as unknown as HTMLMediaElement
+    const hold = createHlsAttacher(Engine)(el, '/api/media/x/index.m3u8', { startAt: 0, onProblem: () => {} })
+    expect(made[0].startPosition).toBe(0)                 // strata-react asks for -1, the live edge of an EVENT playlist
+    hold.reload(42)
+    expect(made[1].startPosition).toBe(42)
+    hold.detach()
   })
 })
+
 
 describe('the findings', () => {
   it('the watching side writes views and age as video sites do', () => {

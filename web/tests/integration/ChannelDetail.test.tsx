@@ -88,7 +88,7 @@ describe('Channel panel', () => {
     unmount()
     server.use(overviewLoading)
     openApp('/admin/history?open=UCsuggest000000000000001')
-    await screen.findByRole('table', { name: 'Channels watched most in this timeframe' })
+    await screen.findByRole('grid', { name: 'Channels watched most in this timeframe' })
     expect(screen.queryByText(/^Watched /)).not.toBeInTheDocument()
   })
 })

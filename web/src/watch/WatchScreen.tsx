@@ -12,17 +12,16 @@
 // A failed fetch reports the video as missing (missing.ts); when YouTube no longer has it, the frame
 // and the details say so rather than leaving the reason to yt-dlp's wording.
 import { useQueryClient } from '@tanstack/react-query'
-import Hls from 'hls.js'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
-import { HttpError, describeHttpError, useAsyncAction, useLoad, type Load } from 'strata-react'
+import { DataView, describeHttpError, HttpError, type Load, useAsyncAction, MediaPlayer, useLoad } from 'strata-react'
 import { api, describeError, keys, paths, withBase, type Segment, type SegmentKind, type Segments, type Stream, type VideoDetail } from '../api'
-import { attach, type HlsClass } from '../player'
+import { attachStream } from '../player'
 import { Avatar, RowsSkeleton, VideoRow, useChannelsById } from './cards'
 import { countFor, iplayerText, runningTime, viewsAndAge } from './format'
 import { reportMissing, useHidden } from './missing'
 import { at, modesOf, place, segmentKey, shown, skippedText, skipText } from './skip'
-import { Pill, Shown } from './Shown'
+import { Pill, trouble } from './Shown'
 
 /** How often the copy's progress is read while it is still arriving. */
 export const POLL_MS = 1000
@@ -46,27 +45,39 @@ export function savedText(s: Stream, duration: number | null): string {
 }
 
 /** The player, with the parts that can be skipped (skip.ts): an "ask" part shows a Skip button over the picture while it plays, an "auto"
- *  part is skipped (or muted) as it starts with an Undo for a few seconds, and every part not off is drawn on a strip under the picture. */
-export function Player({ src, title, segments, kinds, length }: { src: string; title: string; segments: Segment[]; kinds: SegmentKind[]; length: number | null }) {
-  const ref = useRef<HTMLVideoElement>(null)
-  const [problem, setProblem] = useState<string>()
+ *  part is skipped (or muted) as it starts with an Undo for a few seconds, and every part not off is drawn on a strip under the player.
+ *  The player is strata-react's `MediaPlayer` (its own controls on a desktop, the browser's on a touch screen), playing the stream through
+ *  the HLS engine (player.ts), `growing` while the copy is still being fetched so playback that catches up waits and carries on, and
+ *  saying a failure with Try again. MediaPlayer does not hand out its element, so skipping finds the <video> inside it to seek and mute. */
+export function Player({ src, title, segments, kinds, length, growing }: { src: string; title: string; segments: Segment[]; kinds: SegmentKind[]; length: number | null; growing?: string }) {
+  const box = useRef<HTMLDivElement>(null)
+  const video = () => box.current!.querySelector('video')!     // MediaPlayer kind="video" always draws one
   const [t, setT] = useState(0)
-  const [duration, setDuration] = useState<number | null>(length)
+  const [elementLength, setElementLength] = useState<number | null>(null)
+  // Placed by the library's length while the copy grows (the element only knows the part fetched so far), else by the element's own.
+  const duration = growing !== undefined ? (length ?? elementLength) : (elementLength ?? length)
+  useEffect(() => {
+    const el = video()
+    const read = () => { setT(el.currentTime); setElementLength(Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null) }
+    el.addEventListener('timeupdate', read)
+    el.addEventListener('durationchange', read)
+    return () => { el.removeEventListener('timeupdate', read); el.removeEventListener('durationchange', read) }
+  }, [])
+  const seek = (to: number) => { video().currentTime = to; setT(to) }
   const [notice, setNotice] = useState<Segment>()
   const done = useRef(new Set<string>())                    // parts skipped, or let play, once: never acted on again
   const muted = useRef<Segment | undefined>(undefined)
-  useEffect(() => attach(ref.current!, src, Hls as unknown as HlsClass, setProblem), [src])
   const parts = shown(segments, modesOf(kinds))
   const modes = modesOf(kinds)
   // An automatic part is acted on whatever else plays at the time (an Ask intro around an automatic sponsor read does not hold it back).
   const auto = parts.find(s => modes[s.category] === 'auto' && t >= s.start && t < s.end && !done.current.has(segmentKey(s)))
   const leftMute = !!muted.current && !(t >= muted.current.start && t < muted.current.end)
   useEffect(() => {
-    const video = ref.current!
-    if (leftMute) { video.muted = false; muted.current = undefined }
+    const el = video()
+    if (leftMute) { el.muted = false; muted.current = undefined }
     if (!auto) return
     done.current.add(segmentKey(auto))
-    if (auto.action === 'mute') { video.muted = true; muted.current = auto } else video.currentTime = auto.end
+    if (auto.action === 'mute') { el.muted = true; muted.current = auto } else seek(auto.end)
     setNotice(auto)
   }, [auto, leftMute])
   useEffect(() => {
@@ -75,22 +86,23 @@ export function Player({ src, title, segments, kinds, length }: { src: string; t
     return () => clearTimeout(timer)
   }, [notice])
   const asking = at(parts.filter(s => modes[s.category] === 'ask' && !done.current.has(segmentKey(s))), t)
-  const skip = (s: Segment) => { done.current.add(segmentKey(s)); ref.current!.currentTime = s.end; setT(s.end) }
-  const undo = (s: Segment) => { setNotice(undefined); if (s.action === 'mute') { ref.current!.muted = false; muted.current = undefined } else { ref.current!.currentTime = s.start; setT(s.start) } }
-  const overlay = 'absolute right-3 bottom-16 rounded-tube-sm bg-tube-badge px-4 py-2 text-tube-sm font-medium text-tube-on-screen'
+  const skip = (s: Segment) => { done.current.add(segmentKey(s)); seek(s.end) }
+  const undo = (s: Segment) => { setNotice(undefined); if (s.action === 'mute') { video().muted = false; muted.current = undefined } else seek(s.start) }
+  const overlay = 'pointer-events-auto absolute right-3 bottom-3 rounded-tube-sm bg-tube-badge px-4 py-2 text-tube-sm font-medium text-tube-on-screen'
   return (
     <div className="grid gap-1">
-      <div className="relative">
-        <video ref={ref} controls autoPlay playsInline aria-label={title} className="aspect-video w-full rounded-tube bg-tube-screen"
-          onTimeUpdate={e => setT(e.currentTarget.currentTime)} onDurationChange={e => Number.isFinite(e.currentTarget.duration) && setDuration(e.currentTarget.duration)} />
-        {problem && <p role="alert" className="absolute inset-x-0 bottom-14 mx-auto w-fit max-w-11/12 rounded-tube-sm bg-tube-badge px-3 py-2 text-center text-tube-sm text-tube-on-screen">{problem}</p>}
-        {asking && <button type="button" onClick={() => skip(asking)} className={`${overlay} hover:opacity-85`}>{skipText(asking, kinds)} ›</button>}
-        {notice && !asking && (
-          <p role="status" className={`${overlay} flex items-center gap-3`}>
-            {skippedText(notice, kinds)}
-            <button type="button" onClick={() => undo(notice)} className="font-bold underline underline-offset-2">Undo</button>
-          </p>
-        )}
+      <div ref={box} className="relative">
+        <MediaPlayer kind="video" label={title} sources={[{ src, title, duration: length ?? undefined }]} attach={attachStream} autoPlay growing={growing !== undefined ? { status: growing } : undefined} />
+        {/* Over the picture (the top of the player, a 16:9 box), not over the controls under it. */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 aspect-video">
+          {asking && <button type="button" onClick={() => skip(asking)} className={`${overlay} hover:opacity-85`}>{skipText(asking, kinds)} ›</button>}
+          {notice && !asking && (
+            <p role="status" className={`${overlay} flex items-center gap-3`}>
+              {skippedText(notice, kinds)}
+              <button type="button" onClick={() => undo(notice)} className="font-bold underline underline-offset-2">Undo</button>
+            </p>
+          )}
+        </div>
       </div>
       <Timeline parts={parts} kinds={kinds} duration={duration} />
     </div>
@@ -164,7 +176,7 @@ function Stage({ v }: { v: VideoDetail }) {
           </div>
         </Frame>
       ) : s.playable ? (
-        <Player src={withBase(paths.playlist(v.id))} title={v.title} segments={skips.status === 'ready' ? skips.data.segments : []} kinds={skips.status === 'ready' ? skips.data.categories : []} length={v.duration} />
+        <Player src={withBase(paths.playlist(v.id))} title={v.title} segments={skips.status === 'ready' ? skips.data.segments : []} kinds={skips.status === 'ready' ? skips.data.categories : []} length={v.duration} growing={s.complete ? undefined : savedText(s, v.duration)} />
       ) : (
         <Frame><p role="status" className="text-tube-base opacity-80">{waitingText(s)}</p></Frame>
       )}
@@ -206,9 +218,9 @@ function UpNext({ current }: { current: string }) {
   return (
     <section aria-labelledby="up-next" className="grid content-start gap-3">
       <h2 id="up-next" className="text-tube-base font-medium">Up next</h2>
-      <Shown state={load} skeleton={<RowsSkeleton rows={6} size="small" />}>
+      <DataView error={trouble} state={load} skeleton={<RowsSkeleton rows={6} size="small" />} isEmpty={() => false} empty={null}>
         {vs => <ul aria-label="Up next" className="grid gap-3">{vs.filter(o => o.id !== current).map(o => <VideoRow key={o.id} v={o} channel={byId.get(o.channel_id)} size="small" />)}</ul>}
-      </Shown>
+      </DataView>
     </section>
   )
 }
@@ -222,9 +234,9 @@ export function WatchScreen() {
   return (
     <div className="mx-auto flex max-w-screen-2xl flex-col gap-6 xl:flex-row">
       <div className="min-w-0 flex-1">
-      <Shown state={video} skeleton={<div aria-hidden className="grid gap-3 motion-safe:animate-pulse"><div className="aspect-video rounded-tube bg-tube-chip" /><div className="h-6 w-2/3 rounded-tube-sm bg-tube-chip" /></div>}>
+      <DataView error={trouble} state={video} isEmpty={() => false} empty={null} skeleton={<div aria-hidden className="grid gap-3 motion-safe:animate-pulse"><div className="aspect-video rounded-tube bg-tube-chip" /><div className="h-6 w-2/3 rounded-tube-sm bg-tube-chip" /></div>}>
         {v => <Stage key={v.id} v={v} />}
-      </Shown>
+      </DataView>
       </div>
       <div className="shrink-0 xl:w-96"><UpNext current={id} /></div>
     </div>

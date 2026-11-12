@@ -80,7 +80,7 @@ export function Shell() {
   const [wide, setWide] = useState(startsWide)
   useReconcile()
   return (
-    <div className="min-h-screen bg-tube-page font-tube text-tube-ink">
+    <div className="tube min-h-screen bg-tube-page font-tube text-tube-ink">
       <header className="fixed inset-x-0 top-0 z-10 flex h-14 items-center gap-4 bg-tube-page px-4">
         <div className="flex shrink-0 items-center gap-2">
           <button type="button" onClick={() => setWide(w => !w)} aria-label={wide ? 'Fold the menu' : 'Open the menu'} aria-expanded={wide} className="grid size-10 place-items-center rounded-full hover:bg-tube-chip">

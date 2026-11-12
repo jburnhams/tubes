@@ -7,6 +7,7 @@
 // state: `server.use(videosError)` in a test, `msw.use(videosError)` in a story's beforeEach,
 // `states: { error: [videosError] }` in the visual config.
 import { delay, http, HttpResponse } from 'msw'
+import { testcardPlaylist, testcardSegment } from './testcard'
 import { cursorOf, paths, type CacheItem, type Channel, type HistorySource, type Pasted, type Settings, type ShownFilters, type Stream, type Suggestion, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Video, type VideoPage } from '../api'
 import { cacheItems, channelHistory, channels, defaultSettings, defaultShown, kindsFor, sampleSegments, episodes, programme, historyDays, historySources, historyStats, library, libraryNew, longChannel, pasteable, quotaNoKey, quotaSpent, quotaUnused, quotaUsage, relatedStatus, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
 
@@ -220,8 +221,11 @@ export const handlers = [
     return HttpResponse.json(stream(id))
   }),
   http.get(at('/api/videos/:id/stream'), ({ params }) => HttpResponse.json(stream(String(params.id)))),
-  // The player's own requests. jsdom cannot play media, so these only need to answer; the visual suite never shoots a playing video.
-  http.get(at('/api/media/:id/:name'), () => new HttpResponse('#EXTM3U\n#EXT-X-ENDLIST\n', { headers: { 'Content-Type': 'application/vnd.apple.mpegurl' } })),
+  // The player's own requests: every copy plays the same two-second test card (testcard.ts), so Storybook and the visual suite play
+  // real media in Chromium. jsdom cannot play media, so there they only need to answer.
+  http.get(at('/api/media/:id/:name'), ({ params }) => String(params.name).endsWith('.m3u8')
+    ? new HttpResponse(testcardPlaylist, { headers: { 'Content-Type': 'application/vnd.apple.mpegurl' } })
+    : new HttpResponse(testcardSegment(), { headers: { 'Content-Type': 'video/mp2t' } })),
   http.get(at(paths.cache), () => HttpResponse.json(report(mock.items))),
   http.get(at(paths.suggestionsSummary), () => HttpResponse.json(suggestionSummary())),
   http.post(at(paths.suggestionsRefresh), () => HttpResponse.json({ channels: mock.suggestions.length, groups: mock.groups.length, grouped: 5, looked_up: 0, missing: 0, error: null, summary: suggestionSummary() })),
