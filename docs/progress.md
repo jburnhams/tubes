@@ -1,5 +1,12 @@
 # Progress log
 
+## 2026-11-12: iPlayer suggestions from what is followed and watched
+
+- Asked for: the iPlayer counterpart of the related-channel suggestions, clustering on iPlayer's metadata against what is followed and watched. iPlayer offers no "similar" data (ibl's recommendation routes all 404, an episode page's related block is the same programme's episodes), so likeness is computed here.
+- `iplayer_suggest.py`: iPlayer's A to Z (27 letters, 200 a page) is kept in `bbc_programmes` (3,634 programmes read in about 3 s on the home server), read again when 20 hours old, by `tubes related` (so the 4-hourly sync does it at most once a day). Each programme is a TF-IDF-weighted bag of its categories (one that narrows another, such as `documentaries-history`, counts double), label, network and title and synopsis words; programmes are compared by cosine. Sources: followed programmes (1), programmes played here (more for more plays), and the YouTube history's topics mapped onto iPlayer categories (weight 0.6; YouTube's catch-alls Hobby and Television program are not mapped). Each unfollowed programme (not one-offs: Films covers them) scores by the source it is most like plus a quarter of the next two; 60 go into `suggestions`, taken in turn from each source's best so a dense corner does not take every place; `bbc_similar` keeps what each is like, shown as "Like A and B". Children's programmes are marked made for kids. YouTube's `related.aggregate` now leaves iPlayer rows alone.
+- Tried on the home server with a copy of the real history's topics and two followed programmes (a nature series and a police drama): 20 each of nature series and crime dramas, all clearly alike, and 20 from the YouTube bridge, which are broader (home, antiques and lifestyle shows): YouTube's topics are coarse.
+- Next if the words prove too blunt: embeddings from strata-models, chosen by an eval.
+
 ## 2026-11-12: films, and other iPlayer categories, followed like a channel
 
 - Asked for: a way to keep one-offs such as films, which have no programme behind them. ibl lists a category's programmes 200 a page (`categories/<id>/programmes`); a one-off's `initial_children` is the whole episode (versions, availability, images), so every film iPlayer offers comes in two calls. Measured on the home server: Films listed 284 programmes, 277 of them one-offs; following it and syncing took 0.6 s.
