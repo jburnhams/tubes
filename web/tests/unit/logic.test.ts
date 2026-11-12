@@ -14,7 +14,7 @@ import { bySeries } from '../../src/watch/ChannelScreen'
 import { at, modesOf, place, segmentKey, shown, skippedText, skipText } from '../../src/watch/skip'
 import { defaultSettings, kindsFor, sampleSegments } from '../../src/mocks/fixtures'
 import { episodes } from '../../src/mocks/fixtures'
-import { isPlaceholder } from '../../src/watch/missing'
+import { fallbackThumbnail, isPlaceholder } from '../../src/watch/missing'
 import { savedText, settled, waitingText } from '../../src/watch/WatchScreen'
 import { describePasted, describeRelated, describeSuggestedBy, describeSuggestions, describeWatched, filterOf, groupChoices, placeOf } from '../../src/screens/SuggestionsScreen'
 import { historyUrl, suggestionsUrl } from '../../src/api'
@@ -69,6 +69,13 @@ describe('missing videos', () => {
     expect(isPlaceholder(img('https://i.ytimg.com/vi/x/default.jpg?v=2'))).toBe(false)
     expect(isPlaceholder(img('https://i.ytimg.com/vi/x/hqdefault.jpg', 480, 360))).toBe(false)
     expect(isPlaceholder({ ...img('a'), currentSrc: 'https://i.ytimg.com/vi/x/default.jpg' })).toBe(false)
+  })
+
+  it('falls back to hqdefault for a YouTube thumbnail of another size, and to nothing otherwise', () => {
+    expect(fallbackThumbnail('https://i.ytimg.com/vi/a-b_c/fhddefault.jpg')).toBe('https://i.ytimg.com/vi/a-b_c/hqdefault.jpg')
+    expect(fallbackThumbnail('https://i.ytimg.com/vi_webp/x/uhddefault.webp?v=3')).toBe('https://i.ytimg.com/vi/x/hqdefault.jpg')
+    expect(fallbackThumbnail('https://i.ytimg.com/vi/x/hqdefault.jpg')).toBeNull()
+    expect(fallbackThumbnail('https://ichef.bbci.co.uk/images/ic/1280x720/p0pkv1q3.jpg')).toBeNull()
   })
 })
 
