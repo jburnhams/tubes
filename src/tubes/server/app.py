@@ -2,14 +2,14 @@
 
     ./tubes serve [--host 127.0.0.1] [--port 8367]
 
-The library (channels and videos) is managed here, from YouTube (catalogue.py writes it, library.py reads it).
+The library (channels and videos) is managed here, from YouTube and BBC iPlayer (catalogue.py writes it, library.py reads it).
 
 API (JSON):
   GET  /api/health                         {ok, version}
   GET  /api/system                         versions (app, Python, yt-dlp, ffmpeg), folders, disk, cache use, the library copy's state
   GET  /api/settings, PUT /api/settings    every setting (settings.py); PUT takes any subset, a null resets one
   GET  /api/library                       {synced, channels, videos, configured}: when every followed channel was last synced, and whether the YouTube key is set
-  POST /api/library {input}                add a channel (followed; its sync starts at once, or after the running sync's channels) or one video from a link, id or @handle: {kind, channel|video, sync}
+  POST /api/library {input}                add a channel (followed; its sync starts at once, or after the running sync's channels) or one video from a link, id or @handle; an iPlayer programme or episode link works the same way: {kind, channel|video, sync}
   GET  /api/library/sync                   the background sync: {running, total, done, current, added, errors, started, finished}
   POST /api/library/sync {channels}        start one for these channel ids (default: every followed channel); 409 while one runs
   GET  /api/channels, GET /api/channels/{id}   channels with their video counts and sync state
@@ -44,7 +44,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from tubes import __version__, cache, catalogue, fetcher, history, library, oslib, settings, youtube, ytdlp
+from tubes import __version__, cache, catalogue, fetcher, history, iplayer, library, oslib, settings, youtube, ytdlp
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 LANDING = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'landing.html')
@@ -106,6 +106,7 @@ def create_app():
         except (catalogue.NotFound, history.NotFound) as e: raise HTTPException(404, str(e))
         except catalogue.Job.Busy as e: raise HTTPException(409, str(e))
         except youtube.YoutubeError as e: raise HTTPException(503 if not youtube.configured() else 502, str(e))
+        except iplayer.IplayerError as e: raise HTTPException(502, str(e))
         except KeyError as e: raise HTTPException(400, str(e.args[0]))
 
     def stream(video_id): return dict(cache.status(video_id), **cache.plays(video_id))

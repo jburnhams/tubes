@@ -6,31 +6,44 @@ Lists are newest first and paged by a cursor after the last item (`<published>|<
 adds videos.
 
 A video YouTube no longer has (`gone`, see catalogue.recheck) is left out of every list and count, but `video(id)` still finds it, so a link
-to it (or its cached copy) still opens."""
+to it (or its cached copy) still opens. An iPlayer episode is left out the same way once it is gone from the programme's list or its
+`expires` has passed, except while its copy is ready in the cache: one already fetched stays watchable until the cache evicts it.
+
+`now` (an ISO string, default the present) is what `expires` is compared with."""
+import datetime
+
 from tubes import db, youtube
 
-VIDEO_COLUMNS = """v.id, v.channel_id, c.title AS channel, v.title, v.published, v.duration, v.thumbnail, v.views,
-                   k.state AS cache_state, k.bytes AS cache_bytes, v.gone"""
-CHANNEL_COLUMNS = """c.id, c.title, c.handle, c.thumbnail, c.synced, c.published, c.country, c.subscribers, c.total_videos, c.views, c.complete, c.follow,
+VISIBLE = "((v.gone IS NULL AND (v.expires IS NULL OR v.expires > ?)) OR (v.platform = 'iplayer' AND COALESCE(k.state, '') = 'ready'))"   # one `now` argument; never NULL, so NOT works
+
+
+def _now(now=None): return now or datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
+
+VIDEO_COLUMNS = """v.id, v.platform, v.channel_id, c.title AS channel, v.title, v.published, v.duration, v.thumbnail, v.views,
+                   k.state AS cache_state, k.bytes AS cache_bytes, v.gone, v.expires, v.series, v.episode"""
+CHANNEL_COLUMNS = """c.id, c.platform, c.title, c.handle, c.thumbnail, c.synced, c.published, c.country, c.subscribers, c.total_videos, c.views, c.complete, c.follow,
                      c.added, c.sync_token IS NOT NULL AS resumable"""
 
 
-def status():
+def status(now=None):
     """`{synced, channels, videos, hidden, configured}`: when every followed channel was last synced (None: never), what the library holds
     (videos that can be watched, and those hidden because YouTube no longer has them), and whether the YouTube key is in the environment
     (without it nothing can be added or synced)."""
     with db.connect() as con:
         synced = con.execute("SELECT value FROM meta WHERE key = 'library_synced'").fetchone()
-        counts = con.execute('SELECT (SELECT COUNT(*) FROM channels), (SELECT COUNT(*) FROM videos WHERE gone IS NULL), (SELECT COUNT(*) FROM videos WHERE gone IS NOT NULL)').fetchone()
+        counts = con.execute(f"""SELECT (SELECT COUNT(*) FROM channels), COALESCE(SUM(CASE WHEN {VISIBLE} THEN 1 ELSE 0 END), 0), COALESCE(SUM(CASE WHEN {VISIBLE} THEN 0 ELSE 1 END), 0)
+                                 FROM videos v LEFT JOIN copies k ON k.video_id = v.id""", (_now(now), _now(now))).fetchone()
     return dict(synced=synced[0] if synced else None, channels=counts[0], videos=counts[1], hidden=counts[2], configured=youtube.configured())
 
 
-def channels():
-    """Every channel with how many videos it has here to watch, how many are hidden (gone from YouTube) and its newest one's date, by title."""
+def channels(now=None):
+    """Every channel with how many videos it has here to watch, how many are hidden (gone from YouTube, or expired from iPlayer) and its newest one's date, by title."""
     with db.connect() as con:
-        rows = db.rows(con.execute(f"""SELECT {CHANNEL_COLUMNS}, COUNT(v.id) - COUNT(v.gone) AS videos, COUNT(v.gone) AS hidden,
-                                       MAX(CASE WHEN v.gone IS NULL THEN v.published END) AS latest FROM channels c LEFT JOIN videos v ON v.channel_id = c.id
-                                       GROUP BY c.id ORDER BY LOWER(c.title), c.id"""))
+        rows = db.rows(con.execute(f"""SELECT {CHANNEL_COLUMNS}, COALESCE(SUM(CASE WHEN v.id IS NOT NULL AND {VISIBLE} THEN 1 ELSE 0 END), 0) AS videos,
+                                       COALESCE(SUM(CASE WHEN v.id IS NOT NULL AND NOT {VISIBLE} THEN 1 ELSE 0 END), 0) AS hidden,
+                                       MAX(CASE WHEN v.id IS NOT NULL AND {VISIBLE} THEN v.published END) AS latest
+                                       FROM channels c LEFT JOIN videos v ON v.channel_id = c.id LEFT JOIN copies k ON k.video_id = v.id
+                                       GROUP BY c.id ORDER BY LOWER(c.title), c.id""", (_now(now),) * 3))
     for r in rows: r.update(complete=bool(r['complete']), follow=bool(r['follow']), resumable=bool(r['resumable']))   # SQLite answers 0 and 1
     return rows
 
@@ -44,9 +57,9 @@ def cursor(v):
     return f"{v['published']}|{v['id']}"
 
 
-def videos(channel_id=None, search=None, after=None, limit=24):
+def videos(channel_id=None, search=None, after=None, limit=24, now=None):
     """One page of videos, newest first: `{videos, has_more}`. `search` matches words in the title, in any order; `after` is a cursor."""
-    where, args = ['v.gone IS NULL'], []
+    where, args = [VISIBLE], [_now(now)]
     if channel_id: where.append('v.channel_id = ?'); args.append(channel_id)
     for word in (search or '').split():
         where.append("LOWER(v.title) LIKE LOWER(?) ESCAPE '\\'"); args.append('%' + word.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%')
@@ -59,9 +72,9 @@ def videos(channel_id=None, search=None, after=None, limit=24):
     return dict(videos=rows[:limit], has_more=len(rows) > limit)
 
 
-def shuffle(count=24, channel_id=None):
+def shuffle(count=24, channel_id=None, now=None):
     """`count` videos picked at random (from one channel, if given), for a page that offers something different on every visit."""
-    where, args = ('WHERE v.gone IS NULL AND v.channel_id = ?', [channel_id]) if channel_id else ('WHERE v.gone IS NULL', [])
+    where, args = (f'WHERE {VISIBLE} AND v.channel_id = ?', [_now(now), channel_id]) if channel_id else (f'WHERE {VISIBLE}', [_now(now)])
     with db.connect() as con:
         return db.rows(con.execute(f'SELECT {VIDEO_COLUMNS} FROM videos v LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = v.id {where} ORDER BY RANDOM() LIMIT ?', args + [count]))
 

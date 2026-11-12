@@ -97,7 +97,7 @@ def _int(v):
 def channel_row(item, now):
     """A Data API channel resource as a `channels` row."""
     sn, st = item.get('snippet') or {}, item.get('statistics') or {}
-    return dict(id=item['id'], title=sn.get('title') or item['id'], handle=sn.get('customUrl') or None, thumbnail=best_thumbnail(sn.get('thumbnails')),
+    return dict(id=item['id'], platform='youtube', title=sn.get('title') or item['id'], handle=sn.get('customUrl') or None, thumbnail=best_thumbnail(sn.get('thumbnails')),
                 description=sn.get('description') or None, published=sn.get('publishedAt'), country=sn.get('country'),
                 subscribers=None if st.get('hiddenSubscriberCount') else _int(st.get('subscriberCount')), total_videos=_int(st.get('videoCount')), views=_int(st.get('viewCount')),
                 uploads=((item.get('contentDetails') or {}).get('relatedPlaylists') or {}).get('uploads'), added=now)
@@ -106,9 +106,10 @@ def channel_row(item, now):
 def video_row(item, now):
     """A Data API video resource as a `videos` row."""
     sn, cd, st = item.get('snippet') or {}, item.get('contentDetails') or {}, item.get('statistics') or {}
-    return dict(id=item['id'], channel_id=sn.get('channelId') or '', title=sn.get('title') or item['id'], published=sn.get('publishedAt') or now,
+    return dict(id=item['id'], platform='youtube', channel_id=sn.get('channelId') or '', title=sn.get('title') or item['id'], published=sn.get('publishedAt') or now,
                 duration=seconds(cd.get('duration')), thumbnail=best_thumbnail(sn.get('thumbnails')), views=_int(st.get('viewCount')),
-                description=sn.get('description') or None, likes=_int(st.get('likeCount')), comments=_int(st.get('commentCount')), definition=cd.get('definition'), added=now)
+                description=sn.get('description') or None, likes=_int(st.get('likeCount')), comments=_int(st.get('commentCount')), definition=cd.get('definition'),
+                expires=None, series=None, episode=None, added=now)
 
 
 def channel(kind, value):

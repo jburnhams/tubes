@@ -68,3 +68,42 @@ def test_a_failed_fetch_says_why(client, fake_ytdlp, fake_youtube):
     client.post(f'/api/videos/{V}/play')
     failed = wait_for(lambda: (s := client.get(f'/api/videos/{V}/stream').json())['state'] == 'failed' and s)
     assert failed['error'] == '[youtube] fake: Video unavailable'
+
+
+@pytest.fixture
+def episode_media(tmp_path):
+    """A 6-second muxed H.264 + AAC MPEG-TS HLS stream, as iPlayer serves: `index.m3u8` and its `.ts` segments."""
+    import subprocess
+    out = tmp_path / 'bbc'; out.mkdir()
+    subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-nostdin', '-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=25:duration=6', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6',
+                    '-c:v', 'libx264', '-preset', 'ultrafast', '-g', '25', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-f', 'hls', '-hls_time', '2', '-hls_list_size', '0',
+                    '-hls_segment_type', 'mpegts', '-hls_segment_filename', str(out / 'seg%d.ts'), str(out / 'index.m3u8')], check=True)
+    return str(out)
+
+
+@needs_ffmpeg
+def test_follow_an_iplayer_programme_and_play_an_episode(client, fake_iplayer, episode_media):
+    fake_iplayer.programme('b0000001', 'Harbour Lights', episodes=2); fake_iplayer.media_dir = episode_media
+    r = client.post('/api/library', json=dict(input='https://www.bbc.co.uk/iplayer/episodes/b0000001/harbour-lights')).json()
+    assert r['kind'] == 'channel' and r['channel']['platform'] == 'iplayer'
+    assert wait_for(lambda: not (s := client.get('/api/library/sync').json())['running'] and s)['added'] == 2
+    vs = client.get('/api/videos', params=dict(channel='b0000001')).json()['videos']
+    assert [(v['title'], v['series'], v['episode'], v['channel']) for v in vs] == [('Chapter 2', 'Series 1', 2, 'Harbour Lights'), ('Chapter 1', 'Series 1', 1, 'Harbour Lights')]
+    e = vs[0]['id']
+    assert client.post(f'/api/videos/{e}/play').json()['state'] == 'fetching'
+    done = wait_for(lambda: (s := client.get(f'/api/videos/{e}/stream').json())['state'] in ('ready', 'failed') and s)
+    assert (done['state'], done['error'], done['formats'], done['complete']) == ('ready', None, '1080p50 H.264 + AAC', True) and done['seconds'] >= 5
+    playlist = client.get(f'/api/media/{e}/index.m3u8').text
+    assert '#EXT-X-MAP:URI="init.mp4"' in playlist and '#EXT-X-ENDLIST' in playlist
+    assert any('-video=12000000-seg0.ts' in c for c in fake_iplayer.calls)                   # the 1080p50 variant was the one read
+
+
+def test_an_iplayer_episode_outside_the_uk_fails_with_why(client, fake_iplayer, fake_ytdlp):
+    fake_iplayer.programme('b0000001', 'Harbour Lights', episodes=1)
+    e = client.post('/api/library', json=dict(input='https://www.bbc.co.uk/iplayer/episode/m0000001')).json()['video']['id']
+    fake_iplayer.region = 'geolocation'
+    client.post(f'/api/videos/{e}/play')
+    done = wait_for(lambda: (s := client.get(f'/api/videos/{e}/stream').json())['state'] == 'failed' and s)
+    assert done['error'] == 'iPlayer only plays in the UK, and this server is not seen as in the UK.'
+    fake_iplayer.close()
+    assert client.post('/api/library', json=dict(input='https://www.bbc.co.uk/iplayer/episodes/b0000002')).status_code == 502
