@@ -24,7 +24,8 @@ carry them, so they sort and compare as text on both engines.
   suggestion_groups  groups of channels watched in the same sittings, found from the history; `name` is made up from its channels until
                      someone names it (`named`), and a regrouping keeps a group's id and name for the group that overlaps it most.
                      A channel can also be here only because channels the library follows or the history watches point at it
-                     (`suggested_by`, related.py): then it has no watches.
+                     (`suggested_by`, related.py), or because someone pasted it in (`pasted`, paste.py, YouTube or an iPlayer
+                     programme): then it has no watches.
   related_sources    one row per channel YouTube was asked about for related channels (related.py), and when; asked again after a week.
   related_links      what each of those pointed at: channels whose videos its watch pages list next (`hits`), or that it features itself."""
 from sqlalchemy import BigInteger, Float, Index, String, Text, false, true
@@ -142,6 +143,8 @@ class Suggestion(Base):
     dismissed: Mapped[str | None] = mapped_column(String(40), default=None)
     suggested_by: Mapped[int] = mapped_column(server_default='0', default=0)     # how many of the library's and the history's channels point at it (related.py)
     related_score: Mapped[float] = mapped_column(Float, server_default='0', default=0.0)
+    platform: Mapped[str] = mapped_column(String(16), server_default='youtube', default='youtube')   # an iPlayer programme only comes in pasted
+    pasted: Mapped[str | None] = mapped_column(String(40), default=None)         # when someone pasted it into the page (paste.py)
 
 
 class RelatedSource(Base):

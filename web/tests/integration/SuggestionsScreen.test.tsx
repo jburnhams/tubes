@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { addWatchedFails, dismissFails, followFails, refreshQuota, relatedNotAsked, renameFails, suggestionsError, suggestionsFirstVisit, suggestionsNoKey, suggestionsRelatedOnly, suggestionsTruncated, summaryError } from '../../src/mocks/handlers'
+import { addWatchedFails, dismissFails, followFails, pasteFails, refreshQuota, relatedNotAsked, renameFails, suggestionsError, suggestionsFirstVisit, suggestionsNoKey, suggestionsRelatedOnly, suggestionsTruncated, summaryError } from '../../src/mocks/handlers'
 import { act, openApp, screen, waitFor, within } from '../utils/render'
 import { mock, server } from '../utils/server'
 
@@ -218,6 +218,52 @@ describe('Suggestions', () => {
     server.use(relatedNotAsked)
     openApp('/admin/suggestions')
     expect(await screen.findByText(/YouTube has not been asked yet which channels the 24\sfollowed or most watched channels point at; the server asks every few hours\. So far 1 dismissed\.$/)).toBeInTheDocument()
+  })
+
+  it('takes a pasted list of YouTube and iPlayer channels, and shows only those to follow', async () => {
+    const { user, router } = openApp('/admin/suggestions?view=dismissed')
+    const box = await screen.findByRole('textbox', { name: 'Channels and programmes' })
+    await user.click(screen.getByRole('button', { name: 'Add to suggestions' }))
+    expect(screen.getByText('Paste at least one link, @handle or name, one a line.')).toBeInTheDocument()
+    await user.type(box, 'https://www.youtube.com/@ropemaking{enter}Harbour Lights{enter}Bike Repairs{enter}No such thing')
+    mock.followed = ['UCsuggest000000000000001']
+    await user.click(screen.getByRole('button', { name: 'Add to suggestions' }))
+    expect(await screen.findByText(/^Added 2\ssuggestions \(1 on YouTube and 1 on iPlayer\)\. Already followed: Bike Repairs\. Not found: “No such thing” \(Neither YouTube nor iPlayer has a channel or programme by that name\)\.$/)).toBeInTheDocument()
+    expect(router.state.location.search).toBe('?pasted=true')
+    expect(box).toHaveValue('')
+    await list('Channels to consider, latest pasted first')
+    await waitFor(() => expect(titles()).toEqual(['Rope Making', 'Harbour Lights']))
+    expect(screen.getByRole('combobox', { name: 'Show' })).toHaveValue('pasted')
+    const harbour = item('Harbour Lights')
+    expect(within(harbour).getByText('iPlayer')).toBeInTheDocument()
+    expect(within(harbour).getByText(/^Pasted .*2026 · 12 on iPlayer$/)).toBeInTheDocument()
+    expect(within(harbour).getByRole('link', { name: 'Harbour Lights' })).toHaveAttribute('href', 'https://www.bbc.co.uk/iplayer/episodes/b0000001')
+    await user.click(within(harbour).getByRole('button', { name: 'Follow Harbour Lights' }))
+    await waitFor(() => expect(mock.followed).toContain('b0000001'))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Show' }), 'Everything')
+    expect(router.state.location.search).toBe('')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Show' }), 'Pasted in (1)')     // Harbour Lights is followed now
+    expect(router.state.location.search).toBe('?pasted=true')
+  })
+
+  it('says when nothing new was pasted, and why a paste failed', async () => {
+    const { user } = openApp('/admin/suggestions')
+    await user.type(await screen.findByRole('textbox', { name: 'Channels and programmes' }), 'No such thing')
+    await user.click(screen.getByRole('button', { name: 'Add to suggestions' }))
+    expect(await screen.findByText(/^Nothing new to suggest\. Not found:/)).toBeInTheDocument()
+    server.use(pasteFails)
+    await user.click(screen.getByRole('button', { name: /^Add(ed| to suggestions)$/ }))     // it says Added for a moment after the last one
+    expect((await screen.findAllByText(/unavailable|try again/i)).length).toBeGreaterThan(0)
+  })
+
+  it('follows an iPlayer programme without a YouTube key', async () => {
+    server.use(suggestionsNoKey)
+    const { user } = openApp('/admin/suggestions?pasted=true')
+    await user.type(await screen.findByRole('textbox', { name: 'Channels and programmes' }), 'Harbour Lights')
+    await user.click(screen.getByRole('button', { name: 'Add to suggestions' }))
+    await waitFor(() => expect(titles()).toEqual(['Harbour Lights']))
+    expect(screen.getByRole('button', { name: 'Follow Harbour Lights' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Follow Bike/ })).not.toBeInTheDocument()
   })
 
   it('says when every channel has been answered', async () => {

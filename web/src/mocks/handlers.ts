@@ -7,8 +7,8 @@
 // state: `server.use(videosError)` in a test, `msw.use(videosError)` in a story's beforeEach,
 // `states: { error: [videosError] }` in the visual config.
 import { delay, http, HttpResponse } from 'msw'
-import { cursorOf, paths, type CacheItem, type Channel, type HistorySource, type Settings, type Stream, type Suggestion, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Video, type VideoPage } from '../api'
-import { cacheItems, channels, defaultSettings, historyDays, historySources, historyStats, library, libraryNew, longChannel, relatedStatus, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
+import { cursorOf, paths, type CacheItem, type Channel, type HistorySource, type Pasted, type Settings, type Stream, type Suggestion, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Video, type VideoPage } from '../api'
+import { cacheItems, channels, defaultSettings, historyDays, historySources, historyStats, library, libraryNew, longChannel, pasteable, relatedStatus, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
 
 /** What the mock server holds. Writes change it, so a test can pin a copy and see it pinned. */
 export const mock = {
@@ -61,9 +61,12 @@ export function suggestionPage(url: string, list: Suggestion[]) {
     .filter(x => !p.get('group') || (p.get('group') === 'none' ? x.group_id === null : String(x.group_id) === p.get('group')))
     .filter(x => !p.get('topic') || x.topics.includes(p.get('topic')!))
     .filter(x => !p.get('kids') || (p.get('kids') === 'true' ? x.made_for_kids === true : x.made_for_kids !== true))
-    .sort(p.get('order') === 'suggested' ? (a, b) => b.suggested_by - a.suggested_by || b.related_score - a.related_score || b.score - a.score : (a, b) => b.score - a.score || b.related_score - a.related_score)
+    .filter(x => p.get('pasted') !== 'true' || !!x.pasted)
+    .sort(p.get('pasted') === 'true' ? (a, b) => (b.pasted ?? '').localeCompare(a.pasted ?? '') : p.get('order') === 'suggested' ? (a, b) => b.suggested_by - a.suggested_by || b.related_score - a.related_score || b.score - a.score : (a, b) => b.score - a.score || b.related_score - a.related_score)
   return { items, total: items.length }
 }
+
+const pastedOnes: Suggestion[] = [{ ...pasteable['https://www.youtube.com/@ropemaking'], pasted: '2026-11-12T05:00:00+00:00' }, { ...pasteable['harbour lights'], pasted: '2026-11-12T04:59:00+00:00' }]
 
 /** `GET /api/suggestions/summary` from the held suggestions. */
 export function suggestionSummary(): SuggestionSummary {
@@ -83,6 +86,7 @@ export function suggestionSummary(): SuggestionSummary {
     configured: true,
     suggested: open.filter(x => x.suggested_by).length,
     unwatched: open.filter(x => !x.watches).length,
+    pasted: open.filter(x => x.pasted).length,
     related: mock.related,
   }
 }
@@ -133,7 +137,8 @@ export const handlers = [
     const { input } = (await request.json()) as { input: string }
     if (input === '@nobody') return refused('YouTube has no channel @nobody.', 404)
     if (/^[\w-]{11}$/.test(input)) return HttpResponse.json({ kind: 'video', video: { ...videos[0], id: input, title: 'A video added on its own' } })
-    if (mock.suggestions.some(x => x.channel_id === input)) mock.followed.push(input)
+    const suggested = mock.suggestions.find(x => x.channel_id === input || x.link === input)
+    if (suggested) mock.followed.push(suggested.channel_id)
     const known = mock.channels.find(c => c.id === input || c.handle === input)
     const channel: Channel = known ? { ...known, follow: true } : { id: 'UCnew0000000000000000005', title: 'Paper Planes', handle: input.startsWith('@') ? input : null, thumbnail: tile(320, 'P'), synced: null, videos: 0, latest: null, follow: true, complete: false, resumable: false, total_videos: 48, subscribers: 900, added: '2026-11-09T12:00:00Z' }
     mock.channels = known ? mock.channels.map(c => (c === known ? channel : c)) : [...mock.channels, channel].sort((a, b) => a.title.localeCompare(b.title))
@@ -206,6 +211,20 @@ export const handlers = [
     const one = p.get('source') ? { watches: Math.round(base.watches / 2) } : {}
     const followed = (id: string) => mock.followed.includes(id) || mock.channels.some(c => c.id === id && c.follow !== false)
     return HttpResponse.json({ ...base, ...one, channels_top: base.channels_top.map(c => ({ ...c, followed: c.followed || followed(c.channel_id) })), sources: mock.sources, configured: true })
+  }),
+  http.post(at(paths.suggestionsPaste), async ({ request }) => {
+    const { text } = (await request.json()) as { text: string }
+    const out: Pasted = { found: [], already: [], problems: [] }
+    for (const input of text.split('\n').map(l => l.trim()).filter(Boolean)) {
+      const x = pasteable[input.toLowerCase()] ?? pasteable[input]
+      const known = mock.suggestions.find(y => y.link === input || y.title.toLowerCase() === input.toLowerCase())
+      if (known && mock.followed.includes(known.channel_id)) out.already.push({ input, title: known.title })
+      else if (x) {
+        out.found.push({ input, platform: x.platform, channel_id: x.channel_id, title: x.title })
+        mock.suggestions = [...mock.suggestions.filter(y => y.channel_id !== x.channel_id), { ...x, pasted: '2026-11-12T05:00:00+00:00' }]
+      } else out.problems.push({ input, error: 'Neither YouTube nor iPlayer has a channel or programme by that name.' })
+    }
+    return HttpResponse.json(out)
   }),
   http.get(at(paths.suggestions), ({ request }) => HttpResponse.json(suggestionPage(request.url, mock.suggestions))),
   http.put(at('/api/suggestions/groups/:id'), async ({ params, request }) => {
@@ -334,6 +353,12 @@ export const relatedNotAsked = http.get(at(paths.suggestionsSummary), () => Http
 /** The server has no YouTube key: nothing can be followed or added. */
 export const suggestionsNoKey = http.get(at(paths.suggestionsSummary), () => HttpResponse.json({ ...suggestionSummary(), configured: false }))
 export const followFails = http.post(at(paths.library), () => refused('YouTube refused the request (403: the key has used its quota for today (it resets at midnight Pacific time)).', 502))
+export const pasteFails = http.post(at(paths.suggestionsPaste), down)
+/** A list was pasted in: one YouTube channel and one iPlayer programme are suggested, and the page shows only those. */
+export const suggestionsPasted = [
+  http.get(at(paths.suggestions), ({ request }) => HttpResponse.json(suggestionPage(request.url, [...mock.suggestions, ...pastedOnes]))),
+  http.get(at(paths.suggestionsSummary), () => HttpResponse.json({ ...suggestionSummary(), open: suggestionSummary().open + pastedOnes.length, pasted: pastedOnes.length })),
+]
 export const addWatchedFails = http.post(at('/api/suggestions/:id/videos'), down)
 export const dismissFails = http.put(at('/api/suggestions/:id'), down)
 export const renameFails = http.put(at('/api/suggestions/groups/:id'), down)

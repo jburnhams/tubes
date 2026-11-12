@@ -107,3 +107,17 @@ def test_an_iplayer_episode_outside_the_uk_fails_with_why(client, fake_iplayer, 
     assert done['error'] == 'iPlayer only plays in the UK, and this server is not seen as in the UK.'
     fake_iplayer.close()
     assert client.post('/api/library', json=dict(input='https://www.bbc.co.uk/iplayer/episodes/b0000002')).status_code == 502
+
+
+def test_a_pasted_list_becomes_suggestions_to_follow(client, fake_youtube, fake_iplayer):
+    fake_youtube.channel('UCaaaaaaaaaaaaaaaaaaaaaa', 'Workshop', handle='@workshop', videos=1)
+    fake_iplayer.programme('b0000001', 'Harbour Lights', episodes=1)
+    r = client.post('/api/suggestions/paste', json=dict(text='- https://www.youtube.com/@workshop\n- Harbour Lights\n- Nothing At All'))
+    assert r.status_code == 200
+    assert [(f['platform'], f['channel_id']) for f in r.json()['found']] == [('youtube', 'UCaaaaaaaaaaaaaaaaaaaaaa'), ('iplayer', 'b0000001')] and r.json()['problems'][0]['input'] == 'Nothing At All'
+    items = client.get('/api/suggestions', params=dict(pasted='true')).json()['items']
+    assert [(i['title'], i['link']) for i in items] == [('Workshop', 'https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa'), ('Harbour Lights', 'https://www.bbc.co.uk/iplayer/episodes/b0000001')]
+    assert client.post('/api/library', json=dict(input=items[1]['link'])).json()['kind'] == 'channel'     # Follow adds its link
+    assert [i['title'] for i in client.get('/api/suggestions', params=dict(pasted='true')).json()['items']] == ['Workshop']
+    assert client.get('/api/suggestions/summary').json()['pasted'] == 1
+    assert client.post('/api/suggestions/paste', json=dict(text='  ')).status_code == 400

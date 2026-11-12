@@ -1,5 +1,12 @@
 # Progress log
 
+## 2026-11-12: a pasted list of channels to follow
+
+- Asked for: a box on the Suggestions page to paste a list of links or channel names, shown as suggestions that are easy to follow, for YouTube and iPlayer. Built on the iPlayer work (PR #54, merged into this branch: programmes kept as channels with `platform` 'iplayer', `iplayer.parse` for links).
+- `paste.py`: one entry a line (bullets and numbering taken off; several links on a line split). YouTube links, ids, @handles and video links name a channel (one lookup each); iPlayer programme links name the programme, episode links the programme they belong to, and a one-off says it has no programme to follow. Anything else is a name, looked up on both: iPlayer's `new-search` (measured on the home server: the only ibl search that answers, fuzzy and unpaged, programmes as `type: programme` and episodes with `tleo_id`), taking programmes whose title is the name; YouTube as an @handle first (1 unit, kept only if its title is the name), then `search?type=channel` (100 units, so 20 names a paste at most). What is found joins `suggestions` with `platform`, a picture and `pasted`; one already followed is said instead, and one dismissed before comes back. History refresh and the related count keep pasted rows; YouTube lookups and related sources skip iPlayer ones.
+- `POST /api/suggestions/paste {text}` → `{found, already, problems}`; `GET /api/suggestions?pasted=true` lists only pasted ones, latest first; each item has a `link`, which the page's Follow sends to `POST /api/library` (so an iPlayer programme is followed by its link, and needs no YouTube key).
+- Admin > Suggestions: "Paste channels to follow" at the top (and on the empty page), a sentence on what it found per service, what was followed already and what named nothing; after a paste the list shows only the pasted ones (Show: Pasted in), with an iPlayer badge where it applies.
+
 ## 2026-11-12: suggestions from related channels
 
 - Asked for: suggested channels for each followed channel (and for the watch history's channels), fetched again weekly, counted up so the channels suggested most often come first.

@@ -45,7 +45,7 @@ class FakeYoutube:
                         if fake.quota_left <= 0: return self.error(403, 'The request cannot be completed because you have exceeded your quota.', 'quotaExceeded')
                         fake.quota_left -= 1
                 if endpoint == 'playlistItems' and fake.hold: fake.hold.wait(30)
-                handler = dict(channels=fake.answer_channels, playlistItems=fake.answer_playlist, videos=fake.answer_videos, channelSections=fake.answer_sections).get(endpoint)
+                handler = dict(channels=fake.answer_channels, playlistItems=fake.answer_playlist, videos=fake.answer_videos, channelSections=fake.answer_sections, search=fake.answer_search).get(endpoint)
                 if not handler: return self.error(404, 'Not Found', 'notFound')
                 status, body = handler(q)
                 self.send_json(status, body)
@@ -106,6 +106,12 @@ class FakeYoutube:
         self.next[video] = list(listed); return self
 
     # The calls.
+
+    def answer_search(self, q):
+        """Channels whose title holds every word of the query, as YouTube's channel search (type=channel) answers; costs 100 units there, one here."""
+        words = q.get('q', '').lower().split()
+        found = [c for c in self.channels.values() if words and all(w in c['snippet']['title'].lower() for w in words)][:int(q.get('maxResults', 5))]
+        return 200, dict(kind='youtube#searchListResponse', items=[dict(kind='youtube#searchResult', id=dict(kind='youtube#channel', channelId=c['id']), snippet=dict(channelId=c['id'], title=c['snippet']['title'], channelTitle=c['snippet']['title'])) for c in found])
 
     def answer_sections(self, q):
         return 200, dict(kind='youtube#channelSectionListResponse', items=[dict(kind='youtube#channelSection', id=f"{q.get('channelId')}.s", snippet=dict(type='singlePlaylist', title='Popular uploads'))] + self.sections.get(q.get('channelId'), []))

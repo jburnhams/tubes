@@ -155,7 +155,8 @@ export const historySources: HistorySource[] = [
 const suggestion = (n: number, title: string, hue: number, s: Partial<Suggestion>): Suggestion => ({
   channel_id: `UCsuggest${String(n).padStart(15, '0')}`, title, handle: `@${title.toLowerCase().replace(/[^a-z]/g, '')}`, thumbnail: tile(hue, title), watches: 10, videos: 8,
   first: '2024-02-01T10:00:00+00:00', last: '2026-10-01T10:00:00+00:00', score: 5, group_id: null, subscribers: 10_000, total_videos: 120, topics: [], made_for_kids: null,
-  missing: false, dismissed: null, in_library: false, suggested_by: 0, related_score: 0, suggested_from: [], ...s,
+  missing: false, dismissed: null, in_library: false, suggested_by: 0, related_score: 0, suggested_from: [], platform: 'youtube', pasted: null,
+  link: `https://www.youtube.com/channel/UCsuggest${String(n).padStart(15, '0')}`, ...s,
 })
 
 /** One no history has watches for, only pointed at by related channels. */
@@ -178,6 +179,13 @@ export const suggestions: Suggestion[] = [
 
 /** Asking YouTube about related channels: every source asked this week, one failed. */
 export const relatedStatus: RelatedStatus = { sources: 24, asked: 24, due: 0, failed: 1, last: '2026-11-08T08:00:00+00:00' }
+
+/** What the stand-in finds when a list is pasted, by what was typed (a link or a name, any case): a YouTube channel and an iPlayer programme. */
+export const pasteable: Record<string, Suggestion> = {
+  'https://www.youtube.com/@ropemaking': related(20, 'Rope Making', 10, { handle: '@ropemaking', topics: ['Hobby'], total_videos: 210 }),
+  'https://www.bbc.co.uk/iplayer/episodes/b0000001': related(21, 'Harbour Lights', 190, { channel_id: 'b0000001', platform: 'iplayer', handle: null, subscribers: null, total_videos: 12, link: 'https://www.bbc.co.uk/iplayer/episodes/b0000001' }),
+}
+pasteable['harbour lights'] = pasteable['https://www.bbc.co.uk/iplayer/episodes/b0000001']
 
 export const suggestionGroups: SuggestionGroup[] = [
   { id: 1, name: 'Making and mending', named: true, channels: 3 },

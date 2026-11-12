@@ -151,6 +151,24 @@ def programme(pid):
     return items[0] if items and items[0].get('id') == pid else None
 
 
+def search(text):
+    """What iPlayer finds for some words (`new-search`, the only search ibl answers; measured 2026-11-12): programmes and episodes, fuzzy and
+    unpaged, so callers match titles themselves. Returns `[{id, title, kind, thumbnail}]` with `id` the followable programme: a programme's
+    own id, an episode's `tleo_id` when it belongs to one (`tleo_type` brand or series); one-offs, which have no programme, are left out."""
+    out, seen = [], set()
+    for r in (call('new-search', q=text, rights='web').get('new_search') or {}).get('results') or []:
+        if r.get('type') == 'programme': pid = r.get('id')
+        elif r.get('type') == 'episode' and r.get('tleo_type') in ('brand', 'series') and r.get('tleo_id') != r.get('id'): pid = r.get('tleo_id')
+        else: continue
+        if not pid or pid in seen: continue
+        seen.add(pid); im = r.get('images') or {}
+        out.append(dict(id=pid, title=r.get('title') or pid, kind=r['type'], thumbnail=image(im.get('standard') or im.get('promotional'), AVATAR)))
+    return out
+
+
+def programme_url(pid): return f'https://www.bbc.co.uk/iplayer/episodes/{pid}'
+
+
 def episode(pid):
     """The ibl episode for this id, or None when iPlayer does not offer it."""
     items = call(f'episodes/{pid}').get('episodes') or []

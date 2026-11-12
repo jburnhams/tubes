@@ -121,7 +121,7 @@ def featured(channel_id):
 
 
 def _followed_and_watched(con):
-    follows = [r[0] for r in con.execute('SELECT id FROM channels WHERE follow = ? ORDER BY id', (True,))]
+    follows = [r[0] for r in con.execute('SELECT id FROM channels WHERE follow = ? AND platform = ? ORDER BY id', (True, 'youtube'))]   # watch pages are YouTube's
     watched = [r[0] for r in con.execute('SELECT channel_id FROM suggestions WHERE watches >= ? AND missing = ? ORDER BY score DESC, channel_id LIMIT ?', (HISTORY_MIN, False, HISTORY_SOURCES))]
     return follows, [c for c in watched if c not in set(follows)]
 
@@ -231,7 +231,7 @@ def aggregate():
         con.executemany('UPDATE suggestions SET suggested_by = :n, related_score = :s WHERE channel_id = :c', [dict(c=c, n=len(s), s=round(score[c], 4)) for c, s in by.items()])
         unwatched = [c for c in by if not held.get(c)]                     # a channel with watches keeps the group its sittings gave it
         con.executemany('UPDATE suggestions SET group_id = :g WHERE channel_id = :c', [dict(c=c, g=min(votes[c].items(), key=lambda x: (-x[1], x[0]))[0] if votes[c] else None) for c in unwatched])
-        con.execute('DELETE FROM suggestions WHERE watches = ? AND suggested_by = ?', (0, 0))
+        con.execute('DELETE FROM suggestions WHERE watches = ? AND suggested_by = ? AND pasted IS NULL', (0, 0))
         con.execute("INSERT INTO meta (key, value) VALUES ('related_counted', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (cache.stamp(),))
     return dict(suggested=len(by), added=len(new))
 

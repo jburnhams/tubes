@@ -8,6 +8,11 @@
 // (most watched, or pointed at by the most of your channels: the same channels coming up again and
 // again is the clustering), name the group being looked at, and work through the list.
 //
+// A list pasted into the box at the top (links, @handles or names, YouTube or iPlayer, one a line:
+// paste.py on the server) joins the list as suggestions, and the page then shows only what was
+// pasted (`pasted=true`, latest first), so a list from elsewhere is followed one key at a time. An
+// iPlayer programme needs no YouTube key to follow; its row says iPlayer.
+//
 // The list is a queue worked from the keyboard (useActiveItem + ActiveList, j/k to move): f follows
 // the active channel (all its uploads, synced at once, as Library's Add does), a adds only the videos
 // of it that were watched, d dismisses it. Following takes it off the list (it is in the library
@@ -23,8 +28,8 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
-import { ActiveList, AsyncButton, DataView, EmptyState, Field, Input, KeysLegend, NativeSelect, PageHeader, RowAction, Skeleton, Status, Tabs, Thumbnail, UndoBar, format, useActiveItem, useAsyncAction, useHotkeys, useLoad, useUndoable, type Shortcut } from 'strata-react'
-import { api, describeError, keys, withBase, type Suggestion, type SuggestionFilter, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Added } from '../api'
+import { ActiveList, AsyncButton, DataView, EmptyState, Field, Input, Textarea, KeysLegend, NativeSelect, PageHeader, RowAction, Skeleton, Status, Tabs, Thumbnail, UndoBar, format, useActiveItem, useAsyncAction, useHotkeys, useLoad, useUndoable, type Shortcut } from 'strata-react'
+import { api, describeError, keys, withBase, type Pasted, type Suggestion, type SuggestionFilter, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Added } from '../api'
 
 const views = [
   { value: 'open', label: 'To consider' },
@@ -62,9 +67,9 @@ export function describeRelated(s: SuggestionSummary): string {
 
 /** A suggestion's line under its title: how much and how lately it was watched. */
 export function describeWatched(x: Suggestion): string {
-  const parts = x.watches ? [format.count(x.watches, 'watch', 'watches'), format.count(x.videos, 'video')] : ['Never watched']
+  const parts = x.watches ? [format.count(x.watches, 'watch', 'watches'), format.count(x.videos, 'video')] : [x.pasted ? `Pasted ${format.date(x.pasted)}` : 'Never watched']
   if (x.last) parts.push(`last ${format.date(x.last)}`)
-  if (x.total_videos != null) parts.push(`${format.integer(x.total_videos)} on YouTube`)
+  if (x.total_videos != null) parts.push(`${format.integer(x.total_videos)} on ${x.platform === 'iplayer' ? 'iPlayer' : 'YouTube'}`)
   return parts.join(' · ')
 }
 
@@ -99,7 +104,7 @@ export function groupChoices(s: SuggestionSummary): { value: string; label: stri
 
 /** The filter the page's URL holds. */
 export function filterOf(params: URLSearchParams): SuggestionFilter {
-  return { group: params.get('group') ?? undefined, topic: params.get('topic') ?? undefined, kids: params.get('kids') ?? undefined, dismissed: params.get('view') === 'dismissed', order: params.get('order') === 'suggested' ? 'suggested' : undefined }
+  return { group: params.get('group') ?? undefined, topic: params.get('topic') ?? undefined, kids: params.get('kids') ?? undefined, dismissed: params.get('view') === 'dismissed', order: params.get('order') === 'suggested' ? 'suggested' : undefined, pasted: params.get('pasted') === 'true' || undefined }
 }
 
 export function SuggestionsScreen() {
@@ -117,16 +122,17 @@ export function SuggestionsScreen() {
     <>
       <PageHeader
         title="Suggestions"
-        scope="Channels from the watch history and related channels"
+        scope="Channels from the watch history, related channels and lists pasted in"
         finding={ready ? { text: describeSuggestions(summary.data) } : undefined}
         actions={ready && summary.data.sources.length ? (
           <AsyncButton variant="outline" phase={refresh.phase} error={refresh.error} labels={{ idle: 'Regroup', pending: 'Regrouping…', done: 'Regrouped' }} onClick={() => void refresh.run()} />
         ) : undefined}
       />
       {note && <p role="status" className="flex flex-wrap items-center gap-2 type-body-sm"><Status tone="warning">YouTube not asked</Status>{note}</p>}
-      <DataView state={summary} isEmpty={s => !hasSuggestions(s)} skeleton={<ListSkeleton />} empty={<ImportForm first />}>
+      <DataView state={summary} isEmpty={s => !hasSuggestions(s)} skeleton={<ListSkeleton />} empty={<div className="grid gap-12"><PasteForm /><ImportForm first /></div>}>
         {s => (
           <div className="grid gap-12">
+            <PasteForm />
             <Tabs param="view" items={views} label="Suggestions">
               {() => <Chooser summary={s} />}
             </Tabs>
@@ -164,6 +170,12 @@ function Chooser({ summary }: { summary: SuggestionSummary }) {
             <option value="">Anyone</option>
             <option value="yes">{`Made for kids (${format.integer(summary.kids)})`}</option>
             <option value="no">Not made for kids</option>
+          </NativeSelect>
+        </Field>
+        <Field label="Show" className="min-w-40">
+          <NativeSelect value={filter.pasted ? 'pasted' : ''} onChange={e => set('pasted', e.target.value ? 'true' : '')}>
+            <option value="">Everything</option>
+            <option value="pasted">{`Pasted in (${format.integer(summary.pasted)})`}</option>
           </NativeSelect>
         </Field>
         <Field label="Order" className="min-w-48">
@@ -210,7 +222,7 @@ function Queue({ filter, summary }: { filter: SuggestionFilter; summary: Suggest
         ? <EmptyState title="Nothing dismissed">Channels dismissed from the list wait here, in case one is wanted after all.</EmptyState>
         : <EmptyState title="Nothing left to consider here">Every channel that matches is followed or dismissed. Choose another group or topic, or look through the dismissed ones.</EmptyState>}
     >
-      {p => <Answers items={p.items} total={p.total} dismissedView={!!filter.dismissed} summary={summary} order={filter.order === 'suggested' ? 'most pointed at first' : 'best first'} />}
+      {p => <Answers items={p.items} total={p.total} dismissedView={!!filter.dismissed} summary={summary} order={filter.pasted ? 'latest pasted first' : filter.order === 'suggested' ? 'most pointed at first' : 'best first'} />}
     </DataView>
   )
 }
@@ -226,7 +238,7 @@ function Answers({ items, total, dismissedView, summary, order }: { items: Sugge
 
   const reread = async () => { for (const queryKey of [keys.suggestions, keys.channels, keys.library, keys.videos]) await queryClient.invalidateQueries({ queryKey }) }
   const follow = useAsyncAction(async (x: Suggestion) => {
-    const r = await api.add(x.channel_id)
+    const r = await api.add(x.link)
     setSaid(describeFollowed(x.title, (r as Extract<Added, { kind: 'channel' }>).sync))     // a channel's id adds the channel
     await reread()
   }, { describeError })
@@ -247,7 +259,8 @@ function Answers({ items, total, dismissedView, summary, order }: { items: Sugge
   })
 
   const x = active.activeItem!                                    // only run while there is one: each answer is disabled without it
-  const writing = !active.activeItem || !configured || dismissedView || follow.phase === 'pending' || addWatched.phase === 'pending'
+  const canFollow = (y: Suggestion) => configured || y.platform === 'iplayer'     // a programme needs no YouTube key
+  const writing = !active.activeItem || !canFollow(active.activeItem) || dismissedView || follow.phase === 'pending' || addWatched.phase === 'pending'
   const answers: Shortcut[] = [
     { keys: ['f'], label: 'Follow', run: () => void follow.run(x), disabled: writing },
     { keys: ['a'], label: 'Add watched videos', run: () => void addWatched.run(x), disabled: writing || !active.activeItem?.watches },
@@ -276,18 +289,19 @@ function Answers({ items, total, dismissedView, summary, order }: { items: Sugge
             <div className="flex min-w-0 flex-1 items-start gap-3">
             <Thumbnail src={s.thumbnail} alt="" missing="None" className="w-12 shrink-0 rounded-full" />
             <div className="grid min-w-0 flex-1 gap-1">
-              <a href={withBase(`https://www.youtube.com/channel/${encodeURIComponent(s.channel_id)}`)} target="_blank" rel="noreferrer" className="truncate type-body font-medium hover:underline">{s.title}</a>
+              <a href={withBase(s.link)} target="_blank" rel="noreferrer" className="truncate type-body font-medium hover:underline">{s.title}</a>
               <p className="type-body-sm text-muted-foreground tabular-nums">{describeWatched(s)}</p>
               {describeSuggestedBy(s) && <p className="type-body-sm text-muted-foreground">{describeSuggestedBy(s)}</p>}
               <p className="flex flex-wrap items-center gap-2 type-caption text-muted-foreground">
                 {placeOf(s, groups) && <span>{placeOf(s, groups)}</span>}
                 {s.made_for_kids && <Status tone="neutral">Made for kids</Status>}
+                {s.platform === 'iplayer' && <Status tone="neutral">iPlayer</Status>}
                 {s.in_library && <Status tone="info">Some videos in the library</Status>}
               </p>
             </div>
             </div>
             <span className="flex flex-wrap gap-1 sm:shrink-0 sm:justify-end">
-              {configured && !dismissedView && <RowAction label="Follow" subject={s.title} onClick={() => void follow.run(s)} />}
+              {canFollow(s) && !dismissedView && <RowAction label="Follow" subject={s.title} onClick={() => void follow.run(s)} />}
               {configured && !dismissedView && s.watches > 0 && <RowAction label="Add watched videos" subject={s.title} onClick={() => void addWatched.run(s)} />}
               <RowAction label={dismissedView ? 'Restore' : 'Dismiss'} subject={s.title} onClick={() => dismiss(s)} />
             </span>
@@ -310,6 +324,49 @@ function ListSkeleton() {
         </div>
       ))}
     </div>
+  )
+}
+
+/** What a paste said: how many were found on each, which were followed already, and what named nothing. */
+export function describePasted(r: Pasted): string {
+  const on = (p: string) => r.found.filter(f => f.platform === p).length
+  const where = [on('youtube') && `${format.integer(on('youtube'))} on YouTube`, on('iplayer') && `${format.integer(on('iplayer'))} on iPlayer`].filter(Boolean).join(' and ')
+  const parts = [r.found.length ? `Added ${format.count(r.found.length, 'suggestion')} (${where}).` : 'Nothing new to suggest.']
+  if (r.already.length) parts.push(`Already followed: ${r.already.map(a => a.title).join(', ')}.`)
+  if (r.problems.length) parts.push(`Not found: ${r.problems.map(p => `“${p.input}” (${p.error.replace(/\.$/, '')})`).join('; ')}.`)
+  return parts.join(' ')
+}
+
+/** Paste a list of channels to follow; what is found joins the list, which then shows only what was pasted. */
+export function PasteForm() {
+  const queryClient = useQueryClient()
+  const [, setParams] = useSearchParams()
+  const [text, setText] = useState('')
+  const [said, setSaid] = useState<string>()
+  const [problem, setProblem] = useState<string>()
+  const send = useAsyncAction(async () => {
+    const r = await api.pasteSuggestions(text)
+    setSaid(describePasted(r))
+    if (r.found.length) { setText(''); setParams(p => { const out = new URLSearchParams(p); out.set('pasted', 'true'); out.delete('view'); return out }, { replace: true }) }
+    await queryClient.invalidateQueries({ queryKey: keys.suggestions })
+  }, { describeError })
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    const p = text.trim() ? undefined : 'Paste at least one link, @handle or name, one a line.'
+    setProblem(p)
+    if (!p) void send.run()
+  }
+  return (
+    <form onSubmit={onSubmit} noValidate aria-labelledby="paste" className="grid max-w-xl gap-3">
+      <h2 id="paste" className="type-heading">Paste channels to follow</h2>
+      <Field label="Channels and programmes" hint="One a line: YouTube links or @handles, iPlayer programme or episode links, or names (looked up on both)." error={problem ?? (send.phase === 'error' ? send.error : undefined)}>
+        <Textarea value={text} onChange={e => setText(e.target.value)} rows={4} placeholder={'https://www.youtube.com/@…\nhttps://www.bbc.co.uk/iplayer/episodes/…\nA programme name'} />
+      </Field>
+      <div className="flex flex-wrap items-center gap-3">
+        <AsyncButton type="submit" variant="outline" phase={send.phase} error={send.error} labels={{ idle: 'Add to suggestions', pending: 'Looking them up…', done: 'Added' }} />
+        {said && send.phase !== 'error' && <p role="status" className="type-body-sm">{said}</p>}
+      </div>
+    </form>
   )
 }
 

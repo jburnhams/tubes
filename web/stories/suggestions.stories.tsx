@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { addWatchedFails, followFails, relatedNotAsked, suggestionsError, suggestionsFirstVisit, suggestionsLoading, suggestionsNoKey, suggestionsRelatedOnly, summaryLoading } from '../src/mocks/handlers'
+import { addWatchedFails, followFails, relatedNotAsked, suggestionsError, suggestionsFirstVisit, suggestionsLoading, suggestionsNoKey, suggestionsPasted, suggestionsRelatedOnly, summaryLoading } from '../src/mocks/handlers'
 import { AppAt } from './app-at'
 
 const meta = {
@@ -18,6 +18,8 @@ export const MostPointedAt: Story = { render: () => <AppAt route="/admin/suggest
 export const RelatedOnly: Story = { beforeEach: ({ msw }) => msw.use(...suggestionsRelatedOnly), render: () => <AppAt route="/admin/suggestions?order=suggested" /> }
 /** YouTube has not been asked about related channels yet: the finding says the server will. */
 export const RelatedNotAsked: Story = { beforeEach: ({ msw }) => msw.use(relatedNotAsked) }
+/** A list was pasted in: only what it named, latest first, one of them an iPlayer programme. */
+export const Pasted: Story = { beforeEach: ({ msw }) => msw.use(...suggestionsPasted), render: () => <AppAt route="/admin/suggestions?pasted=true" /> }
 /** One group: its name can be changed here. */
 export const OneGroup: Story = { render: () => <AppAt route="/admin/suggestions?group=2" /> }
 export const Dismissed: Story = { render: () => <AppAt route="/admin/suggestions?view=dismissed" /> }

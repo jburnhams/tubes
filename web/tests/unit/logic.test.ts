@@ -12,7 +12,7 @@ import { channelState, describeAdded, describeJob, describeLibrary } from '../..
 import { ago, videoCount, views, viewsAndAge } from '../../src/watch/format'
 import { isPlaceholder } from '../../src/watch/missing'
 import { savedText, settled, waitingText } from '../../src/watch/WatchScreen'
-import { describeRelated, describeSuggestedBy, describeSuggestions, describeWatched, filterOf, groupChoices, placeOf } from '../../src/screens/SuggestionsScreen'
+import { describePasted, describeRelated, describeSuggestedBy, describeSuggestions, describeWatched, filterOf, groupChoices, placeOf } from '../../src/screens/SuggestionsScreen'
 import { historyUrl, suggestionsUrl } from '../../src/api'
 import { describeHistory, fillPeriods, periodLabel, rangeChoices, rangeOf } from '../../src/screens/HistoryScreen'
 import { historyStats } from '../../src/mocks/fixtures'
@@ -250,10 +250,15 @@ describe('suggestions', () => {
     expect(filterOf(new URLSearchParams('order=suggested')).order).toBe('suggested')
     expect(filterOf(new URLSearchParams('order=other')).order).toBeUndefined()
     expect(suggestionsUrl({ order: 'suggested' })).toBe('/api/suggestions?order=suggested')
+    expect(suggestionsUrl({ pasted: true })).toBe('/api/suggestions?pasted=true')
+    expect(filterOf(new URLSearchParams('pasted=true')).pasted).toBe(true)
+    expect(describeWatched({ ...lathe, pasted: '2026-11-12T05:00:00+00:00', platform: 'iplayer', total_videos: 3 })).toMatch(/^Pasted .*2026 · 3 on iPlayer$/)
+    expect(describePasted({ found: [], already: [], problems: [] })).toBe('Nothing new to suggest.')
+    expect(describePasted({ found: [{ input: 'a', platform: 'iplayer', channel_id: 'b1', title: 'A' }], already: [{ input: 'b', title: 'B' }], problems: [{ input: 'c', error: 'No.' }] })).toMatch(/^Added 1\ssuggestion \(1 on iPlayer\)\. Already followed: B\. Not found: “c” \(No\)\.$/)
     const s = suggestionSummary()
     expect(groupChoices({ ...s, ungrouped: 0 }).map(c => c.value)).toEqual(['', '1', '2'])
     expect(groupChoices({ ...s, groups: [{ id: 3, name: 'Empty', named: false, channels: 0 }] }).map(c => c.value)).toEqual(['', 'none'])
-    expect(filterOf(new URLSearchParams('group=2&topic=Music&kids=yes&view=dismissed'))).toEqual({ group: '2', topic: 'Music', kids: 'yes', dismissed: true, order: undefined })
+    expect(filterOf(new URLSearchParams('group=2&topic=Music&kids=yes&view=dismissed'))).toEqual({ group: '2', topic: 'Music', kids: 'yes', dismissed: true, order: undefined, pasted: undefined })
     const names = new Map([[1, 'Making and mending']])
     expect([suggestions[0], suggestions[1], walks].map(x => placeOf(x, names))).toEqual(['Making and mending · Hobby, Vehicle', 'Entertainment, Film', ''])
     expect(suggestionsUrl({})).toBe('/api/suggestions')

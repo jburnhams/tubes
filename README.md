@@ -30,6 +30,7 @@ Tubes keeps its own tables (the library, cache copies, plays) in a database thro
 | `tubes channels` / `tubes remove <channel>` | lists the channels with their state / removes one and its videos |
 | `tubes history [import, sync, refresh, remove]` | brings in a watch history that channels are suggested from (Admin > Suggestions) |
 | `tubes related [--all] [-v]` | asks YouTube which channels the followed and most watched ones point at (watch pages' next column, featured channels), each again after a week, and suggests them |
+| Admin > Suggestions: Paste channels to follow | YouTube links, @handles, iPlayer programme or episode links, or names (looked up on both), one a line, become suggestions to follow |
 | `tubes fetch <id>` | fetches one video into the cache now |
 | `tubes cache` / `tubes evict [--dry-run]` | shows the cache with each copy's score / trims it |
 | `tubes set [key [value]]` | shows or changes a setting (`default` resets one) |
