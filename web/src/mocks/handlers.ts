@@ -8,7 +8,7 @@
 // `states: { error: [videosError] }` in the visual config.
 import { delay, http, HttpResponse } from 'msw'
 import { cursorOf, paths, type CacheItem, type Channel, type HistorySource, type Pasted, type Settings, type Stream, type Suggestion, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Video, type VideoPage } from '../api'
-import { cacheItems, channelHistory, channels, defaultSettings, episodes, programme, historyDays, historySources, historyStats, library, libraryNew, longChannel, pasteable, relatedStatus, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
+import { cacheItems, channelHistory, channels, defaultSettings, kindsFor, sampleSegments, episodes, programme, historyDays, historySources, historyStats, library, libraryNew, longChannel, pasteable, relatedStatus, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
 
 /** What the mock server holds. Writes change it, so a test can pin a copy and see it pinned. */
 export const mock = {
@@ -125,6 +125,9 @@ export const handlers = [
   http.get(at(paths.health), () => HttpResponse.json({ ok: true, version: systemStatus.version })),
   http.get(at(paths.system), () => HttpResponse.json({ ...systemStatus, cache_dir: mock.settings.cache_dir, library: { ...library, synced: mock.synced } })),
   http.get(at(paths.settings), () => HttpResponse.json(mock.settings)),
+  http.get(at(paths.skipping), () => HttpResponse.json(kindsFor(mock.settings))),
+  // The first video has an intro, a sponsor read and end cards; the rest have nothing to skip.
+  http.get(at('/api/videos/:id/segments'), ({ params }) => HttpResponse.json({ segments: params.id === 'wo000000000' ? sampleSegments : [], categories: kindsFor(mock.settings), error: null })),
   http.put(at(paths.settings), async ({ request }) => {
     const body = (await request.json()) as Partial<Settings>
     for (const k of ['data_dir', 'cache_dir'] as const) if (body[k] !== undefined && !/^[/~]/.test(body[k])) return refused(`${k} must be an absolute path`)

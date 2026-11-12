@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
-import { episodes, streams, videos } from '../../src/mocks/fixtures'
+import { episodes, kindsFor, streams, videos } from '../../src/mocks/fixtures'
 import { channelsLoading, playFails, playLoading, shuffleError, videoLoading, withProgramme } from '../../src/mocks/handlers'
-import { openApp, screen, waitFor, within } from '../utils/render'
+import { act, openApp, screen, waitFor, within } from '../utils/render'
 import { mock, server } from '../utils/server'
 
 const id = 'wo000000000'
@@ -141,5 +141,73 @@ describe('Watch an iPlayer episode', () => {
     openApp(`/watch/${e.id}`)
     expect(await screen.findByText(/^No longer offered/)).toBeInTheDocument()
     expect(screen.queryByText('On YouTube')).not.toBeInTheDocument()
+  })
+})
+
+describe('Skipping parts of a video', () => {
+  const video = () => screen.getByLabelText('Building a bird box', { selector: 'video' }) as HTMLVideoElement
+  const playTo = (t: number) => act(() => { Object.defineProperty(video(), 'currentTime', { configurable: true, writable: true, value: t }); video().dispatchEvent(new Event('timeupdate')) })
+
+  it('draws the parts on a timeline, asks for an intro and skips a sponsor read with Undo', async () => {
+    const { user } = openApp(`/watch/${id}`)
+    expect(await screen.findByRole('img', { name: /^Parts that can be skipped: Intro 0:00–0:12, Sponsor 1:00–1:35, Credits and end cards 6:00–6:40$/ })).toBeInTheDocument()
+    playTo(3)
+    await user.click(screen.getByRole('button', { name: 'Skip intro ›' }))
+    expect(video().currentTime).toBe(12)
+    playTo(5)                                                                       // back in the intro: it was skipped once, so no button again
+    expect(screen.queryByRole('button', { name: 'Skip intro ›' })).not.toBeInTheDocument()
+    playTo(61)
+    expect(video().currentTime).toBe(95)
+    expect(screen.getByRole('status', { name: '' })).toHaveTextContent('Skipped sponsor')
+    await user.click(screen.getByRole('button', { name: 'Undo' }))
+    expect(video().currentTime).toBe(60)
+    playTo(62)                                                                      // let play after Undo
+    expect(video().currentTime).toBe(62)
+  })
+
+  it('mutes a part whose action is mute, and unmutes after it', async () => {
+    server.use(http.get('*/api/videos/:id/segments', () => HttpResponse.json({ segments: [{ category: 'sponsor', start: 10, end: 20, action: 'mute' }], categories: kindsFor(mock.settings), error: null })))
+    const { user } = openApp(`/watch/${id}`)
+    await screen.findByRole('img', { name: /Sponsor 0:10–0:20/ })
+    playTo(11)
+    expect(video().muted).toBe(true)
+    expect(screen.getByText('Muted sponsor')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Undo' }))
+    expect(video().muted).toBe(false)
+    playTo(12); playTo(25)
+    expect(video().muted).toBe(false)
+  })
+
+  it('unmutes once a muted part ends, and the notice goes after a while', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      server.use(http.get('*/api/videos/:id/segments', () => HttpResponse.json({ segments: [{ category: 'sponsor', start: 10, end: 20, action: 'mute' }], categories: kindsFor(mock.settings), error: null })))
+      openApp(`/watch/${id}`)
+      await screen.findByRole('img', { name: /Sponsor/ })
+      playTo(11)
+      expect(video().muted).toBe(true)
+      act(() => { Object.defineProperty(video(), 'duration', { configurable: true, value: 40 }); video().dispatchEvent(new Event('durationchange')) })
+      expect(screen.getByRole('img', { name: /Sponsor/ }).firstElementChild).toHaveStyle({ left: '25%' })     // placed by the picture's own length
+      act(() => { Object.defineProperty(video(), 'duration', { configurable: true, value: NaN }); video().dispatchEvent(new Event('durationchange')) })
+      playTo(21)
+      expect(video().muted).toBe(false)
+      act(() => { vi.advanceTimersByTime(6000) })
+      expect(screen.queryByText('Muted sponsor')).not.toBeInTheDocument()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('plays on with nothing drawn when the segments cannot be read', async () => {
+    server.use(http.get('*/api/videos/:id/segments', () => new HttpResponse(null, { status: 503 })))
+    openApp(`/watch/${id}`)
+    await screen.findByRole('alert')
+    expect(screen.queryByRole('img', { name: /Parts that can be skipped/ })).not.toBeInTheDocument()
+  })
+
+  it('draws nothing when there is nothing to skip, or the length is not known', async () => {
+    server.use(http.get('*/api/videos/:id/segments', () => HttpResponse.json({ segments: [{ category: 'filler', start: 1, end: 2, action: 'skip' }], categories: kindsFor(mock.settings), error: null })))
+    openApp(`/watch/${id}`)
+    expect(await screen.findByRole('heading', { level: 1, name: 'Building a bird box' })).toBeInTheDocument()
+    await screen.findByRole('alert')
+    expect(screen.queryByRole('img', { name: /Parts that can be skipped/ })).not.toBeInTheDocument()
   })
 })

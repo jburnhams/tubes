@@ -1,5 +1,11 @@
 # Progress log
 
+## 2026-11-12: skipping parts of a video (SponsorBlock's categories, iPlayer mapped onto them)
+
+- Asked for: generic skipping, with SponsorBlock's categories as the list, iPlayer's own skip points mapped onto it, the segments drawn on the timeline, a Skip button over the picture, and Off / Ask / Skip per category in admin.
+- `segments.py`: YouTube videos ask SponsorBlock by the first 4 hex digits of the id's SHA-256 (its privacy-preserving lookup; checked from the home server: answers in well under a second, 404 when nothing is known); only `skip` and `mute` segments of the nine skippable categories are kept. iPlayer episodes use the version's `interactions` (skip, intro: `show_from` to `skip_to`; recap mapped to `preview`) and `credits_start` (to the end: `outro`). Kept in `segments` and asked again after a day (an hour after a failure), with `GET /api/videos/{id}/segments`. Settings `skip_<category>` (off, ask, auto): sponsor auto; self-promotion, subscribe reminders, intros, credits and previews ask; hooks, filler and non-music off.
+- Player: the parts not off are drawn on a strip under the picture in SponsorBlock's colours; an Ask part shows "Skip intro ›" over the picture while it plays; an auto part is skipped (a mute part muted) as it starts, with "Skipped sponsor · Undo" for 5 s. A part skipped or let play is not acted on again in that viewing. Admin > Settings > Skipping: one ChoiceGroup per category.
+
 ## 2026-11-12: iPlayer suggestions from what is followed and watched
 
 - Asked for: the iPlayer counterpart of the related-channel suggestions, clustering on iPlayer's metadata against what is followed and watched. iPlayer offers no "similar" data (ibl's recommendation routes all 404, an episode page's related block is the same programme's episodes), so likeness is computed here.

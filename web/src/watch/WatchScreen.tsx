@@ -16,11 +16,12 @@ import Hls from 'hls.js'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { HttpError, describeHttpError, useAsyncAction, useLoad } from 'strata-react'
-import { api, describeError, keys, paths, withBase, type Stream, type VideoDetail } from '../api'
+import { api, describeError, keys, paths, withBase, type Segment, type SegmentKind, type Stream, type VideoDetail } from '../api'
 import { attach, type HlsClass } from '../player'
 import { Avatar, RowsSkeleton, VideoRow, useChannelsById } from './cards'
 import { countFor, iplayerText, runningTime, viewsAndAge } from './format'
 import { reportMissing, useHidden } from './missing'
+import { at, modesOf, place, segmentKey, shown, skippedText, skipText } from './skip'
 import { Shown } from './Shown'
 
 /** How often the copy's progress is read while it is still arriving. */
@@ -44,14 +45,68 @@ export function savedText(s: Stream, duration: number | null): string {
   return duration ? `Fetching: ${runningTime(s.seconds)} of ${runningTime(duration)} so far` : `Fetching: ${runningTime(s.seconds)} so far`
 }
 
-export function Player({ src, title }: { src: string; title: string }) {
+/** The player, with the parts that can be skipped (skip.ts): an "ask" part shows a Skip button over the picture while it plays, an "auto"
+ *  part is skipped (or muted) as it starts with an Undo for a few seconds, and every part not off is drawn on a strip under the picture. */
+export function Player({ src, title, segments, kinds, length }: { src: string; title: string; segments: Segment[]; kinds: SegmentKind[]; length: number | null }) {
   const ref = useRef<HTMLVideoElement>(null)
   const [problem, setProblem] = useState<string>()
+  const [t, setT] = useState(0)
+  const [duration, setDuration] = useState<number | null>(length)
+  const [notice, setNotice] = useState<Segment>()
+  const done = useRef(new Set<string>())                    // parts skipped, or let play, once: never acted on again
+  const muted = useRef<Segment | undefined>(undefined)
   useEffect(() => attach(ref.current!, src, Hls as unknown as HlsClass, setProblem), [src])
+  const parts = shown(segments, modesOf(kinds))
+  const modes = modesOf(kinds)
+  const now = at(parts, t)
+  useEffect(() => {
+    const video = ref.current!
+    if (muted.current && (!now || segmentKey(now) !== segmentKey(muted.current))) { video.muted = false; muted.current = undefined }
+    if (!now || modes[now.category] !== 'auto' || done.current.has(segmentKey(now))) return
+    done.current.add(segmentKey(now))
+    if (now.action === 'mute') { video.muted = true; muted.current = now } else video.currentTime = now.end
+    setNotice(now)
+  }, [now, modes])
+  useEffect(() => {
+    if (!notice) return
+    const timer = setTimeout(() => setNotice(undefined), NOTICE_MS)
+    return () => clearTimeout(timer)
+  }, [notice])
+  const asking = now && modes[now.category] === 'ask' && !done.current.has(segmentKey(now)) ? now : undefined
+  const skip = (s: Segment) => { done.current.add(segmentKey(s)); ref.current!.currentTime = s.end; setT(s.end) }
+  const undo = (s: Segment) => { setNotice(undefined); if (s.action === 'mute') { ref.current!.muted = false; muted.current = undefined } else { ref.current!.currentTime = s.start; setT(s.start) } }
+  const overlay = 'absolute right-3 bottom-16 rounded-tube-sm bg-tube-badge px-4 py-2 text-tube-sm font-medium text-tube-on-screen'
   return (
-    <div className="relative">
-      <video ref={ref} controls autoPlay playsInline aria-label={title} className="aspect-video w-full rounded-tube bg-tube-screen" />
-      {problem && <p role="alert" className="absolute inset-x-0 bottom-14 mx-auto w-fit max-w-11/12 rounded-tube-sm bg-tube-badge px-3 py-2 text-center text-tube-sm text-tube-on-screen">{problem}</p>}
+    <div className="grid gap-1">
+      <div className="relative">
+        <video ref={ref} controls autoPlay playsInline aria-label={title} className="aspect-video w-full rounded-tube bg-tube-screen"
+          onTimeUpdate={e => setT(e.currentTarget.currentTime)} onDurationChange={e => Number.isFinite(e.currentTarget.duration) && setDuration(e.currentTarget.duration)} />
+        {problem && <p role="alert" className="absolute inset-x-0 bottom-14 mx-auto w-fit max-w-11/12 rounded-tube-sm bg-tube-badge px-3 py-2 text-center text-tube-sm text-tube-on-screen">{problem}</p>}
+        {asking && <button type="button" onClick={() => skip(asking)} className={`${overlay} hover:opacity-85`}>{skipText(asking, kinds)} ›</button>}
+        {notice && !asking && (
+          <p role="status" className={`${overlay} flex items-center gap-3`}>
+            {skippedText(notice, kinds)}
+            <button type="button" onClick={() => undo(notice)} className="font-bold underline underline-offset-2">Undo</button>
+          </p>
+        )}
+      </div>
+      <Timeline parts={parts} kinds={kinds} duration={duration} />
+    </div>
+  )
+}
+
+const NOTICE_MS = 5000
+
+/** The skippable parts as coloured marks along a strip the width of the picture (in SponsorBlock's colours), named for screen readers. */
+function Timeline({ parts, kinds, duration }: { parts: Segment[]; kinds: SegmentKind[]; duration: number | null }) {
+  const placed = parts.map(s => [s, place(s, duration)] as const).filter((x): x is readonly [Segment, { left: number; width: number }] => !!x[1])
+  if (!placed.length) return null
+  const label = (s: Segment) => `${kinds.find(k => k.id === s.category)!.label} ${runningTime(s.start)}–${runningTime(s.end)}`   // a part is only shown for a kind the server named
+  return (
+    <div role="img" aria-label={`Parts that can be skipped: ${placed.map(([s]) => label(s)).join(', ')}`} className="relative mx-3 h-1.5 overflow-hidden rounded-full bg-tube-chip">
+      {placed.map(([s, p]) => (
+        <span key={segmentKey(s)} title={label(s)} className="absolute inset-y-0" style={{ left: `${p.left}%`, width: `max(${p.width}%, 2px)`, background: `var(--tube-seg-${s.category}, var(--tube-quiet))` }} />
+      ))}
     </div>
   )
 }
@@ -73,6 +128,7 @@ function Stage({ v }: { v: VideoDetail }) {
     await queryClient.resetQueries({ queryKey: keys.play(v.id) })
     await queryClient.invalidateQueries({ queryKey: keys.stream(v.id) })
   }, { describeError })
+  const skips = useLoad({ queryKey: keys.segments(v.id), queryFn: () => api.segments(v.id), staleTime: Infinity })   // what can be skipped: nothing (not an error) until it answers
   const s = play.status !== 'ready' ? undefined : stream.status === 'ready' ? stream.data : play.data
   const failed = s?.state === 'failed'
   useEffect(() => { if (failed) reportMissing(v.id) }, [failed, v.id])
@@ -98,7 +154,7 @@ function Stage({ v }: { v: VideoDetail }) {
           </div>
         </Frame>
       ) : s.playable ? (
-        <Player src={withBase(paths.playlist(v.id))} title={v.title} />
+        <Player src={withBase(paths.playlist(v.id))} title={v.title} segments={skips.status === 'ready' ? skips.data.segments : []} kinds={skips.status === 'ready' ? skips.data.categories : []} length={v.duration} />
       ) : (
         <Frame><p role="status" className="text-tube-base opacity-80">{waitingText(s)}</p></Frame>
       )}
