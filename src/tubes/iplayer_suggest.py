@@ -146,6 +146,7 @@ def score(now=None):
     with db.connect() as con:
         programmes = db.rows(con.execute('SELECT id, title, synopsis, categories, label, network, kind, episodes, thumbnail FROM bbc_programmes'))
         followed = {r[0] for r in con.execute('SELECT id FROM channels WHERE follow = ?', (True,))}
+        dismissed = {r[0] for r in con.execute("SELECT channel_id FROM suggestions WHERE platform = 'iplayer' AND dismissed IS NOT NULL")}   # kept as dismissed, but they take no place
     by_id = {p['id']: p for p in programmes}
     weight, bridge = sources()
     vec = vectors(programmes)
@@ -157,7 +158,7 @@ def score(now=None):
         srcs['youtube'] = (BRIDGE, {f: x / norm for f, x in b.items()})
     found = {}
     for p in programmes:
-        if p['id'] in followed or p['id'] in weight or p['kind'] == 'episode' or not srcs: continue
+        if p['id'] in followed or p['id'] in weight or p['id'] in dismissed or p['kind'] == 'episode' or not srcs: continue
         likes = sorted(((w * cosine(vec[p['id']], v), s) for s, (w, v) in srcs.items()), reverse=True)
         likes = [(x, s) for x, s in likes if x > 0]
         if not likes: continue

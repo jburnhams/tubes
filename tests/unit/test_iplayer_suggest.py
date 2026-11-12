@@ -107,3 +107,14 @@ def test_tubes_related_runs_iplayer_too(bbc, capsys, monkeypatch):
 def test_suggestions_are_taken_in_turn_from_each_source():
     found = {'a1': (0.9, [(0.9, 'A')], 1), 'a2': (0.8, [(0.8, 'A')], 1), 'a3': (0.7, [(0.7, 'A')], 1), 'b1': (0.5, [(0.5, 'B'), (0.4, 'A')], 2)}
     assert [pid for pid, _ in s.spread(found, 3)] == ['a1', 'b1', 'a2'] and s.spread({}, 3) == []
+
+
+def test_a_dismissed_programme_takes_no_place(bbc, monkeypatch):
+    catalogue.add(f'https://www.bbc.co.uk/iplayer/episodes/{OCEAN}'); s.run(NOW)
+    monkeypatch.setattr(s, 'LIMIT', 1)
+    s.score(NOW)
+    first = [x['channel_id'] for x in history.suggestions(order='suggested')['items'] if x['platform'] == 'iplayer']
+    history.dismiss(first[0], now=NOW); s.score(NOW)
+    after = [x['channel_id'] for x in history.suggestions(order='suggested')['items'] if x['platform'] == 'iplayer']
+    assert len(first) == 1 and len(after) == 1 and after != first                                     # the next best takes the place
+    assert [x['channel_id'] for x in history.suggestions(dismissed=True)['items']] == first              # and the dismissal is kept
