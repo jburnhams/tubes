@@ -15,6 +15,9 @@
   history_url      a database that keeps a viewing history (an SQLAlchemy URL, such as `postgresql+psycopg:///mydb`; default empty: none).
   history_table    the table or view in it to read, optionally with its schema (`schema.table`), with the columns account, at, video_id,
                    title, channel_id and channel_name (history.py `sync_database`). `tubes history sync` copies it in, one source per account.
+  skip_<category>  what the player does in each kind of segment (segments.py: SponsorBlock's categories, which iPlayer's intro and
+                   credits are mapped onto): `off` (nothing, not even drawn), `ask` (a Skip button while it plays) or `auto` (skipped, with
+                   Undo). Defaults: sponsor auto; self-promotion, subscribe reminders, intros, credits and previews ask; the rest off.
 
 The environment variables TUBES_DATA, TUBES_CACHE, TUBES_YTDLP, TUBES_FFMPEG, TUBES_HISTORY_URL and TUBES_HISTORY_TABLE override the file (handy for tests and one-off runs). The YouTube key
 (YOUTUBE_API_KEY) is only ever in the environment."""
@@ -38,6 +41,10 @@ SPEC = {
     'history_url': ('', str, 'TUBES_HISTORY_URL'),
     'history_table': ('', str, 'TUBES_HISTORY_TABLE'),
 }
+# The kinds of segment the player can skip, SponsorBlock's own categories (https://wiki.sponsor.ajay.app/w/Segment_Categories), with their default.
+SKIP_DEFAULTS = dict(sponsor='auto', selfpromo='ask', interaction='ask', intro='ask', outro='ask', preview='ask', hook='off', filler='off', music_offtopic='off')
+SKIP_MODES = ('off', 'ask', 'auto')
+SPEC.update({f'skip_{c}': (mode, str, None) for c, mode in SKIP_DEFAULTS.items()})
 KNOWN = tuple(SPEC)
 POSITIVE = ('cache_limit_gb', 'max_height', 'half_life_days')
 
@@ -67,6 +74,10 @@ def parse(key, value):
     if key in ('data_dir', 'cache_dir'):
         v = str(value).strip()
         if not os.path.isabs(os.path.expanduser(v)): raise SettingError(f'{key} must be an absolute path')
+        return v
+    if key.startswith('skip_'):
+        v = str(value).strip().lower()
+        if v not in SKIP_MODES: raise SettingError(f"{key} must be {', '.join(SKIP_MODES[:-1])} or {SKIP_MODES[-1]}")
         return v
     if kind is str: return str(value).strip()
     try: v = kind(value)
