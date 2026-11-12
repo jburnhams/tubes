@@ -296,7 +296,7 @@ function Answers({ items, total, dismissedView, summary, order }: { items: Sugge
           <>
           <div className="grid gap-2 sm:flex sm:items-start sm:gap-3">
             <div className="flex min-w-0 flex-1 items-start gap-3">
-            <Thumbnail src={s.thumbnail} alt="" missing="None" className="w-12 shrink-0 rounded-full" />
+            <Thumbnail src={s.thumbnail} alt="" missing="None" eager={rows.indexOf(s) < 3} className="w-12 shrink-0 rounded-full" />  {/* the first few at once: below the paste box on a phone they sat on the lazy-load edge, loading or not by timing */}
             <div className="grid min-w-0 flex-1 gap-1">
               <a href={withBase(s.link)} target="_blank" rel="noreferrer" className="truncate type-body font-medium hover:underline">{s.title}</a>
               <p className="type-body-sm text-muted-foreground tabular-nums">{describeWatched(s)}</p>
@@ -371,7 +371,7 @@ export function PasteForm() {
   return (
     <form onSubmit={onSubmit} noValidate aria-labelledby="paste" className="grid max-w-xl gap-3">
       <h2 id="paste" className="type-heading">Paste channels to follow</h2>
-      <Field label="Channels and programmes" hint="One a line: YouTube links or @handles, iPlayer programme or episode links, or names (looked up on both)." error={problem ?? (send.phase === 'error' ? send.error : undefined)}>
+      <Field label="Channels and programmes" hint="One a line: YouTube channel, video or playlist links or @handles, iPlayer programme or episode links, or names (looked up on both)." error={problem ?? (send.phase === 'error' ? send.error : undefined)}>
         <Textarea value={text} onChange={e => setText(e.target.value)} rows={4} placeholder={'https://www.youtube.com/@…\nhttps://www.bbc.co.uk/iplayer/episodes/…\nA programme name'} />
       </Field>
       <div className="flex flex-wrap items-center gap-3">

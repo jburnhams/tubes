@@ -1,5 +1,8 @@
 # Progress log
 
+## 2026-11-12: playlists pasted into Suggestions
+
+- Asked for: playlist links in the Suggestions paste, each video's channel suggested. `youtube.playlist_id` reads `/playlist?list=` and a watch link played from a playlist (`&list=`); a mix (`RD…` on a watch link) is made for one viewer and the Data API cannot read it, so that link stays its video. `paste._playlist` reads the first 200 videos (`playlistItems`, then `videos` for their owners, then `channels`: about a dozen quota units), drops private and removed ones, and suggests the channels with the most videos in it first; followed ones are said as before. A missing or private playlist (404) and one with no videos left are said on its line. Library's Add still takes channels and videos only.
 ## 2026-11-12: Admin chooses which videos are shown
 
 - Asked for: config in Admin to keep videos off the watching side by length (shortest, longest) and by live status. Admin > Settings has a Shown videos tab (`?tab=shown`): shortest and longest length in minutes (empty for no limit) and a Live streams choice, either leave out streams live now or scheduled (the old fixed rule, the default) or every stream, past ones and premieres too. Showing a stream that is live now is not offered: a running one cannot be fetched whole and a scheduled one cannot be played.
