@@ -1,5 +1,5 @@
 """A stand-in for BBC iPlayer's two services (iplayer.py): ibl (programmes, their episodes paged, one episode) and the mediaselector, plus
-the HLS playlists it points at. A real HTTP server on localhost, answering from what a test puts in it. Use through the `fake_iplayer`
+the HLS playlists it points at, and ibl's `new-search` (fuzzy: any word of the query in a programme's or episode's title). A real HTTP server on localhost, answering from what a test puts in it. Use through the `fake_iplayer`
 fixture (tests/conftest.py), which points TUBES_IPLAYER_API and TUBES_MEDIASELECTOR at it:
 
     fake_iplayer.programme('b0000001', 'Harbour Lights', episodes=3)       # three episodes, newest first, Series 1: 1-3
@@ -80,6 +80,12 @@ class FakeIplayer:
     # The answers.
 
     def answer(self, path, q, base):
+        if path == '/ibl/v1/new-search':                                     # fuzzy, as iPlayer's is: any word of the query in a title
+            words = [w for w in q.get('q', '').lower().split() if w]
+            hit = lambda t: any(w in t.lower() for w in words)
+            progs = [dict(p, type='programme') for p in self.programmes.values() if hit(p['title'])]
+            eps = [e for e in self.episodes.values() if hit(e['title'])]
+            return 200, 'application/json', dict(version='1.0', new_search=dict(query=q.get('q'), results=progs + eps))
         m = re.match(r'^/ibl/v1/programmes/([^/]+)/episodes$', path)
         if m:
             ids = self.order.get(m[1], []); size, page = int(q.get('per_page', 20)), int(q.get('page', 1))

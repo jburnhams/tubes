@@ -183,7 +183,7 @@ export interface HistorySource {
   last: string
 }
 
-/** `GET /api/suggestions`: a channel from the watch history the library could take in. */
+/** `GET /api/suggestions`: a channel the library could take in, from the watch history or pointed at by related channels. */
 export interface Suggestion {
   channel_id: string
   title: string
@@ -207,6 +207,25 @@ export interface Suggestion {
   dismissed: string | null
   /** The library holds some of its videos without following it. */
   in_library: boolean
+  /** How many of the followed channels and the history's most watched ones point at it (their watch pages list its videos, or they feature it). */
+  suggested_by: number
+  /** Those pointers added up, each by the share of its watch pages that listed this channel: the suggested order's tie-break. */
+  related_score: number
+  /** Up to three of the channels pointing at it, the strongest first. */
+  suggested_from: string[]
+  /** Where it is: a YouTube channel, or an iPlayer programme (which only comes in pasted). */
+  platform: string
+  /** When someone pasted it into the page; null for one from the history or related channels only. */
+  pasted: string | null
+  /** Its page on YouTube or iPlayer: where its title goes, and what Follow adds. */
+  link: string
+}
+
+/** `POST /api/suggestions/paste`: what a pasted list named. `found` are now suggested, `already` are followed, `problems` say why a line named nothing. */
+export interface Pasted {
+  found: { input: string; platform: string; channel_id: string; title: string }[]
+  already: { input: string; title: string }[]
+  problems: { input: string; error: string }[]
 }
 
 export interface SuggestionPage { items: Suggestion[]; total: number }
@@ -227,10 +246,20 @@ export interface SuggestionSummary {
   configured: boolean
   /** A history database is set on the server: Regroup reads it again first. */
   database?: boolean
+  /** Open channels a related channel points at, and open channels with no watches (only pointed at). */
+  suggested: number
+  unwatched: number
+  /** Open channels pasted in. */
+  pasted: number
+  /** How far asking YouTube about related channels has got (`tubes related` on the server's timer, each channel again after a week). */
+  related: RelatedStatus
 }
 
+/** Of the followed and most watched channels (`sources`), how many YouTube was asked about, how many are due again, and how many failed last time. */
+export interface RelatedStatus { sources: number; asked: number; due: number; failed: number; last: string | null }
+
 /** What the list is filtered by; each lives in the page's URL. */
-export interface SuggestionFilter { group?: string; topic?: string; kids?: string; dismissed?: boolean }
+export interface SuggestionFilter { group?: string; topic?: string; kids?: string; dismissed?: boolean; order?: string; pasted?: boolean }
 
 export function suggestionsUrl(f: SuggestionFilter): string {
   const q = new URLSearchParams()
@@ -238,6 +267,8 @@ export function suggestionsUrl(f: SuggestionFilter): string {
   if (f.topic) q.set('topic', f.topic)
   if (f.kids === 'yes' || f.kids === 'no') q.set('kids', String(f.kids === 'yes'))
   if (f.dismissed) q.set('dismissed', 'true')
+  if (f.order === 'suggested') q.set('order', 'suggested')
+  if (f.pasted) q.set('pasted', 'true')
   const s = q.toString()
   return s ? `${paths.suggestions}?${s}` : paths.suggestions
 }
@@ -346,6 +377,7 @@ export const paths = {
   suggestionsSummary: '/api/suggestions/summary',
   suggestionsRefresh: '/api/suggestions/refresh',
   suggestionsImport: '/api/suggestions/import',
+  suggestionsPaste: '/api/suggestions/paste',
   suggestion: (id: string) => `/api/suggestions/${encodeURIComponent(id)}`,
   suggestionVideos: (id: string) => `/api/suggestions/${encodeURIComponent(id)}/videos`,
   suggestionGroup: (id: number) => `/api/suggestions/groups/${id}`,
@@ -368,7 +400,7 @@ export const keys = {
   cache: ['cache'],
   suggestions: ['suggestions'],
   history: (f: HistoryFilter) => ['suggestions', 'history', f.start ?? '', f.end ?? '', f.source ?? ''],
-  suggestionList: (f: SuggestionFilter) => ['suggestions', 'list', f.group ?? '', f.topic ?? '', f.kids ?? '', f.dismissed ? 'dismissed' : 'open'],
+  suggestionList: (f: SuggestionFilter) => ['suggestions', 'list', f.group ?? '', f.topic ?? '', f.kids ?? '', f.dismissed ? 'dismissed' : 'open', f.order === 'suggested' ? 'suggested' : 'watched', f.pasted ? 'pasted' : 'all'],
   suggestionSummary: ['suggestions', 'summary'],
   overview: (id: string) => ['suggestions', 'overview', id],
 } as const
@@ -423,6 +455,7 @@ export const api = {
   suggestions: (f: SuggestionFilter) => fetchJson<SuggestionPage>(withBase(suggestionsUrl(f))),
   suggestionSummary: () => fetchJson<SuggestionSummary>(withBase(paths.suggestionsSummary)),
   refreshSuggestions: () => callJson<Refreshed & { summary: SuggestionSummary }>(withBase(paths.suggestionsRefresh), { method: 'POST' }),
+  pasteSuggestions: (text: string) => callJson<Pasted>(withBase(paths.suggestionsPaste), send('POST', { text })),
   importHistory: (source: string, text: string) => callJson<{ source: string; watches: number; first: string; last: string; refresh: Refreshed }>(withBase(paths.suggestionsImport), send('POST', { source, text })),
   dismiss: (id: string, dismissed: boolean) => callJson<Suggestion>(withBase(paths.suggestion(id)), send('PUT', { dismissed })),
   /** Add the channel's watched videos to the library, without following it. */

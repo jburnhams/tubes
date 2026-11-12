@@ -1,19 +1,19 @@
 import { describe, expect, it, vi } from 'vitest'
-import { addWatchedFails, dismissFails, followFails, refreshQuota, renameFails, suggestionsError, suggestionsFirstVisit, suggestionsNoKey, suggestionsTruncated, summaryError } from '../../src/mocks/handlers'
+import { addWatchedFails, dismissFails, followFails, pasteFails, refreshQuota, relatedNotAsked, renameFails, suggestionsError, suggestionsFirstVisit, suggestionsNoKey, suggestionsRelatedOnly, suggestionsTruncated, summaryError } from '../../src/mocks/handlers'
 import { act, openApp, screen, waitFor, within } from '../utils/render'
 import { mock, server } from '../utils/server'
 
 const list = (name = 'Channels to consider, best first') => screen.findByRole('list', { name })
-const titles = () => within(screen.getByRole('list', { name: /best first/ })).getAllByRole('listitem').map(li => within(li).getAllByRole('link')[0].textContent)
+const titles = () => within(screen.getByRole('list', { name: / first$/ })).getAllByRole('listitem').map(li => within(li).getAllByRole('link')[0].textContent)
 const item = (name: string) => screen.getAllByRole('listitem').find(li => within(li).queryByRole('link', { name }))!
 
 describe('Suggestions', () => {
   it('says how many channels are left to consider, and lists them best first', async () => {
     openApp('/admin/suggestions')
-    expect(await screen.findByText(/^6\schannels from 2\shistories \(home, work\) to consider, out of 5,498\swatches\. So far 1 dismissed\.$/)).toBeInTheDocument()
+    expect(await screen.findByText(/^8\schannels from 2\shistories \(home, work\) to consider, out of 5,498\swatches\. 4 of them are pointed at by related channels \(2 never watched\), asked about last on 8 Nov 2026\. 1\schannel could not be read last time\. So far 1 dismissed\.$/)).toBeInTheDocument()
     await list()
-    expect(titles()).toEqual(['Bike Repairs', 'Puppet Theatre', 'Model Railways', 'Garden Birds', 'Counting Songs', 'Old Synth Sounds'])
-    expect(screen.getByText(/^6\schannels, best first\.$/)).toBeInTheDocument()
+    expect(titles()).toEqual(['Bike Repairs', 'Puppet Theatre', 'Model Railways', 'Garden Birds', 'Counting Songs', 'Old Synth Sounds', 'Lathe Turning', 'Canal Boats'])
+    expect(screen.getByText(/^8\schannels, best first\.$/)).toBeInTheDocument()
     const bike = item('Bike Repairs')
     expect(within(bike).getByText(/^412\swatches · 380\svideos · last .*2026 · 2,900 on YouTube$/)).toBeInTheDocument()
     expect(within(bike).getByText('Making and mending · Hobby, Vehicle')).toBeInTheDocument()
@@ -21,6 +21,13 @@ describe('Suggestions', () => {
     expect(within(item('Puppet Theatre')).getByText('Made for kids')).toBeInTheDocument()
     expect(within(item('Model Railways')).getByText('Some videos in the library')).toBeInTheDocument()
     expect(within(item('Garden Birds')).getByText(/^96\swatches · 90\svideos · last /)).toBeInTheDocument()       // no count from YouTube
+    expect(within(bike).getByText('Pointed at by Workshop Notes and Model Railways')).toBeInTheDocument()
+    expect(within(item('Garden Birds')).queryByText(/Pointed at/)).not.toBeInTheDocument()
+    const lathe = item('Lathe Turning')
+    expect(within(lathe).getByText(/^Never watched · 640 on YouTube$/)).toBeInTheDocument()
+    expect(within(lathe).getByText('Pointed at by Workshop Notes, Bike Repairs, Model Railways and 2 more')).toBeInTheDocument()
+    expect(within(lathe).queryByRole('button', { name: 'Add watched videos Lathe Turning' })).not.toBeInTheDocument()     // nothing of it was watched
+    expect(within(lathe).getByRole('button', { name: 'Follow Lathe Turning' })).toBeInTheDocument()
     expect(bike).toHaveAttribute('aria-current', 'true')
     expect(screen.getByRole('button', { name: 'Follow Bike Repairs' })).toBeInTheDocument()
   })
@@ -28,17 +35,17 @@ describe('Suggestions', () => {
   it('says when it shows only the first of many', async () => {
     server.use(suggestionsTruncated)
     openApp('/admin/suggestions')
-    expect(await screen.findByText('The first 6 of 250, best first.')).toBeInTheDocument()
+    expect(await screen.findByText('The first 8 of 250, best first.')).toBeInTheDocument()
   })
 
   it('narrows the list by group, topic and audience, with each in the URL', async () => {
     const { user, router } = openApp('/admin/suggestions')
     await list()
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Group' }), 'Making and mending (3)')
-    await waitFor(() => expect(titles()).toEqual(['Bike Repairs', 'Model Railways', 'Garden Birds']))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Group' }), 'Making and mending (4)')
+    await waitFor(() => expect(titles()).toEqual(['Bike Repairs', 'Model Railways', 'Garden Birds', 'Lathe Turning']))
     expect(router.state.location.search).toBe('?group=1')
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Group' }), 'Not in a group (1)')
-    await waitFor(() => expect(titles()).toEqual(['Old Synth Sounds']))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Group' }), 'Not in a group (2)')
+    await waitFor(() => expect(titles()).toEqual(['Old Synth Sounds', 'Canal Boats']))
     await user.selectOptions(screen.getByRole('combobox', { name: 'Group' }), 'Every group')
     await user.selectOptions(screen.getByRole('combobox', { name: 'Topic' }), 'Music (2)')
     await waitFor(() => expect(titles()).toEqual(['Counting Songs', 'Old Synth Sounds']))
@@ -185,10 +192,84 @@ describe('Suggestions', () => {
     expect(await screen.findByText(/^Regrouped, but YouTube could not be asked about the channels: YouTube refused the request \(403: quota\)\.$/)).toBeInTheDocument()
   })
 
+  it('orders by how many of your channels point at each, with the order in the URL', async () => {
+    const { user, router } = openApp('/admin/suggestions')
+    await list()
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Order' }), 'Most pointed at by your channels')
+    await list('Channels to consider, most pointed at first')
+    await waitFor(() => expect(titles().slice(0, 4)).toEqual(['Lathe Turning', 'Bike Repairs', 'Canal Boats', 'Model Railways']))
+    expect(router.state.location.search).toBe('?order=suggested')
+    expect(screen.getByText(/^8\schannels, most pointed at first\.$/)).toBeInTheDocument()
+    await user.keyboard('a')                                                    // the active one was never watched: nothing to add
+    expect(mock.suggestions.find(x => x.title === 'Lathe Turning')!.in_library).toBe(false)
+  })
+
+  it('suggests related channels before any history is imported', async () => {
+    server.use(...suggestionsRelatedOnly)
+    openApp('/admin/suggestions?order=suggested')
+    expect(await screen.findByText(/^2\schannels from related channels to consider\. What 19\sfollowed or most watched channels point at, asked about last on 8 Nov 2026\.$/)).toBeInTheDocument()
+    await list('Channels to consider, most pointed at first')
+    expect(titles()).toEqual(['Lathe Turning', 'Canal Boats'])
+    expect(screen.getByRole('heading', { name: 'Bring in a watch history' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Regroup' })).not.toBeInTheDocument()
+  })
+
+  it('says when YouTube has not been asked about related channels yet', async () => {
+    server.use(relatedNotAsked)
+    openApp('/admin/suggestions')
+    expect(await screen.findByText(/YouTube has not been asked yet which channels the 24\sfollowed or most watched channels point at; the server asks every few hours\. So far 1 dismissed\.$/)).toBeInTheDocument()
+  })
+
+  it('takes a pasted list of YouTube and iPlayer channels, and shows only those to follow', async () => {
+    const { user, router } = openApp('/admin/suggestions?view=dismissed')
+    const box = await screen.findByRole('textbox', { name: 'Channels and programmes' })
+    await user.click(screen.getByRole('button', { name: 'Add to suggestions' }))
+    expect(screen.getByText('Paste at least one link, @handle or name, one a line.')).toBeInTheDocument()
+    await user.type(box, 'https://www.youtube.com/@ropemaking{enter}Harbour Lights{enter}Bike Repairs{enter}No such thing')
+    mock.followed = ['UCsuggest000000000000001']
+    await user.click(screen.getByRole('button', { name: 'Add to suggestions' }))
+    expect(await screen.findByText(/^Added 2\ssuggestions \(1 on YouTube and 1 on iPlayer\)\. Already followed: Bike Repairs\. Not found: “No such thing” \(Neither YouTube nor iPlayer has a channel or programme by that name\)\.$/)).toBeInTheDocument()
+    expect(router.state.location.search).toBe('?pasted=true')
+    expect(box).toHaveValue('')
+    await list('Channels to consider, latest pasted first')
+    await waitFor(() => expect(titles()).toEqual(['Rope Making', 'Harbour Lights']))
+    expect(screen.getByRole('combobox', { name: 'Show' })).toHaveValue('pasted')
+    const harbour = item('Harbour Lights')
+    expect(within(harbour).getByText('iPlayer')).toBeInTheDocument()
+    expect(within(harbour).getByText(/^Pasted .*2026 · 12 on iPlayer$/)).toBeInTheDocument()
+    expect(within(harbour).getByRole('link', { name: 'Harbour Lights' })).toHaveAttribute('href', 'https://www.bbc.co.uk/iplayer/episodes/b0000001')
+    await user.click(within(harbour).getByRole('button', { name: 'Follow Harbour Lights' }))
+    await waitFor(() => expect(mock.followed).toContain('b0000001'))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Show' }), 'Everything')
+    expect(router.state.location.search).toBe('')
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Show' }), 'Pasted in (1)')     // Harbour Lights is followed now
+    expect(router.state.location.search).toBe('?pasted=true')
+  })
+
+  it('says when nothing new was pasted, and why a paste failed', async () => {
+    const { user } = openApp('/admin/suggestions')
+    await user.type(await screen.findByRole('textbox', { name: 'Channels and programmes' }), 'No such thing')
+    await user.click(screen.getByRole('button', { name: 'Add to suggestions' }))
+    expect(await screen.findByText(/^Nothing new to suggest\. Not found:/)).toBeInTheDocument()
+    server.use(pasteFails)
+    await user.click(screen.getByRole('button', { name: /^Add(ed| to suggestions)$/ }))     // it says Added for a moment after the last one
+    expect((await screen.findAllByText(/unavailable|try again/i)).length).toBeGreaterThan(0)
+  })
+
+  it('follows an iPlayer programme without a YouTube key', async () => {
+    server.use(suggestionsNoKey)
+    const { user } = openApp('/admin/suggestions?pasted=true')
+    await user.type(await screen.findByRole('textbox', { name: 'Channels and programmes' }), 'Harbour Lights')
+    await user.click(screen.getByRole('button', { name: 'Add to suggestions' }))
+    await waitFor(() => expect(titles()).toEqual(['Harbour Lights']))
+    expect(screen.getByRole('button', { name: 'Follow Harbour Lights' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Follow Bike/ })).not.toBeInTheDocument()
+  })
+
   it('says when every channel has been answered', async () => {
     mock.followed = mock.suggestions.filter(x => !x.dismissed).map(x => x.channel_id)
     openApp('/admin/suggestions')
-    expect(await screen.findByText(/^Every channel from 2\shistories \(home, work\) has been followed or dismissed\. So far 6 followed and 1 dismissed\.$/)).toBeInTheDocument()
+    expect(await screen.findByText(/^Every channel from 2\shistories \(home, work\) has been followed or dismissed\. So far 8 followed and 1 dismissed\.$/)).toBeInTheDocument()
   })
 
   it('is the import form before any history, and imports one', async () => {

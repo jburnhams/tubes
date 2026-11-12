@@ -80,3 +80,19 @@ def test_the_command_line_runs_as_a_real_process(cli_subprocess, fake_ytdlp, fak
     assert 'tubes 0.1.0' in cli_subprocess('doctor', check=False).stdout
     assert '2 new video(s)' in cli_subprocess('add', '@workshop').stdout                   # the subprocess finds the stand-in YouTube and the test's database by environment
     assert 'Workshop' in cli_subprocess('channels').stdout
+
+
+def test_related_suggests_what_the_followed_channels_watch_pages_list(cli_subprocess, client, fake_youtube):
+    # A real process, so the one-second pause between watch pages is real too: two channels with one video each keep it to about a second.
+    b, p = 'UCbbbbbbbbbbbbbbbbbbbbbb', 'UCpppppppppppppppppppppp'
+    fake_youtube.channel(A, 'Workshop', handle='@workshop', videos=1).channel(b, 'Garden', videos=1).channel(p, 'Potter', handle='@potter', topics=['Hobby'])
+    fake_youtube.watch_next(vid(A, 0), [(p, 'Potter', '@potter'), (b, 'Garden', None)]).watch_next(vid(b, 0), [(p, 'Potter', '@potter')]).featuring(b, [A])
+    cli_subprocess('add', A); cli_subprocess('add', b)
+    out = cli_subprocess('related').stdout
+    assert 'asked about 2 channel(s) (0 failed), 0 still due; 1 channel(s) suggested by them, 1 new' in out and 'YouTube asked about 1 channel(s)' in out
+    page = client.get('/api/suggestions', params=dict(order='suggested')).json()
+    assert [(i['channel_id'], i['title'], i['suggested_by'], i['suggested_from'], i['topics'], i['watches']) for i in page['items']] == [(p, 'Potter', 2, ['Workshop', 'Garden'], ['Hobby'], 0)]
+    s = client.get('/api/suggestions/summary').json()
+    assert (s['suggested'], s['unwatched'], s['related']['sources'], s['related']['asked'], s['related']['due'], s['related']['failed']) == (1, 1, 2, 2, 0, 0)
+    r = client.get('/api/suggestions', params=dict(order='newest'))
+    assert r.status_code == 400 and r.json()['detail'] == 'Order by watched or suggested, not newest.'
