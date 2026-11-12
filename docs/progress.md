@@ -1,5 +1,15 @@
 # Progress log
 
+## 2026-11-12: a failed download is tried once more
+
+- Asked for: a video failed with "unable to write data: [Errno 32] Broken pipe" and played on Play again, so retry by itself.
+- That message is yt-dlp's, written when ffmpeg has already quit and closed its pipe; ffmpeg's own reason was in the video's `fetch.log`, which goes with the folder when a fetch fails, so it was not kept. Re-running the same probe, downloads and ffmpeg by hand worked.
+- `fetcher.attempts` runs a download (`pipeline`, or `direct_pipeline` for iPlayer) up to `ATTEMPTS` (2) times; a stopped fetch is not run again, and a probe failure keeps its own handling (`choose` already probes twice). The retry reuses the probe and the same streams, so ffmpeg cuts the same segments under the same names, overwriting them while the player keeps playing; both runs append to the one `fetch.log`, with a `[tubes] attempt 1 failed: ...` line between. Only when the second fails is the copy marked failed, with that run's reason.
+- Review (Codex): a first attempt that ends short still writes `#EXT-X-ENDLIST`, so during the retry the copy read as complete, the player stopped polling, and the playlist went out cached for a day; a player that read the end would never follow the retry. Now nothing is ended while the copy is `fetching`: `cache.status` says `complete` false, `cache.served_playlist` serves the playlist without `#EXT-X-ENDLIST`, and the playlist and segments go out `no-store` (a retry rewrites them under the same names); the day's caching starts once the copy is ready.
+- Review (Codex): `outcome` read the whole `fetch.log`, and `ytdlp.last_error` prefers an `ERROR:` line, so a first attempt's yt-dlp error would be reported over the retry's own ffmpeg reason (and could feed the gone/blocked checks). `attempts` notes where each attempt's lines start (`Job.log_from`) and `outcome` reads only from there; the log keeps both.
+- Review (Codex): an attempt that stops mid-segment still writes that short last segment, which the retry rewrites whole under the same name; a player that had buffered the short one would jump a gap. While the copy is fetching, a playlist that has ended is also served without its last segment (only an attempt's final segment can be short); the whole playlist is served once the copy is ready.
+- Review (Codex): with that segment held back, an attempt that ended after one segment served an empty playlist while `status` still said playable, so the player would start on a playlist hls.js rejects. While fetching, `status` now counts what is served (`cache.summary` of `served_playlist`), so it is not playable until a segment is.
+
 ## 2026-11-12: region, language and subtitle filters
 
 - Asked for: always avoid videos YouTube will not play here ("The uploader has not made this video available in your country"), optionally leave out non-English ones, and see whether subtitles and dubbing can be filtered too, for YouTube and iPlayer.

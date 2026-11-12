@@ -12,7 +12,9 @@ working them out again: that saves 2-4 s before the first segment, and the chose
 the home server on eight library videos (2026-11-09, docs/progress.md): YouTube refuses the fast `visionos` client for most of them, yt-dlp
 falls back to `web_embedded`, and that client makes the download wait 4-10 s "as required by the site" (an ad); skipping the wait gets a 403.
 So the first segment arrives about 3-4.5 s after Play without that wait and 8-13 s with it. About one probe in eight comes back without
-usable streams (YouTube's SABR-only answer), so a probe whose streams cannot be chosen is tried once more.
+usable streams (YouTube's SABR-only answer), so a probe whose streams cannot be chosen is tried once more. A download that fails (ffmpeg or a yt-dlp
+stops early: seen once as yt-dlp's "Broken pipe" after ffmpeg had quit, 2026-11-12, when playing again worked) is run once more with
+the same probe and streams before the copy is marked failed (`attempts`).
 
 iPlayer episodes (iplayer.py) need no yt-dlp: their HLS playlists carry tokened segment addresses that ffmpeg reads itself, muxed H.264 +
 AAC in MPEG-TS, copied into the same fMP4 HLS (`direct_command`; the AAC needs `aac_adtstoasc` to leave TS). iplayer.stream picks 1080p50
@@ -27,6 +29,7 @@ from concurrent.futures import ThreadPoolExecutor
 from tubes import cache, catalogue, db, iplayer, oslib, settings, ytdlp
 
 MAX_RUNNING = 3
+ATTEMPTS = 2                 # a download that fails is run once more before the copy is marked failed (most failures are passing: a retry by hand worked)
 STALL_SECONDS = 120          # a fetch whose playlist has not grown for this long is stopped
 POLL_SECONDS = 1.0
 LOG = 'fetch.log'
@@ -43,6 +46,7 @@ class FetchError(RuntimeError):
 class Job:
     def __init__(self, video_id):
         self.video_id, self.procs, self.cancelled, self.thread = video_id, [], False, None
+        self.log_from = 0          # where this attempt's lines start in fetch.log (attempts); its reason is read from there only
 
     def stop(self, cancel=True):
         self.cancelled = self.cancelled or cancel
@@ -172,7 +176,7 @@ def _run(job, url):
         if job.cancelled: return                     # deleted while probing: start nothing (finally records it as stopped)
         info_path = os.path.join(cache.folder(job.video_id), INFO)
         with open(info_path, 'w', encoding='utf8') as f: json.dump(info, f)
-        error = pipeline(job, info_path, video['format_id'], audio['format_id'], info.get('duration'), signed_in)
+        error = attempts(job, lambda: pipeline(job, info_path, video['format_id'], audio['format_id'], info.get('duration'), signed_in))
     except ytdlp.YtdlpError as e: error = str(e)
     except OSError as e: error = f'Could not start the fetch: {e}'
     finally:
@@ -193,7 +197,7 @@ def _run_iplayer(job, url):
         with db.connect() as con: r = con.execute('SELECT duration FROM videos WHERE id = ?', (job.video_id,)).fetchone()
         stream_url, label = iplayer_stream(job.video_id, url, settings.get('max_height'))
         cache.set_formats(job.video_id, label)
-        if not job.cancelled: error = direct_pipeline(job, stream_url, r[0] if r else None)
+        if not job.cancelled: error = attempts(job, lambda: direct_pipeline(job, stream_url, r[0] if r else None))
     except iplayer.IplayerError as e: error = str(e)
     except OSError as e: error = f'Could not start the fetch: {e}'
     finally:
@@ -201,6 +205,21 @@ def _run_iplayer(job, url):
         cache.finish(job.video_id, cache.stamp(), error)
         with _lock: _running.pop(job.video_id, None)
     if not error: catalogue.mark_found(job.video_id); cache.evict(cache.utcnow())
+
+
+def attempts(job, run):
+    """Run one download (`pipeline` or `direct_pipeline`) up to ATTEMPTS times, until it completes or is stopped; returns the last one's reason.
+    A retry reuses the probe and the same streams, so ffmpeg cuts the same segments under the same names: it rewrites the playlist and
+    overwrites the files in place while the player keeps playing what had arrived. Both runs write to the one fetch.log, the failure noted."""
+    attempt = 1
+    while True:
+        try: job.log_from = os.path.getsize(os.path.join(cache.folder(job.video_id), LOG))
+        except OSError: job.log_from = 0
+        error = run()
+        if not error or job.cancelled or attempt >= ATTEMPTS: return error
+        with open(os.path.join(cache.folder(job.video_id), LOG), 'a', encoding='utf8') as log: log.write(f'[tubes] attempt {attempt} failed: {error}; trying again\n')
+        job.procs = []           # the finished processes; a stop now reaches only the new ones
+        attempt += 1
 
 
 def direct_pipeline(job, url, duration=None):
@@ -238,7 +257,7 @@ def outcome(job, codes, stalled, duration):
     if stalled: return f'Nothing arrived for {STALL_SECONDS} s, so the fetch was stopped.'
     if job.cancelled: return 'The fetch was stopped.'
     if any(codes):
-        with open(os.path.join(out, LOG), encoding='utf8', errors='replace') as f: why = ytdlp.last_error(f.read())
+        with open(os.path.join(out, LOG), 'rb') as f: f.seek(job.log_from); why = ytdlp.last_error(f.read().decode('utf8', 'replace'))     # this attempt's lines: an earlier one's ERROR would win
         return why or f'The fetch failed (exit codes {codes}).'
     pl = cache.read_playlist(job.video_id)
     if not pl['complete'] or pl['segments'] == 0: return 'The fetch ended before the video was complete.'

@@ -156,9 +156,15 @@ def test_play_stream_and_media(client, monkeypatch):
     r = client.get('/api/media/aaaaaaaaaaa/index.m3u8')
     assert r.status_code == 200 and r.headers['content-type'] == 'application/vnd.apple.mpegurl' and r.headers['cache-control'] == 'no-store'
     seg = client.get('/api/media/aaaaaaaaaaa/seg_00000.m4s')
-    assert seg.headers['content-type'] == 'video/iso.segment' and seg.headers['cache-control'] == 'private, max-age=86400' and len(seg.content) == 1000
-    write_playlist('aaaaaaaaaaa', 2, True)
-    assert client.get('/api/media/aaaaaaaaaaa/index.m3u8').headers['cache-control'] == 'private, max-age=86400'
+    assert seg.headers['content-type'] == 'video/iso.segment' and seg.headers['cache-control'] == 'no-store' and len(seg.content) == 1000   # a retry may rewrite it
+    write_playlist('aaaaaaaaaaa', 2, True)          # an attempt that ended (short or not) while the copy is still fetching: a retry may follow
+    r = client.get('/api/media/aaaaaaaaaaa/index.m3u8')
+    assert r.headers['cache-control'] == 'no-store' and 'seg_00000.m4s' in r.text and 'seg_00001.m4s' not in r.text and '#EXT-X-ENDLIST' not in r.text
+    assert client.get('/api/videos/aaaaaaaaaaa/stream').json()['complete'] is False
+    cache.finish('aaaaaaaaaaa', cache.stamp())
+    r = client.get('/api/media/aaaaaaaaaaa/index.m3u8')
+    assert r.headers['cache-control'] == 'private, max-age=86400' and '#EXT-X-ENDLIST' in r.text
+    assert client.get('/api/media/aaaaaaaaaaa/seg_00000.m4s').headers['cache-control'] == 'private, max-age=86400'
     assert client.get('/api/videos/aaaaaaaaaaa/stream').json()['complete'] is True
     for bad in ('fetch.log', 'init.mp4', '..%2Fx'):
         assert client.get(f'/api/media/aaaaaaaaaaa/{bad}').status_code == 404

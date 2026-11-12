@@ -49,7 +49,7 @@ Every other path serves the web app (`src/tubes/server/static/index.html` when b
 import os, platform, shutil
 
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -241,6 +241,11 @@ def create_app():
     def get_media(video_id: str, name: str):
         p = cache.file_path(video_id, name)
         if p is None: raise HTTPException(404, 'no such file')
+        e = cache.entry(video_id)
+        if e and e['state'] == 'fetching':        # still changing: a retried download (fetcher.attempts) rewrites the playlist and its segments under the same names
+            headers = {'Cache-Control': 'no-store'}
+            if name == cache.PLAYLIST: return Response(cache.served_playlist(video_id) or '', media_type=MEDIA_TYPES['.m3u8'], headers=headers)
+            return FileResponse(p, media_type=MEDIA_TYPES[os.path.splitext(name)[1]], headers=headers)
         growing = name == cache.PLAYLIST and not cache.read_playlist(video_id)['complete']
         headers = {'Cache-Control': 'no-store' if growing else 'private, max-age=86400'}
         return FileResponse(p, media_type=MEDIA_TYPES[os.path.splitext(name)[1]], headers=headers)
