@@ -190,7 +190,9 @@ function Answers({ items, total, dismissedView, summary }: { items: Suggestion[]
   const reread = async () => { for (const queryKey of [keys.suggestions, keys.channels, keys.library, keys.videos]) await queryClient.invalidateQueries({ queryKey }) }
   const follow = useAsyncAction(async (x: Suggestion) => {
     const r = await api.add(x.channel_id)
-    setSaid(describeFollowed(x.title, (r as Extract<Added, { kind: 'channel' }>).sync))     // a channel's id adds the channel
+    const sync = (r as Extract<Added, { kind: 'channel' }>).sync
+    queryClient.setQueryData(keys.sync, sync)                               // so the Library page shows the sync it started
+    setSaid(describeFollowed(x.title, sync))     // a channel's id adds the channel
     await reread()
   }, { describeError })
   const addWatched = useAsyncAction(async (x: Suggestion) => {
@@ -256,7 +258,7 @@ function Answers({ items, total, dismissedView, summary }: { items: Suggestion[]
               <RowAction label={open.isOpen(s.channel_id) ? 'Less' : 'More'} subject={s.title} onClick={() => open.setOpen(s.channel_id, !open.isOpen(s.channel_id))} />
             </span>
           </div>
-          {open.isOpen(s.channel_id) && <div className="mt-3 border-t border-border pt-3"><ChannelDetail id={s.channel_id} /></div>}
+          {open.isOpen(s.channel_id) && <div className="mt-3 border-t border-border pt-3"><ChannelDetail id={s.channel_id} dismiss={() => dismiss(s)} /></div>}
           </>
         )}
       </ActiveList>

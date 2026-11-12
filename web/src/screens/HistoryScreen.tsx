@@ -115,7 +115,9 @@ function Watched({ h }: { h: HistoryStats }) {
   const [said, setSaid] = useState<string>()
   const follow = useAsyncAction(async (c: TopChannel) => {
     const r = await api.add(c.channel_id)                                   // a channel's id adds the channel, followed, and syncs it
-    setSaid(describeFollowed(channelName(c), (r as Extract<Added, { kind: 'channel' }>).sync))
+    const sync = (r as Extract<Added, { kind: 'channel' }>).sync
+    queryClient.setQueryData(keys.sync, sync)                               // so the Library page shows the sync it started
+    setSaid(describeFollowed(channelName(c), sync))
     for (const queryKey of [keys.suggestions, keys.channels, keys.library, keys.videos]) await queryClient.invalidateQueries({ queryKey })
   }, { describeError })
   const open = useExpanded({ param: 'open', single: true })               // a channel opened in place, in the URL so it can be linked

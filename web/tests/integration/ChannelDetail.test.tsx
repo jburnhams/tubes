@@ -57,6 +57,21 @@ describe('Channel panel', () => {
     expect(screen.queryByText(/^Watched 58\stimes/)).not.toBeInTheDocument()
   })
 
+  it('dismisses from a suggestion\'s panel with Undo, as the list does', async () => {
+    const { user } = openApp('/admin/suggestions')
+    await user.click(await screen.findByRole('button', { name: 'More Garden Birds' }))
+    await user.click(await screen.findByRole('button', { name: 'Dismiss suggestion' }))
+    expect(screen.getByText('Dismissed Garden Birds.')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Undo' }))
+    expect(await screen.findByRole('link', { name: 'Garden Birds' })).toBeInTheDocument()
+  })
+
+  it('shows the sync a follow started on the Library page', async () => {
+    const { user } = openApp('/admin/library?open=UCcoasts0000000000000004')
+    await user.click(await screen.findByRole('button', { name: 'Follow' }))
+    expect(await screen.findByText(/^Starting a sync of 1\schannel\.$|^Syncing 1 of 1: Rivers and Coasts\./)).toBeInTheDocument()
+  })
+
   it('shows a dismissed suggestion as dismissed, and says why an option failed', async () => {
     server.use(addWatchedFails)
     const { user } = openApp('/admin/history?open=UCsuggest000000000000001')

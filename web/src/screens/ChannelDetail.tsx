@@ -36,22 +36,26 @@ export function placeLine(o: Pick<ChannelOverview, 'group' | 'suggestion'>): str
   return [o.group ? `Group: ${o.group.name}` : '', o.suggestion?.topics.join(', ') ?? ''].filter(Boolean).join(' · ')
 }
 
-export function ChannelDetail({ id }: { id: string }) {
+/** `dismiss`: how the page that opened the panel dismisses (or restores) the suggestion, when that removes the row the panel sits in.
+ *  The Suggestions list passes its own, which goes through `useUndoable`; elsewhere the panel stays open and offers Restore at once. */
+export function ChannelDetail({ id, dismiss }: { id: string; dismiss?: () => void }) {
   const load = useLoad({ queryKey: keys.overview(id), queryFn: () => api.overview(id) })
   return (
     <DataView state={load} isEmpty={() => false} skeleton={<DetailSkeleton />} empty={<EmptyState title="Nothing known">Nothing is known of this channel.</EmptyState>}>
-      {o => <Detail o={o} />}
+      {o => <Detail o={o} onDismiss={dismiss} />}
     </DataView>
   )
 }
 
-function Detail({ o }: { o: ChannelOverview }) {
+function Detail({ o, onDismiss }: { o: ChannelOverview; onDismiss?: () => void }) {
   const queryClient = useQueryClient()
   const [said, setSaid] = useState<string>()
   const reread = async () => { for (const queryKey of [keys.suggestions, keys.channels, keys.library, keys.videos]) await queryClient.invalidateQueries({ queryKey }) }
   const follow = useAsyncAction(async () => {
     const r = await api.add(o.channel_id)                                   // a channel's id adds the channel, followed, and syncs it
-    setSaid(describeFollowed(o.title, (r as Extract<Added, { kind: 'channel' }>).sync)); await reread()
+    const sync = (r as Extract<Added, { kind: 'channel' }>).sync
+    queryClient.setQueryData(keys.sync, sync)                               // the Library page polls a running sync it knows of
+    setSaid(describeFollowed(o.title, sync)); await reread()
   }, { describeError })
   const addWatched = useAsyncAction(async () => {
     const r = await api.addWatched(o.channel_id)
@@ -89,7 +93,7 @@ function Detail({ o }: { o: ChannelOverview }) {
       <div className="flex flex-wrap items-center gap-2">
         {o.configured && !followed && <Button size="sm" variant="outline" disabled={follow.phase === 'pending'} onClick={() => void follow.run()}>Follow</Button>}
         {o.configured && !followed && h.watches > 0 && <Button size="sm" variant="outline" disabled={addWatched.phase === 'pending'} onClick={() => void addWatched.run()}>Add watched videos</Button>}
-        {s && !followed && <Button size="sm" variant="outline" disabled={dismiss.phase === 'pending'} onClick={() => void dismiss.run(!s.dismissed)}>{s.dismissed ? 'Restore suggestion' : 'Dismiss suggestion'}</Button>}
+        {s && !followed && <Button size="sm" variant="outline" disabled={dismiss.phase === 'pending'} onClick={() => (onDismiss ? onDismiss() : void dismiss.run(!s.dismissed))}>{s.dismissed ? 'Restore suggestion' : 'Dismiss suggestion'}</Button>}
         {o.library && <Link to={`/channels/${encodeURIComponent(o.channel_id)}`} className="type-body-sm underline-offset-2 hover:underline">Open in Tubes</Link>}
         <a href={withBase(`https://www.youtube.com/channel/${encodeURIComponent(o.channel_id)}`)} target="_blank" rel="noreferrer" className="type-body-sm underline-offset-2 hover:underline">Open on YouTube</a>
       </div>
