@@ -66,9 +66,10 @@ export function useWatchReport(ref: RefObject<HTMLVideoElement | null>, playId: 
     const send = (refresh = false) => {
       const position = video.currentTime
       const continued = () => { if (refresh) void queryClient.invalidateQueries({ queryKey: keys.continueWatching }) }
-      if (seen.watched === sent && position === sentAt) return continued()                   // nothing new to say
-      sent = seen.watched; sentAt = position
-      void api.progress(playId, { position, watched: seen.watched, length: finite(video.duration) }).then(continued, () => undefined)
+      const watched = seen.watched
+      if (watched === sent && position === sentAt) return continued()                        // nothing new to say
+      // Marked sent only once the server has it, so a report that failed goes again with the next one (the one on leaving included).
+      void api.progress(playId, { position, watched, length: finite(video.duration) }).then(() => { sent = watched; sentAt = position; continued() }, () => undefined)
     }
     const onTime = () => { if (!video.paused && !video.seeking) seen.advance(video.currentTime) }
     const onSeeking = () => seen.jump(video.currentTime)

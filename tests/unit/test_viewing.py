@@ -64,6 +64,8 @@ def test_continue_watching_is_the_recent_part_watched_most_recent_first():
     watch(C, day(9), 10, position=215)
     watch(D, day(1), 20)                                    # a short look only
     watch(D, '2026-10-01T10:00:00+00:00', 300)              # partial, but too long ago
+    watch('zzzzzzzzzzz', day(9), 300); watch('zzzzzzzzzzz', day(10), 260, position=590)   # finished in two halves: two partial plays
+    assert 'zzzzzzzzzzz' not in [p['video_id'] for p in viewing._unfinished(NOW)] and viewing.resume('zzzzzzzzzzz', NOW) is None
     got = viewing.unfinished(now=NOW)
     assert [(v['id'], v['resume'], v['progress']) for v in got] == [(C, 215, round(215 / 600, 4)), (A, 300, 0.5)]
     assert got[0]['title'] == 'Stars in winter' and got[0]['channel'] == 'night sky'                  # rows as the lists give them

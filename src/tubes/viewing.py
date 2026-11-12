@@ -17,7 +17,8 @@ counts as seen, so a video whose skipped parts make up a tenth of it can still b
 The page reports every few seconds while it plays, when it pauses or ends, and as it is left, so a closed tab loses a few seconds at most.
 A report only moves `watched` up: a late report from a page that knew less cannot undo a fuller one.
 
-Continue watching (`unfinished`) is the videos with a partial play in the last CONTINUE_DAYS and no full play since, most recently played
+Continue watching (`unfinished`) is the videos with a partial play in the last CONTINUE_DAYS and no full play since (nor one that stopped
+in the last tenth: a video watched in two halves is two partial plays, and finished), most recently played
 first, each with where it stopped; a new play of one picks up there (`start` returns `resume`). Shorter plays after the partial one do not
 take it off the list, and their position is where it picks up. Only videos the watching side shows (library.shown) are offered.
 
@@ -112,7 +113,7 @@ def _unfinished(now=None, video_id=None):
     with db.connect() as con: plays = con.execute(sql + ' ORDER BY at, id', args).fetchall()
     per = {}
     for vid, at, out, position, length in plays:                              # oldest first, so the last word on each video wins
-        if out == 'full': per.pop(vid, None)
+        if out == 'full' or (position is not None and length and position >= length * FULL): per.pop(vid, None)   # finished, here or over several plays
         elif out == 'partial': per[vid] = dict(video_id=vid, position=position, length=length, at=at)
         elif vid in per:                                                      # a short look after it: still unfinished, and picks up where that left it
             if position is not None: per[vid].update(position=position)

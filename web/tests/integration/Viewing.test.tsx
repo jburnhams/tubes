@@ -198,11 +198,19 @@ describe('The player', () => {
     await waitFor(() => expect(video.state.t).toBe(12))
   })
 
-  it('keeps playing when a report cannot be sent', async () => {
-    server.use(http.post('*/api/plays/:id', () => new HttpResponse(null, { status: 503 })))
-    openApp(`/watch/${id}`)
+  it('keeps playing when a report cannot be sent, and sends it again as the page is left', async () => {
+    let down = true
+    server.use(http.post('*/api/plays/:id', async ({ request }) => {
+      if (down) return new HttpResponse(null, { status: 503 })
+      mock.reports.push({ play: 1, report: await request.json() as never })
+      return HttpResponse.json({ outcome: 'short' })
+    }))
+    const { router } = openApp(`/watch/${id}`)
     const video = drive((await screen.findByLabelText('Building a bird box', { selector: 'video' })) as HTMLVideoElement)
     await video.play(5); video.state.paused = true; await video.fire('pause')
     expect(screen.queryByText(/could not/)).not.toBeInTheDocument()
+    down = false
+    await router.navigate('/')
+    await waitFor(() => expect(mock.reports).toEqual([{ play: 1, report: { position: 5, watched: 5, length: 600 } }]))
   })
 })
