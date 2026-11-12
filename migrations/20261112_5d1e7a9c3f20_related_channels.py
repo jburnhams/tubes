@@ -1,7 +1,7 @@
 """related channels
 
 Revision ID: 5d1e7a9c3f20
-Revises: b83b3b6c2b11
+Revises: c34aa161ab66
 Create Date: 2026-11-12 05:00:00
 
 """
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '5d1e7a9c3f20'
-down_revision: Union[str, Sequence[str], None] = 'b83b3b6c2b11'
+down_revision: Union[str, Sequence[str], None] = 'c34aa161ab66'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

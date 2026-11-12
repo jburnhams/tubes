@@ -2,14 +2,14 @@
 
     ./tubes serve [--host 127.0.0.1] [--port 8367]
 
-The library (channels and videos) is managed here, from YouTube (catalogue.py writes it, library.py reads it).
+The library (channels and videos) is managed here, from YouTube and BBC iPlayer (catalogue.py writes it, library.py reads it).
 
 API (JSON):
   GET  /api/health                         {ok, version}
   GET  /api/system                         versions (app, Python, yt-dlp, ffmpeg), folders, disk, cache use, the library copy's state
   GET  /api/settings, PUT /api/settings    every setting (settings.py); PUT takes any subset, a null resets one
   GET  /api/library                       {synced, channels, videos, configured}: when every followed channel was last synced, and whether the YouTube key is set
-  POST /api/library {input}                add a channel (followed; its sync starts at once, or after the running sync's channels) or one video from a link, id or @handle: {kind, channel|video, sync}
+  POST /api/library {input}                add a channel (followed; its sync starts at once, or after the running sync's channels) or one video from a link, id or @handle; an iPlayer programme or episode link works the same way: {kind, channel|video, sync}
   GET  /api/library/sync                   the background sync: {running, total, done, current, added, errors, started, finished}
   POST /api/library/sync {channels}        start one for these channel ids (default: every followed channel); 409 while one runs
   GET  /api/channels, GET /api/channels/{id}   channels with their video counts and sync state
@@ -29,7 +29,7 @@ API (JSON):
                                            (order=watched, best score first, or suggested, most pointed at first): {items, total}
   GET  /api/suggestions/summary            the histories, groups, topics and counts around that list (`database`: a history database is set)
   POST /api/suggestions/refresh            read the history database again if one is set, remake the suggestions, ask YouTube about new channels
-  GET  /api/history?start=&end=&source=    what was watched then: counts, watches per day or month, top channels and videos
+  GET  /api/history?start=&end=&source=    what was watched then: counts, watches per day or month, top channels and videos (`configured`: channels can be followed)
   POST /api/suggestions/import {source, text}   import a Takeout watch history (its file's text) under a name, then refresh
   DELETE /api/suggestions/sources/{source}  forget an imported history
   PUT  /api/suggestions/groups/{id} {name}  name a group (empty: back to the made-up name)
@@ -45,7 +45,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from tubes import __version__, cache, catalogue, fetcher, history, library, oslib, settings, youtube, ytdlp
+from tubes import __version__, cache, catalogue, fetcher, history, iplayer, library, oslib, settings, youtube, ytdlp
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 LANDING = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'landing.html')
@@ -107,6 +107,7 @@ def create_app():
         except (catalogue.NotFound, history.NotFound) as e: raise HTTPException(404, str(e))
         except catalogue.Job.Busy as e: raise HTTPException(409, str(e))
         except youtube.YoutubeError as e: raise HTTPException(503 if not youtube.configured() else 502, str(e))
+        except iplayer.IplayerError as e: raise HTTPException(502, str(e))
         except KeyError as e: raise HTTPException(400, str(e.args[0]))
 
     def stream(video_id): return dict(cache.status(video_id), **cache.plays(video_id))
@@ -144,7 +145,7 @@ def create_app():
 
     @app.post('/api/library/sync')
     def post_sync(b: SyncIn | None = None):
-        if not youtube.configured(): raise HTTPException(503, 'YouTube cannot be asked without YOUTUBE_API_KEY in the server’s environment.')
+        if not youtube.configured() and catalogue.needs_youtube(b.channels if b else None): raise HTTPException(503, 'YouTube cannot be asked without YOUTUBE_API_KEY in the server’s environment.')
         return guard(job.start, b.channels if b else None)
 
     @app.delete('/api/channels/{channel_id}')
@@ -153,7 +154,7 @@ def create_app():
     @app.post('/api/channels/{channel_id}/restart')
     def post_restart(channel_id: str):
         r = guard(catalogue.restart, channel_id)
-        if not youtube.configured(): return dict(r, sync=job.state())
+        if not youtube.configured() and catalogue.needs_youtube([channel_id]): return dict(r, sync=job.state())
         r['sync'] = job.follow_up([channel_id]); return r
 
     @app.get('/api/channels')
@@ -231,7 +232,7 @@ def create_app():
 
     @app.get('/api/history')
     def get_history(start: str | None = None, end: str | None = None, source: str | None = None, top: int = Query(history.TOP, ge=1, le=200)):
-        return dict(history.stats(start, end, source, top), sources=history.sources())
+        return dict(history.stats(start, end, source, top), sources=history.sources(), configured=youtube.configured())
 
     @app.post('/api/suggestions/import')
     def post_suggestions_import(b: ImportIn): return guard(history.import_text, b.text, b.source)

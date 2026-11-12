@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { historyError, historyNone, historyOneAccount } from '../../src/mocks/handlers'
+import { followFails, historyError, historyNoKey, historyNone, historyOneAccount } from '../../src/mocks/handlers'
 import { openApp, screen, waitFor, within } from '../utils/render'
-import { server } from '../utils/server'
+import { mock, server } from '../utils/server'
 
 const table = (name: string) => screen.findByRole('table', { name })
 
@@ -17,6 +17,29 @@ describe('History', () => {
     const videos = await table('Videos watched most in this timeframe')
     expect(within(videos).getByRole('link', { name: 'The puppet who lost his hat' })).toHaveAttribute('href', 'https://www.youtube.com/watch?v=pu000000001')
     expect(within(videos).getByText('A video no longer on YouTube')).toBeInTheDocument()
+  })
+
+  it('follows a channel that is not in the library yet', async () => {
+    const { user } = openApp('/admin/history')
+    const channels = await table('Channels watched most in this timeframe')
+    expect(within(channels).queryByRole('button', { name: 'Follow Workshop Notes' })).not.toBeInTheDocument()     // followed already
+    await user.click(within(channels).getByRole('button', { name: 'Follow Puppet Theatre' }))
+    expect(await screen.findByText('Following Puppet Theatre. Its videos are being fetched.')).toBeInTheDocument()
+    expect(mock.followed).toEqual(['UCsuggest000000000000002'])
+    await waitFor(() => expect(within(channels).queryByRole('button', { name: 'Follow Puppet Theatre' })).not.toBeInTheDocument())
+    expect(within(channels).getAllByText('Followed')).toHaveLength(2)
+  })
+
+  it('says why a follow did not go through, and offers none without a key', async () => {
+    server.use(followFails)
+    const { user, unmount } = openApp('/admin/history')
+    await user.click(within(await table('Channels watched most in this timeframe')).getByRole('button', { name: 'Follow Bike Repairs' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(/quota for today/)
+    unmount()
+    server.use(historyNoKey)
+    openApp('/admin/history')
+    await table('Channels watched most in this timeframe')
+    expect(screen.queryByRole('button', { name: /^Follow / })).not.toBeInTheDocument()
   })
 
   it('changes the timeframe and the account, with both in the URL', async () => {

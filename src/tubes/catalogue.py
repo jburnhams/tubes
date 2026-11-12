@@ -18,20 +18,32 @@ for a while comes back, and a wrong guess from yt-dlp's wording costs no more th
 finds missing (a thumbnail that fails or is YouTube's placeholder, a fetch that fails) through POST /api/videos/check: `report` rechecks
 those at once, so a report is never taken on trust, and skips any asked about in the last REPORT_GAP.
 
+Live streams, scheduled ones and past ones (`live`, see youtube.live) are hidden the same way: a past stream's recording is often cut or
+taken down soon after, a running one cannot be fetched whole and a scheduled one cannot be played at all. The mark comes with the video's
+details, so the sync sets it as a video is added and the recheck sets it on videos added before it existed (`tubes recheck --all` does the
+whole library at once, a unit per 50 videos).
+
+iPlayer programmes and episodes (iplayer.py) are kept the same way, as channels and videos with `platform` 'iplayer'. iPlayer has no quota,
+so a sync of a programme reads every page of its episodes (200 a page) and refreshes them all, catching new ones, changed titles and new
+expiry dates in one pass; an episode no longer listed is marked `gone`. One whose `expires` has passed is hidden by library.py on its own,
+without a sync, unless it is cached: a copy already fetched stays watchable until the cache evicts it. The YouTube recheck and the watching
+side's reports leave iPlayer episodes alone.
+
 `Job` runs a sync of several channels in a background thread for the web server, one at a time, and reports how far it has got; the timer
 runs `tubes sync` (cli.py), which calls `sync` directly."""
 import datetime, threading
 
-from tubes import cache, db, library, youtube
+from tubes import cache, db, iplayer, library, youtube
 
 RECHECK = 2500                                                                   # videos per recheck: 50 quota units of the 10,000 a day
 REPORT_GAP = datetime.timedelta(minutes=10)                                      # a reported video asked about this recently is not asked again (a page of broken thumbnails, reloaded)
-CHANNEL_FIELDS = ('title', 'handle', 'thumbnail', 'description', 'published', 'country', 'subscribers', 'total_videos', 'views', 'uploads')
-VIDEO_FIELDS = ('channel_id', 'title', 'published', 'duration', 'thumbnail', 'views', 'description', 'likes', 'comments', 'definition')
+CHANNEL_FIELDS = ('platform', 'title', 'handle', 'thumbnail', 'description', 'published', 'country', 'subscribers', 'total_videos', 'views', 'uploads')
+VIDEO_FIELDS = ('platform', 'channel_id', 'title', 'published', 'duration', 'thumbnail', 'views', 'description', 'likes', 'comments', 'definition', 'live', 'expires', 'series', 'episode')
+ERRORS = (youtube.YoutubeError, iplayer.IplayerError)                          # what a sync notes against a channel and goes on from
 
 
 class NotFound(LookupError):
-    """YouTube, or the library, has no such channel or video; the message says which."""
+    """YouTube or iPlayer, or the library, has no such channel or video; the message says which."""
 
 
 def _upsert(con, table, fields, rows, keep=()):
@@ -59,7 +71,10 @@ def _channel(kind, value):
 def add(text, now=None):
     """Add what a person pasted: a channel (followed, and synced by the caller) or one video. Returns `{kind, channel}` or `{kind, video}`;
     adding something already there refreshes it (and follows a channel that was only there for one of its videos)."""
-    kind, value = youtube.parse(text); now = now or cache.stamp()
+    now = now or cache.stamp()
+    bbc = iplayer.parse(text)
+    if bbc: return add_iplayer(*bbc, now=now)
+    kind, value = youtube.parse(text)
     if kind == 'video':
         items = youtube.videos([value])
         if not items: raise NotFound(f'YouTube has no video {value} (or it is private).')
@@ -75,6 +90,28 @@ def add(text, now=None):
     row = youtube.channel_row(_channel(kind, value), now)
     with db.connect() as con: save_channel(con, row, follow=True)
     return dict(kind='channel', channel=library.channel(row['id']))
+
+
+def add_iplayer(kind, pid, now=None):
+    """Add an iPlayer programme (followed) or one episode (its programme comes in unfollowed, or its network for a one-off), as `add`."""
+    now = now or cache.stamp()
+    prog = iplayer.programme(pid) if kind in ('programme', 'pid') else None
+    if prog is None and kind == 'programme': raise NotFound(f'iPlayer has no programme {pid}.')
+    if prog is not None:
+        row = iplayer.channel_row(prog, now)
+        with db.connect() as con: save_channel(con, row, follow=True)
+        return dict(kind='channel', channel=library.channel(row['id']))
+    ep = iplayer.episode(pid)
+    if ep is None: raise NotFound(f'iPlayer does not offer {pid} (it may have expired).')
+    row = iplayer.video_row(ep, now)
+    with db.connect() as con: known = con.execute('SELECT 1 FROM channels WHERE id = ?', (row['channel_id'],)).fetchone()
+    if not known:
+        tleo = iplayer.programme(row['channel_id']) if row['channel_id'] == ep.get('tleo_id') else None
+        ch = iplayer.channel_row(tleo, now) if tleo else iplayer.network_row(ep, now)
+        row['channel_id'] = ch['id']                                             # its programme is not offered: kept under its network, where it can be found
+        with db.connect() as con: save_channel(con, ch, follow=False)
+    with db.connect() as con: save_videos(con, [row])
+    return dict(kind='video', video=library.video(row['id']))
 
 
 def add_videos(ids, now=None):
@@ -137,8 +174,9 @@ def sync_channel(channel_id, now=None, progress=None):
     """Bring one channel up to date (see the module's notes); returns `{channel, title, added, pages, complete}`. `progress(added)` is
     called after each page."""
     now = now or cache.stamp()
-    with db.connect() as con: c = db.row(con.execute('SELECT id, sync_token, complete FROM channels WHERE id = ?', (channel_id,)))
+    with db.connect() as con: c = db.row(con.execute('SELECT id, platform, sync_token, complete FROM channels WHERE id = ?', (channel_id,)))
     if c is None: raise NotFound(f'There is no channel {channel_id} in the library.')
+    if c['platform'] == 'iplayer': return sync_programme(channel_id, now, progress)
     row = youtube.channel_row(_channel('channel', channel_id), now)              # fresh counts and the uploads playlist, one unit
     with db.connect() as con:                                                    # an update, never an insert: a channel removed meanwhile stays removed
         held = con.execute(f"UPDATE channels SET {', '.join(f'{f} = :{f}' for f in CHANNEL_FIELDS)} WHERE id = :id", {k: row[k] for k in ('id', *CHANNEL_FIELDS)}).rowcount
@@ -167,6 +205,40 @@ def sync_channel(channel_id, now=None, progress=None):
     return dict(channel=channel_id, title=row['title'], added=added, pages=pages, complete=complete)
 
 
+def sync_programme(channel_id, now=None, progress=None):
+    """Bring one iPlayer programme up to date (see the module's notes); returns what `sync_channel` does."""
+    now = now or cache.stamp()
+    prog = iplayer.programme(channel_id)
+    if prog is None: raise NotFound(f'iPlayer has no programme {channel_id} any more.')
+    row = iplayer.channel_row(prog, now)
+    with db.connect() as con:
+        held = con.execute(f"UPDATE channels SET {', '.join(f'{f} = :{f}' for f in CHANNEL_FIELDS)} WHERE id = :id", {k: row[k] for k in ('id', *CHANNEL_FIELDS)}).rowcount
+    if not held: raise _gone(channel_id)
+    seen, added, page, more, whole = [], 0, 0, True, False
+    while more:
+        page += 1
+        eps, more = iplayer.episodes_page(channel_id, page)
+        rows = [r for r in (iplayer.video_row(e, now) for e in eps) if r['channel_id'] == channel_id]     # a programme's list holds only its own; never move one elsewhere
+        if not rows: break                                                       # an empty page: the list may be cut short, so nothing is marked gone
+        ids = [r['id'] for r in rows]; seen += ids
+        with db.connect() as con:
+            have = {r[0] for r in con.execute(f"SELECT id FROM videos WHERE id IN ({', '.join('?' * len(ids))})", tuple(ids))}
+            held = con.execute('UPDATE channels SET id = id WHERE id = ?', (channel_id,)).rowcount      # holds the channel, as _store does
+            if held:
+                save_videos(con, rows)
+                con.executemany('UPDATE videos SET gone = NULL, checked = :now WHERE id = :id', [dict(now=now, id=i) for i in ids])
+        if not held: raise _gone(channel_id)
+        added += sum(1 for i in ids if i not in have)
+        if progress: progress(added)
+        whole = not more
+    with db.connect() as con:
+        old = [r[0] for r in con.execute('SELECT id FROM videos WHERE channel_id = ? AND gone IS NULL', (channel_id,))]
+        missing = sorted(set(old) - set(seen)) if whole else []
+        if missing: con.executemany('UPDATE videos SET gone = :now, checked = :now WHERE id = :id', [dict(id=i, now=now) for i in missing])
+        con.execute('UPDATE channels SET sync_token = NULL, complete = ?, synced = ? WHERE id = ?', (True, now, channel_id))
+    return dict(channel=channel_id, title=row['title'], added=added, pages=page, complete=True)
+
+
 def recheck(limit=None, now=None, ids=None, since=None):
     """Ask YouTube about the `limit` (default RECHECK; 0 for every one) videos checked longest ago, or about these `ids` (those the library
     holds, and not checked since `since`): refresh the ones it has (clearing `gone`), mark the rest `gone`. Returns `{checked, gone, back}`:
@@ -175,10 +247,10 @@ def recheck(limit=None, now=None, ids=None, since=None):
     with db.connect() as con:
         if ids is not None:
             ids = list(dict.fromkeys(ids))
-            rows = con.execute(f"SELECT id, gone, checked FROM videos WHERE id IN ({', '.join('?' * len(ids))})", tuple(ids)) if ids else []
+            rows = con.execute(f"SELECT id, gone, checked FROM videos WHERE platform = 'youtube' AND id IN ({', '.join('?' * len(ids))})", tuple(ids)) if ids else []
             was = {r[0]: r[1] for r in rows if not (since and r[2] and r[2] >= since)}
         else:
-            sql = "SELECT id, gone FROM videos ORDER BY COALESCE(checked, ''), id" + (' LIMIT ?' if limit else '')
+            sql = "SELECT id, gone FROM videos WHERE platform = 'youtube' ORDER BY COALESCE(checked, ''), id" + (' LIMIT ?' if limit else '')
             was = dict(tuple(r) for r in con.execute(sql, (limit,) if limit else ()))
     if not was: return dict(checked=0, gone=0, back=0)
     found = {r['id']: r for r in (youtube.video_row(item, now) for item in youtube.videos(list(was)))}
@@ -210,6 +282,18 @@ def mark_found(video_id):
     with db.connect() as con: con.execute('UPDATE videos SET gone = NULL WHERE id = ? AND gone IS NOT NULL', (video_id,))
 
 
+def needs_youtube(channel_ids=None):
+    """Whether a sync of these channels (default: every followed one) asks YouTube, so needs its key: iPlayer programmes sync without one."""
+    with db.connect() as con:
+        if channel_ids is None: rows = con.execute("SELECT 1 FROM channels WHERE follow = ? AND platform = 'youtube'", (True,)).fetchall()
+        else:
+            ids = list(channel_ids)
+            if not ids: return False
+            known = {r[0]: r[1] for r in con.execute(f"SELECT id, platform FROM channels WHERE id IN ({', '.join('?' * len(ids))})", tuple(ids))}
+            return any(known.get(i, 'youtube') == 'youtube' for i in ids)          # one the library does not know fails as YouTube's would
+    return bool(rows)
+
+
 def followed():
     with db.connect() as con: return [tuple(r) for r in con.execute('SELECT id, title FROM channels WHERE follow = ? ORDER BY LOWER(title), id', (True,))]
 
@@ -234,7 +318,7 @@ def sync(channel_ids=None, now=None, on_channel=None, progress=None):
             so_far[0] = added
             if progress: progress(added)
         try: done.append(sync_channel(cid, now, counted))
-        except (youtube.YoutubeError, NotFound) as e:
+        except (*ERRORS, NotFound) as e:
             errors.append(dict(channel=cid, title=title, error=str(e), added=so_far[0]))
             if 'quota' in str(e): break
     if everything and not errors:

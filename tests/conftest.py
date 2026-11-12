@@ -4,7 +4,7 @@ import os, socket, sys
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'utils'))
-TUNING = ('TUBES_YOUTUBE_API', 'TUBES_YOUTUBE_WEB', 'YOUTUBE_API_KEY', 'YOUTUBE_API_REFERER', 'TUBES_CACHE', 'TUBES_YTDLP', 'TUBES_FFMPEG', 'OMARCHY_DB_URL', 'FAKE_YTDLP_SECONDS', 'FAKE_YTDLP_FAIL')
+TUNING = ('TUBES_IPLAYER_API', 'TUBES_MEDIASELECTOR', 'TUBES_YOUTUBE_API', 'TUBES_YOUTUBE_WEB', 'YOUTUBE_API_KEY', 'YOUTUBE_API_REFERER', 'TUBES_CACHE', 'TUBES_YTDLP', 'TUBES_FFMPEG', 'OMARCHY_DB_URL', 'FAKE_YTDLP_SECONDS', 'FAKE_YTDLP_FAIL')
 FAKE_YTDLP = os.path.join(os.path.dirname(__file__), 'utils', 'fake_ytdlp.py')
 
 
@@ -20,6 +20,7 @@ def isolated_env(tmp_path_factory, monkeypatch):
     monkeypatch.setenv('HOME', str(base / 'home')); monkeypatch.setenv('USERPROFILE', str(base / 'home'))
     monkeypatch.setenv('TUBES_HOME', str(base / 'app-home')); monkeypatch.setenv('TUBES_DATA', str(base / 'data'))
     for k in TUNING: monkeypatch.delenv(k, raising=False)
+    for k in ('TUBES_IPLAYER_API', 'TUBES_MEDIASELECTOR'): monkeypatch.setenv(k, 'http://127.0.0.1:9')     # nothing answers there: iPlayer is unreachable unless a test uses fake_iplayer
     return base
 
 
@@ -96,3 +97,12 @@ def fake_youtube(monkeypatch):
     y.close()
 
 
+@pytest.fixture
+def fake_iplayer(monkeypatch):
+    """A stand-in for BBC iPlayer's catalogue and mediaselector on localhost (tests/utils/fake_iplayer.py); fill it with
+    `fake_iplayer.programme(pid, title, episodes=n)`, then check `.calls`."""
+    from fake_iplayer import FakeIplayer
+    f = FakeIplayer()
+    monkeypatch.setenv('TUBES_IPLAYER_API', f.ibl); monkeypatch.setenv('TUBES_MEDIASELECTOR', f.ms)
+    yield f
+    f.close()

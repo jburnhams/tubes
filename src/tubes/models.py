@@ -6,7 +6,9 @@ Everything is portable SQL (no Postgres-only types), so the tests run on SQLite.
 carry them, so they sort and compare as text on both engines.
 
   channels, videos   the library: channels added in Admin (or by `tubes add`) and their videos, filled from the YouTube Data API by
-                     catalogue.py. A channel that is `follow`ed has all its uploads fetched and new ones picked up by every sync; one that
+                     catalogue.py. `platform` says where a row comes from: `youtube`, or `iplayer` (iplayer.py), where a channel is a
+                     programme and a video one of its episodes; ids cannot collide (iPlayer's are 8 characters, YouTube's 11 or 24). An
+                     episode also has its `series` title, its `episode` number in it and when iPlayer stops offering it (`expires`). A channel that is `follow`ed has all its uploads fetched and new ones picked up by every sync; one that
                      is not only names the videos added one by one. `uploads` is its uploads playlist, `sync_token` the page a backfill
                      that stopped part way resumes from, and `complete` says every page has been read once (later syncs then read only
                      the newest pages, until one brings nothing new). `total_videos`, `subscribers` and `views` are YouTube's counts.
@@ -37,6 +39,7 @@ class Channel(Base):
     __tablename__ = 'channels'
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     title: Mapped[str]
+    platform: Mapped[str] = mapped_column(String(16), server_default='youtube', default='youtube')
     handle: Mapped[str | None] = mapped_column(default=None)
     thumbnail: Mapped[str | None] = mapped_column(default=None)
     synced: Mapped[str | None] = mapped_column(String(40), default=None)
@@ -70,6 +73,11 @@ class Video(Base):
     added: Mapped[str | None] = mapped_column(String(40), default=None)
     gone: Mapped[str | None] = mapped_column(String(40), default=None)          # when YouTube was first found not to have it (catalogue.recheck); hidden while set
     checked: Mapped[str | None] = mapped_column(String(40), default=None)       # when the recheck last asked YouTube about it
+    live: Mapped[str | None] = mapped_column(String(16), default=None)          # live, upcoming or was (a past stream): hidden while set, see youtube.live
+    platform: Mapped[str] = mapped_column(String(16), server_default='youtube', default='youtube')
+    expires: Mapped[str | None] = mapped_column(String(40), default=None)       # iPlayer: when it stops being offered; hidden after that unless it is cached
+    series: Mapped[str | None] = mapped_column(Text, default=None)              # iPlayer: the series' title, such as `Series 2`
+    episode: Mapped[int | None] = mapped_column(default=None)                   # iPlayer: its number within the series
 
 
 class Meta(Base):
