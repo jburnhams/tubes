@@ -8,7 +8,7 @@
 // `states: { error: [videosError] }` in the visual config.
 import { delay, http, HttpResponse } from 'msw'
 import { cursorOf, paths, type CacheItem, type Channel, type HistorySource, type Settings, type Stream, type Suggestion, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Video, type VideoPage } from '../api'
-import { cacheItems, channels, defaultSettings, historyDays, historySources, historyStats, library, libraryNew, longChannel, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
+import { cacheItems, channels, defaultSettings, episodes, programme, historyDays, historySources, historyStats, library, libraryNew, longChannel, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, videos } from './fixtures'
 
 /** What the mock server holds. Writes change it, so a test can pin a copy and see it pinned. */
 export const mock = {
@@ -334,3 +334,11 @@ export const historyNone = http.get(at(paths.history), () => HttpResponse.json({
 export const historyOneAccount = http.get(at(paths.history), () => HttpResponse.json({ ...historyStats, sources: [historySources[0]] }))
 /** The server has no YouTube key: no channel can be followed from History. */
 export const historyNoKey = http.get(at(paths.history), () => HttpResponse.json({ ...historyStats, sources: historySources, configured: false }))
+
+/** The library also has an iPlayer programme (fixtures.programme) with two series of episodes. */
+export const withProgramme = [
+  http.get(at(paths.channels), () => HttpResponse.json([...channels, programme])),
+  http.get(at(`/api/channels/${programme.id}`), () => HttpResponse.json(programme)),
+  http.get(at(paths.videos), ({ request }) => HttpResponse.json(videoPage(request.url, [...episodes, ...videos]))),
+  http.get(at(`/api/videos/${episodes[0].id}`), () => HttpResponse.json({ ...episodes[0], plays: 0, last_played: null })),
+]

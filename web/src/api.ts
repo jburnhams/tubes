@@ -30,12 +30,16 @@ export interface LibraryStatus {
   hidden: number
   /** Live streams (running, scheduled or past), hidden from every list too because a past one's recording often goes. Absent from older servers. */
   live?: number
-  /** The YouTube key is in the server's environment, so channels can be added and synced. */
+  /** The YouTube key is in the server's environment, so YouTube channels can be added and synced. iPlayer programmes need no key. */
   configured: boolean
 }
 
+/** Where a channel or video comes from. A BBC iPlayer programme is kept as a channel and its episodes as videos. Absent from older servers (YouTube). */
+export type Platform = 'youtube' | 'iplayer'
+
 export interface Channel {
   id: string
+  platform?: Platform
   title: string
   handle: string | null
   thumbnail: string | null
@@ -80,6 +84,7 @@ export type CacheState = 'fetching' | 'ready' | 'failed'
 
 export interface Video {
   id: string
+  platform?: Platform
   channel_id: string
   channel: string | null
   title: string
@@ -91,6 +96,10 @@ export interface Video {
   cache_bytes: number | null
   /** Since when YouTube has not had it (removed or made private), else null. The lists leave such a video out; its own page still opens. */
   gone: string | null
+  /** iPlayer: when it stops being offered (a copy already saved here stays), its series' title and its number in the series. */
+  expires?: string | null
+  series?: string | null
+  episode?: number | null
 }
 
 /** `POST /api/videos/check`: what the recheck of these videos found (how many asked about, newly gone, back) and the ids now hidden. */

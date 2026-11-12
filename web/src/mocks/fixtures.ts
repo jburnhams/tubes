@@ -195,3 +195,16 @@ export const historyDays: Omit<HistoryStats, 'sources'> = {
   ...historyStats, watches: 64, videos: 50, channels: 12, by: 'day', first: '2026-10-11T08:00:00+00:00',
   periods: Array.from({ length: 20 }, (_, i) => ({ period: `2026-10-${String(i + 11).padStart(2, '0')}`, watches: (i * 7) % 6 + (i % 4 === 0 ? 0 : 1) })).filter(p => p.watches > 0),
 }
+
+/** An iPlayer programme kept as a channel: two series of three episodes, newest first. They expire far in the future, so screenshots
+ *  (taken on whatever day) never show "Leaves iPlayer"; the wording is tested in the unit suite with a fixed clock. */
+export const programme: Channel = {
+  id: 'b0harbour1', platform: 'iplayer', title: 'Harbour Lights', handle: null, thumbnail: tile(205, 'H'), synced: '2026-11-09T06:00:00Z', videos: 6,
+  latest: day(0), total_videos: 6, follow: true, complete: true, added: '2026-01-10T12:00:00Z',
+}
+
+export const episodes: Video[] = [2, 1].flatMap(series => [3, 2, 1].map(n => ({
+  id: `m0hb${series}${n}000`.slice(0, 8), platform: 'iplayer' as const, channel_id: programme.id, channel: programme.title, title: `Chapter ${n}`,
+  published: day((2 - series) * 30 + (3 - n) * 7), duration: 3540, thumbnail: tile(205, `${series}${n}`), views: null,
+  cache_state: null, cache_bytes: null, gone: null, expires: '2099-01-01T00:00:00Z', series: `Series ${series}`, episode: n,
+})))

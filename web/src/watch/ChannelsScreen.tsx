@@ -5,7 +5,7 @@ import { Link } from 'react-router'
 import { useLoad } from 'strata-react'
 import { api, keys } from '../api'
 import { Avatar } from './cards'
-import { videoCount } from './format'
+import { countFor } from './format'
 import { Nothing, Shown } from './Shown'
 
 const grid = 'grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-5 2xl:grid-cols-6'
@@ -29,7 +29,7 @@ export function ChannelsScreen() {
                   <Avatar channel={c} size="aspect-square w-3/4 text-tube-xl" />
                   <span className="grid gap-0.5">
                     <span className="text-tube-base font-medium">{c.title}</span>
-                    <span className="text-tube-xs text-tube-quiet">{videoCount(c.videos)}</span>
+                    <span className="text-tube-xs text-tube-quiet">{countFor(c)}</span>
                   </span>
                 </Link>
               </li>
