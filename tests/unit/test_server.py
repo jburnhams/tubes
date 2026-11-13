@@ -339,8 +339,13 @@ def test_plays_say_where_they_came_from_and_how_they_went(client, monkeypatch):
     assert client.post(f"/api/channels/{CHANNELS[1]['id']}/views").json() == dict(id=2)
     assert client.post('/api/channels/UCnope/views').status_code == 404
     got = client.get('/api/plays?limit=1').json()
-    assert [(p['id'], p['source'], p['outcome']) for p in got['items']] == [(2, 'link', 'none')]
-    assert got['summary']['sources'] == dict(channel=dict(plays=1, full=0), link=dict(plays=1, full=0)) and got['summary']['channel_views'] == dict(link=1, rail=1)
+    assert [(p['id'], p['source'], p['outcome']) for p in got['items']] == [(2, 'link', 'none')] and got['has_more'] is True
+    older = client.get('/api/plays', params=dict(after=f"{got['items'][0]['at']}|2", outcome='partial', source='channel')).json()
+    assert [(p['id'], p['detail_title']) for p in older['items']] == [(1, 'Workshop')]
+    s = client.get('/api/plays/summary').json()
+    assert s['sources'] == dict(channel=dict(plays=1, full=0), link=dict(plays=1, full=0)) and s['channel_views'] == dict(link=1, rail=1) and s['seconds'] == 240
+    visits = client.get('/api/channel-views', params=dict(limit=1)).json()
+    assert [(v['id'], v['title']) for v in visits['items']] == [(2, 'night sky')] and visits['has_more'] is True
 
 
 def test_offered_videos_are_prefetched_and_system_says_how_it_goes(monkeypatch):

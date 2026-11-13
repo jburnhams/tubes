@@ -113,7 +113,7 @@ def test_channel_views_and_the_summary():
     watch(A, day(10), 590, source='home', rank=0); watch(B, day(10), 30, source='home', rank=1); watch(C, day(10), 300, source='search', detail='stars')
     viewing.start(D, '2026-01-01T00:00:00+00:00')                                  # outside the 30 days
     s = viewing.summary(now=NOW)
-    assert s == dict(since='2026-10-13T12:00:00+00:00', plays=3, outcomes=dict(none=0, short=1, partial=1, full=1),
+    assert s == dict(since='2026-10-13T12:00:00+00:00', days=30, plays=3, seconds=920.0, videos=3, outcomes=dict(none=0, short=1, partial=1, full=1),
                      sources=dict(home=dict(plays=2, full=1), search=dict(plays=1, full=0)), channel_views=dict(link=1, rail=2))
 
 
@@ -122,7 +122,41 @@ def test_recent_plays_newest_first_with_titles_even_once_the_video_left_the_libr
     watch(A, day(9), 590, source='home'); watch(B, day(10), 30)
     cache.begin('zzzzzzzzzzz', day(1), 'Old copy', 'Gone channel'); viewing.start('zzzzzzzzzzz', day(11))
     got = viewing.recent()
-    assert [(p['video_id'], p['title'], p['channel'], p['outcome'], p['source']) for p in got] == [
+    assert got['has_more'] is False
+    items = got['items']
+    assert [(p['video_id'], p['title'], p['channel'], p['outcome'], p['source']) for p in items] == [
         ('zzzzzzzzzzz', 'Old copy', 'Gone channel', 'none', 'link'), (B, 'Sanding the shelf', 'Workshop', 'short', 'link'), (A, 'Building a 50% shelf', 'Workshop', 'full', 'home')]
-    assert (got[2]['watched'], got[2]['length'], got[2]['position']) == (590, 600, 590)
-    assert len(viewing.recent(limit=1)) == 1
+    assert (items[2]['watched'], items[2]['length'], items[2]['position'], items[2]['channel_id'], items[2]['thumbnail']) == (590, 600, 590, CHANNELS[0]['id'], f'https://img.test/{A}.jpg')
+    assert items[0]['length'] is None and items[1]['updated'] == day(10)
+
+
+def test_recent_plays_in_pages_by_cursor_and_filtered():
+    seed()
+    for n in range(5): viewing.start(A, day(10))                                   # the same moment: the id decides
+    first = viewing.recent(limit=2)
+    assert [p['id'] for p in first['items']] == [5, 4] and first['has_more'] is True
+    rest = viewing.recent(limit=2, after=viewing.cursor(first['items'][-1]))
+    assert [p['id'] for p in rest['items']] == [3, 2]
+    assert [p['id'] for p in viewing.recent(after=viewing.cursor(rest['items'][-1]))['items']] == [1]
+    assert len(viewing.recent(after='nonsense')['items']) == 5                     # a cursor that does not parse: the first page
+    watch(B, day(11), 590, source='search', detail='shelf'); cache.record_play(C, day(12))
+    assert [p['video_id'] for p in viewing.recent(outcome='full')['items']] == [B]
+    assert [p['video_id'] for p in viewing.recent(outcome='none')['items']][:2] == [C, A]           # one from before outcomes were kept too
+    assert [p['video_id'] for p in viewing.recent(source='search')['items']] == [B]
+    assert len(viewing.recent(source='link')['items']) == 6                                          # with none given too
+
+
+def test_what_a_source_points_at_is_named():
+    seed()
+    viewing.start(A, day(10), source='channel', detail=CHANNELS[1]['id']); viewing.start(B, day(11), source='up_next', detail=C)
+    viewing.start(C, day(12), source='search', detail='moon'); viewing.start(D, day(13), source='up_next', detail='zzzzzzzzzzz')
+    assert [p['detail_title'] for p in viewing.recent()['items']] == [None, None, 'Stars in winter', 'night sky']
+
+
+def test_channel_visits_newest_first_in_pages():
+    seed()
+    viewing.channel_view(CHANNELS[0]['id'], day(10), source='rail'); viewing.channel_view(CHANNELS[1]['id'], day(11), source='watch', detail=C); viewing.channel_view('UCgone', day(12))
+    got = viewing.channel_visits(limit=2)
+    assert [(v['channel_id'], v['title'], v['source'], v['detail_title']) for v in got['items']] == [('UCgone', None, 'link', None), (CHANNELS[1]['id'], 'night sky', 'watch', 'Stars in winter')] and got['has_more'] is True
+    rest = viewing.channel_visits(after=viewing.cursor(got['items'][-1]))
+    assert [(v['title'], v['source'], v['thumbnail']) for v in rest['items']] == [('Workshop', 'rail', 'https://img.test/ws.jpg')] and rest['has_more'] is False

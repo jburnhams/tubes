@@ -226,6 +226,83 @@ export interface Progress {
 /** What the server made of a progress report: none, short, partial, or full (90% and more seen). */
 export type Outcome = 'none' | 'short' | 'partial' | 'full'
 
+/** A source as the server keeps it: one of From's, `link` for none, `other` for one it does not know. */
+export type PlaySource = From['source'] | 'link' | 'other'
+
+/** `GET /api/plays`: one play with everything kept of it (src/tubes/viewing.py). */
+export interface Play {
+  id: number
+  video_id: string
+  /** The library's title, or the cached copy's once the video has left the library; null when neither knows it. */
+  title: string | null
+  channel_id: string | null
+  channel: string | null
+  thumbnail: string | null
+  /** When the play started, and when the player last said how it was going (null: it never did). */
+  at: string
+  updated: string | null
+  source: PlaySource
+  /** Which one: the channel's id, the search words, the video Up next was beside. */
+  detail: string | null
+  /** What `detail` points at, by name: the channel, or the video Up next was beside. */
+  detail_title: string | null
+  /** Its place in that list, from 0. */
+  rank: number | null
+  /** The running time in seconds (the player's figure, else the library's). */
+  length: number | null
+  /** Seconds seen, each once; null for a play from before this was kept. */
+  watched: number | null
+  /** Where it stopped. */
+  position: number | null
+  outcome: Outcome
+}
+
+export interface PlayPage {
+  items: Play[]
+  has_more: boolean
+}
+
+/** Which plays the Viewing page lists. */
+export interface PlayFilter {
+  outcome?: Outcome
+  source?: PlaySource
+}
+
+/** `GET /api/plays/summary`: the last `days` of viewing in numbers. */
+export interface PlaySummary {
+  since: string
+  days: number
+  plays: number
+  /** Seconds seen in all. */
+  seconds: number
+  /** Different videos played. */
+  videos: number
+  outcomes: Record<Outcome, number>
+  sources: Record<string, { plays: number; full: number }>
+  channel_views: Record<string, number>
+}
+
+/** `GET /api/channel-views`: one visit to a channel's page. */
+export interface ChannelVisit {
+  id: number
+  channel_id: string
+  title: string | null
+  thumbnail: string | null
+  at: string
+  source: PlaySource
+  detail: string | null
+  /** The video whose page it was opened from. */
+  detail_title: string | null
+}
+
+export interface ChannelVisitPage {
+  items: ChannelVisit[]
+  has_more: boolean
+}
+
+/** The cursor after a play or a channel visit: `<at>|<id>`, as the server pages them. */
+export const cursorOfRow = (r: { at: string; id: number }) => `${r.at}|${r.id}`
+
 /** `POST /api/videos/check`: what the recheck of these videos found (how many asked about, newly gone, back) and the ids now hidden. */
 export interface Checked {
   checked: number
@@ -501,6 +578,9 @@ export const paths = {
   continueWatching: '/api/videos/continue',
   video: (id: string) => `/api/videos/${encodeURIComponent(id)}`,
   progress: (playId: number) => `/api/plays/${playId}`,
+  plays: '/api/plays',
+  playSummary: '/api/plays/summary',
+  channelVisits: '/api/channel-views',
   channelViews: (id: string) => `/api/channels/${encodeURIComponent(id)}/views`,
   play: (id: string) => `/api/videos/${encodeURIComponent(id)}/play`,
   stream: (id: string) => `/api/videos/${encodeURIComponent(id)}/stream`,
@@ -536,6 +616,9 @@ export const keys = {
   list: (filter: VideoFilter) => ['videos', 'list', filter.channel ?? '', filter.q?.trim() ?? ''],
   shuffle: ['videos', 'shuffle'],
   continueWatching: ['videos', 'continue'],
+  plays: (f: PlayFilter) => ['viewing', 'plays', f.outcome ?? '', f.source ?? ''],
+  playSummary: ['viewing', 'summary'],
+  channelVisits: ['viewing', 'channels'],
   /** A visit to a channel's page, recorded once per visit (the location's key). */
   channelView: (id: string, visit: string) => ['channel-view', id, visit],
   video: (id: string) => ['videos', 'one', id],
@@ -597,6 +680,15 @@ export const api = {
   /** How a play is going. `keepalive`, so a report sent as the page closes still arrives. */
   progress: (playId: number, p: Progress) => callJson<{ outcome: Outcome }>(withBase(paths.progress(playId)), { ...send('POST', p), keepalive: true }),
   continueWatching: (limit = 12) => fetchJson<Video[]>(withBase(`${paths.continueWatching}?limit=${limit}`)),
+  plays: (f: PlayFilter, after: string | undefined, signal?: AbortSignal) => {
+    const q = new URLSearchParams()
+    if (f.outcome) q.set('outcome', f.outcome)
+    if (f.source) q.set('source', f.source)
+    if (after) q.set('after', after)
+    return fetchJson<PlayPage>(withBase(`${paths.plays}${q.size ? `?${q}` : ''}`), { signal })
+  },
+  playSummary: () => fetchJson<PlaySummary>(withBase(paths.playSummary)),
+  channelVisits: (after: string | undefined, signal?: AbortSignal) => fetchJson<ChannelVisitPage>(withBase(after ? `${paths.channelVisits}?after=${encodeURIComponent(after)}` : paths.channelVisits), { signal }),
   channelView: (id: string, from?: From | null) => callJson<{ id: number }>(withBase(paths.channelViews(id)), send('POST', from ?? {})),
   stream: (id: string) => fetchJson<Stream>(withBase(paths.stream(id))),
   segments: (id: string) => fetchJson<Segments>(withBase(paths.segments(id))),

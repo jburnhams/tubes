@@ -1,5 +1,11 @@
 # Progress log
 
+## 2026-11-13: Admin > Viewing, every play in full
+
+- Asked for: a viewing history page in Admin with full details for each play.
+- `viewing.recent` pages plays newest first by a cursor (`at|id`, as the server orders them), filtered by outcome and source (`none` and `link` also match plays from before those were kept), with the channel or the video a `detail` points at named (`detail_title`); `viewing.channel_visits` pages the channel page visits the same way; `summary` adds seconds seen and different videos. `GET /api/plays` now answers `{items, has_more}` (`tubes plays` reads `items`), new `GET /api/plays/summary?days=` and `GET /api/channel-views`.
+- Admin > Viewing (`/admin/viewing`, after Suggestions): the last 30 days in a sentence and five numbers (plays, to the end, part watched, short looks, time watched), a CompositionBar of where plays were started (five parts at most, as the bar has five colours: past four, the rest are Elsewhere), then every play newest first as a Disclosure that opens to the video and channel, when it started and last reported, where it was started from and which one, its place in that list, the running time, the seconds seen and their share, and where it stopped; filters and open plays in the URL (`?outcome=&source=&open=`). Last, the channel pages visited and where from. The imported Takeout history stays on History, as it has no progress in it.
+
 ## 2026-11-13: the start of offered videos fetched ahead, so a play starts at once
 
 - Asked for: fetch the first 10-20 s (more when the start is a skippable intro) of the videos Home and the recommendations offer, before anyone plays them, so a play starts at once and the rest follows.

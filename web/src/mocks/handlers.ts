@@ -7,8 +7,8 @@
 // state: `server.use(videosError)` in a test, `msw.use(videosError)` in a story's beforeEach,
 // `states: { error: [videosError] }` in the visual config.
 import { delay, http, HttpResponse } from 'msw'
-import { cursorOf, paths, type CacheItem, type Channel, type From, type Progress, type HistorySource, type Pasted, type Settings, type ShownFilters, type Stream, type Suggestion, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Video, type VideoPage } from '../api'
-import { cacheItems, channelHistory, channels, defaultSettings, defaultShown, kindsFor, sampleSegments, episodes, programme, historyDays, historySources, historyStats, library, libraryNew, longChannel, pasteable, quotaNoKey, quotaSpent, quotaUnused, quotaUsage, relatedStatus, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, unfinished, videos } from './fixtures'
+import { cursorOf, cursorOfRow, paths, type ChannelVisit, type Play, type CacheItem, type Channel, type From, type Progress, type HistorySource, type Pasted, type Settings, type ShownFilters, type Stream, type Suggestion, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Video, type VideoPage } from '../api'
+import { cacheItems, channelHistory, channels, defaultSettings, defaultShown, kindsFor, sampleSegments, episodes, programme, historyDays, historySources, historyStats, library, libraryNew, longChannel, pasteable, quotaNoKey, quotaSpent, quotaUnused, quotaUsage, relatedStatus, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, unfinished, videos, plays, manyPlays, playSummary, playSummaryEmpty, channelVisits } from './fixtures'
 
 /** What the mock server holds. Writes change it, so a test can pin a copy and see it pinned. */
 export const mock = {
@@ -135,6 +135,16 @@ export function videoPage(url: string, list: Video[]): VideoPage {
   return { videos: rest.slice(0, limit), has_more: rest.length > limit }
 }
 
+/** A page of rows newest first after a cursor (`at|id`), as viewing.recent and viewing.channel_visits page them. */
+export function rowPage<T extends { at: string; id: number }>(url: string, list: T[], keep: (row: T, p: URLSearchParams) => boolean = () => true, limit = 50) {
+  const p = new URL(url).searchParams
+  const after = p.get('after')
+  const rest = list.filter(r => keep(r, p)).filter(r => !after || cursorOfRow(r) < after)        // ISO times of one length, then the id: sorts as text here
+  return { items: rest.slice(0, limit), has_more: rest.length > limit }
+}
+
+const playMatches = (r: Play, p: URLSearchParams) => (!p.get('outcome') || r.outcome === p.get('outcome')) && (!p.get('source') || r.source === p.get('source'))
+
 const find = (id: string) => videos.find(v => v.id === id) ?? longChannel.find(v => v.id === id)
 const stream = (id: string) => mock.streams[id] ?? streams.ready
 const shown = () => videos.filter(v => !mock.gone.includes(v.id))
@@ -214,6 +224,9 @@ export const handlers = [
     return HttpResponse.json({ channel: c.id, videos: c.videos, sync: mock.job.running ? mock.job : startSync([c.id]) })
   }),
   // A video in `mock.gone` is left out of the lists and says when it went, as the server does once it is hidden.
+  http.get(at(paths.playSummary), () => HttpResponse.json(playSummary)),
+  http.get(at(paths.plays), ({ request }) => HttpResponse.json(rowPage(request.url, plays, playMatches))),
+  http.get(at(paths.channelVisits), ({ request }) => HttpResponse.json(rowPage<ChannelVisit>(request.url, channelVisits))),
   http.get(at(paths.continueWatching), () => HttpResponse.json(mock.unfinished.filter(v => !mock.gone.includes(v.id)))),
   http.post(at('/api/plays/:id'), async ({ params, request }) => {
     const report = (await request.json()) as Progress
@@ -389,6 +402,22 @@ export const videosLaterPageLoading = http.get(at(paths.videos), async ({ reques
 })
 
 export const videoLoading = http.get(at('/api/videos/:id'), () => delay('infinite'))
+/** Viewing: nothing played yet. */
+export const viewingEmpty = [
+  http.get(at(paths.playSummary), () => HttpResponse.json(playSummaryEmpty)),
+  http.get(at(paths.plays), () => HttpResponse.json({ items: [], has_more: false })),
+  http.get(at(paths.channelVisits), () => HttpResponse.json({ items: [], has_more: false })),
+]
+/** Viewing: plays over several pages. */
+export const playsLong = http.get(at(paths.plays), ({ request }) => HttpResponse.json(rowPage(request.url, manyPlays, playMatches)))
+/** Viewing: the first page arrives, the next never does. */
+export const playsLaterPageLoading = http.get(at(paths.plays), async ({ request }) => {
+  if (new URL(request.url).searchParams.has('after')) await delay('infinite')
+  return HttpResponse.json(rowPage(request.url, manyPlays, playMatches))
+})
+export const viewingLoading = [http.get(at(paths.playSummary), () => delay('infinite')), http.get(at(paths.plays), () => delay('infinite')), http.get(at(paths.channelVisits), () => delay('infinite'))]
+export const viewingError = [http.get(at(paths.playSummary), down), http.get(at(paths.plays), down), http.get(at(paths.channelVisits), down)]
+
 /** Three videos part watched lately (Continue watching on Home, first in Up next). */
 export const continuing = http.get(at(paths.continueWatching), () => HttpResponse.json(unfinished))
 export const continueError = http.get(at(paths.continueWatching), down)

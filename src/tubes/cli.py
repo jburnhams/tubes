@@ -160,7 +160,7 @@ def cmd_evict(args):
 
 def cmd_plays(args):
     """The latest plays (where each was started from, how much was seen, how it went), then the last 30 days in numbers."""
-    items, s = viewing.recent(args.limit), viewing.summary(args.days)
+    items, s = viewing.recent(args.limit)['items'], viewing.summary(args.days)
     def seen(p): return f"{p['watched'] / p['length']:.0%}" if p['watched'] is not None and p['length'] else '–'
     lines = [f"  {p['at'][:16].replace('T', ' ')}  {p['outcome'] or '–':8} {seen(p):>4}  {p['source'] or '–':9} {p['video_id']:14} {(p['title'] or '')[:40]}" for p in items]
     lines.append(f"  last {args.days} days: {s['plays']} play(s), " + ', '.join(f'{n} {k}' for k, n in s['outcomes'].items()))

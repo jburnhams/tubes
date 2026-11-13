@@ -150,23 +150,62 @@ def channel_view(channel_id, now=None, source=None, detail=None):
     return dict(id=view_id)
 
 
-def recent(limit=50):
-    """The latest plays, newest first, with their video's title and channel: `[{id, video_id, title, channel, at, source, detail, rank,
-    length, watched, position, outcome}]`."""
+PAGE = 50
+
+
+def cursor(row):
+    """The cursor that asks for the rows after this one (newest first): `<at>|<id>`."""
+    return f"{row['at']}|{row['id']}"
+
+
+def _after(after, where, args, t):
+    """Adds `rows older than the cursor` to `where`; a cursor that does not parse is ignored (the first page)."""
+    at, _, rid = (after or '').rpartition('|')
+    if at and rid.isdigit(): where.append(f'({t}.at < ? OR ({t}.at = ? AND {t}.id < ?))'); args += [at, at, int(rid)]
+
+
+def recent(limit=PAGE, after=None, outcome=None, source=None):
+    """One page of plays, newest first: `{items, has_more}`. Each item: `{id, video_id, title, channel_id, channel, thumbnail, at, updated,
+    source, detail, detail_title, rank, length, watched, position, outcome}`; the title and channel come from the library, or from the
+    cached copy once the video has left it; `detail_title` names what `detail` points at (the channel a channel page was, the video Up next
+    was beside). `outcome` none also finds plays from before outcomes were kept; `source` link also finds those with none. `after` is a cursor."""
+    where, args = ['1 = 1'], []
+    if outcome == 'none': where.append('(p.outcome IS NULL OR p.outcome = ?)'); args.append('none')
+    elif outcome: where.append('p.outcome = ?'); args.append(outcome)
+    if source == 'link': where.append('(p.source IS NULL OR p.source = ?)'); args.append('link')
+    elif source: where.append('p.source = ?'); args.append(source)
+    _after(after, where, args, 'p')
     with db.connect() as con:
-        return db.rows(con.execute('''SELECT p.id, p.video_id, COALESCE(v.title, k.title) AS title, COALESCE(c.title, k.channel) AS channel, p.at, p.source, p.detail, p.rank,
-                                             p.length, p.watched, p.position, p.outcome
-                                      FROM plays p LEFT JOIN videos v ON v.id = p.video_id LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = p.video_id
-                                      ORDER BY p.at DESC, p.id DESC LIMIT ?''', (limit,)))
+        rows = db.rows(con.execute(f'''SELECT p.id, p.video_id, COALESCE(v.title, k.title) AS title, v.channel_id, COALESCE(c.title, k.channel) AS channel, v.thumbnail,
+                                              p.at, p.updated, COALESCE(p.source, ?) AS source, p.detail, COALESCE(dc.title, dv.title) AS detail_title, p.rank,
+                                              COALESCE(p.length, v.duration) AS length, p.watched, p.position, COALESCE(p.outcome, ?) AS outcome
+                                       FROM plays p LEFT JOIN videos v ON v.id = p.video_id LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = p.video_id
+                                       LEFT JOIN channels dc ON p.source = ? AND dc.id = p.detail LEFT JOIN videos dv ON p.source = ? AND dv.id = p.detail
+                                       WHERE {' AND '.join(where)} ORDER BY p.at DESC, p.id DESC LIMIT ?''', ['link', 'none', 'channel', 'up_next'] + args + [limit + 1]))
+    return dict(items=rows[:limit], has_more=len(rows) > limit)
+
+
+def channel_visits(limit=PAGE, after=None):
+    """One page of channel page visits, newest first: `{items, has_more}`, each `{id, channel_id, title, thumbnail, at, source, detail,
+    detail_title}` (`detail_title`: the video whose page it was opened from)."""
+    where, args = ['1 = 1'], []
+    _after(after, where, args, 'w')
+    with db.connect() as con:
+        rows = db.rows(con.execute(f'''SELECT w.id, w.channel_id, c.title, c.thumbnail, w.at, COALESCE(w.source, ?) AS source, w.detail, dv.title AS detail_title
+                                       FROM channel_views w LEFT JOIN channels c ON c.id = w.channel_id LEFT JOIN videos dv ON w.source = ? AND dv.id = w.detail
+                                       WHERE {' AND '.join(where)} ORDER BY w.at DESC, w.id DESC LIMIT ?''', ['link', 'watch'] + args + [limit + 1]))
+    return dict(items=rows[:limit], has_more=len(rows) > limit)
 
 
 def summary(days=30, now=None):
-    """The last `days` of viewing in numbers: `{since, plays, outcomes: {none, short, partial, full}, sources: {source: {plays, full}},
-    channel_views: {source: views}}`; plays from before outcomes were kept count under none."""
+    """The last `days` of viewing in numbers: `{since, days, plays, seconds, videos, outcomes: {none, short, partial, full}, sources: {source:
+    {plays, full}}, channel_views: {source: views}}` (`seconds`: seen in all, `videos`: different videos played); plays from before outcomes
+    were kept count under none."""
     since = (datetime.datetime.fromisoformat(_now(now)) - datetime.timedelta(days=days)).isoformat(timespec='seconds')
     with db.connect() as con:
         plays = con.execute('SELECT source, outcome, COUNT(*) FROM plays WHERE at >= ? GROUP BY source, outcome', (since,)).fetchall()      # NULLs folded in below (a bound
         views = con.execute('SELECT source, COUNT(*) FROM channel_views WHERE at >= ? GROUP BY source', (since,)).fetchall()                # default in GROUP BY fails on Postgres)
+        seconds, videos = con.execute('SELECT COALESCE(SUM(watched), 0), COUNT(DISTINCT video_id) FROM plays WHERE at >= ?', (since,)).fetchone()
     outcomes, sources, viewed = dict.fromkeys(OUTCOMES, 0), {}, {}
     for source, out, n in plays:
         source, out = source or 'link', out or 'none'
@@ -174,4 +213,4 @@ def summary(days=30, now=None):
         s = sources.setdefault(source, dict(plays=0, full=0)); s['plays'] += n
         if out == 'full': s['full'] += n
     for source, n in views: viewed[source or 'link'] = viewed.get(source or 'link', 0) + n
-    return dict(since=since, plays=sum(outcomes.values()), outcomes=outcomes, sources=dict(sorted(sources.items())), channel_views=dict(sorted(viewed.items())))
+    return dict(since=since, days=days, plays=sum(outcomes.values()), seconds=round(float(seconds), 1), videos=videos, outcomes=outcomes, sources=dict(sorted(sources.items())), channel_views=dict(sorted(viewed.items())))

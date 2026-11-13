@@ -28,7 +28,9 @@ API (JSON):
   POST /api/videos/{id}/play {source, detail, rank}   record a play of a library video (and where it was started from, all optional) and
                                            start fetching unless it is cached; returns the stream status with `play_id` and `resume` (where it picks up)
   POST /api/plays/{id} {position, watched, length}   how the play is going (viewing.py): returns its `outcome` (none, short, partial, full)
-  GET  /api/plays?limit=&days=             the latest plays with how each went, and the last `days` in numbers
+  GET  /api/plays?limit=&after=&outcome=&source=   a page of plays, newest first, each with where it came from and how it went: {items, has_more}
+  GET  /api/plays/summary?days=           the last `days` of viewing in numbers: plays by outcome and by source, seconds seen, channel visits by source
+  GET  /api/channel-views?limit=&after=   a page of visits to channel pages, newest first, with where each came from: {items, has_more}
   POST /api/channels/{id}/views {source, detail}   someone opened the channel's page, and from where
   GET  /api/videos/{id}/stream             the stream status: {state, segments, seconds, complete, playable, error, formats, plays, last_played}
   GET  /api/media/{id}/{file}              the HLS playlist, init segment and segments (only those names; the playlist is never cached while it grows)
@@ -263,9 +265,17 @@ def create_app():
         return guard(viewing.report, play_id, b.position, b.watched, b.length)
 
     @app.get('/api/plays')
-    def get_plays(limit: int = Query(50, ge=1, le=500), days: int = Query(30, ge=1, le=3650)):
-        """The latest plays with how each went, and the last `days` in numbers (viewing.recent, viewing.summary)."""
-        return dict(items=viewing.recent(limit), summary=viewing.summary(days))
+    def get_plays(limit: int = Query(viewing.PAGE, ge=1, le=500), after: str | None = None, outcome: str | None = None, source: str | None = None):
+        """A page of plays, newest first, with every detail kept of each (viewing.recent); `after` is the last one's cursor (`at|id`)."""
+        return viewing.recent(limit, after, outcome, source)
+
+    @app.get('/api/plays/summary')
+    def get_plays_summary(days: int = Query(30, ge=1, le=3650)): return viewing.summary(days)
+
+    @app.get('/api/channel-views')
+    def get_channel_views(limit: int = Query(viewing.PAGE, ge=1, le=500), after: str | None = None):
+        """A page of visits to channel pages, newest first, with where each came from."""
+        return viewing.channel_visits(limit, after)
 
     @app.get('/api/skipping')
     def get_skipping():

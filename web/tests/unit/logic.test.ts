@@ -8,6 +8,7 @@ import { attach, problemText, type HlsClass, type HlsInstance, type Media } from
 import { describeCache, describeEvicted } from '../../src/screens/CacheScreen'
 import { describeShown, languageName, settingsProblems, shownProblems } from '../../src/screens/SettingsScreen'
 import { describeSystem, usable } from '../../src/screens/SystemScreen'
+import { describeDetail, shareSeen, sourceParts, timeSpent } from '../../src/screens/ViewingScreen'
 import { channelState, describeAdded, describeJob, describeLibrary } from '../../src/screens/LibraryScreen'
 import { ago, countFor, episodeLabel, iplayerText, leaving, videoCount, views, viewsAndAge } from '../../src/watch/format'
 import { bySeries } from '../../src/watch/ChannelScreen'
@@ -471,5 +472,31 @@ describe('picking up and Up next', () => {
     const [a, b, c, d] = videos
     expect(upNext(a.id, [b, a], [c, b, a, d]).map(v => v.id)).toEqual([b.id, c.id, d.id])
     expect(upNext(a.id, [], [a, c]).map(v => v.id)).toEqual([c.id])
+  })
+})
+
+describe('the Viewing page', () => {
+  it('writes time watched in seconds, minutes, or hours and minutes', () => {
+    expect([40, 720, 31_420].map(timeSpent)).toEqual(['40 s', '12 min', '8 h 43 min'])
+  })
+
+  it('knows the share seen only with a running time and the seconds seen', () => {
+    expect([shareSeen({ watched: 50, length: 100 }), shareSeen({ watched: 120, length: 100 }), shareSeen({ watched: null, length: 100 }), shareSeen({ watched: 50, length: 0 })]).toEqual([0.5, 1, null, null])
+  })
+
+  it('keeps the bar to five parts, the smallest together as Elsewhere', () => {
+    const few = { home: { plays: 3, full: 1 }, search: { plays: 1, full: 0 } }
+    expect(sourceParts({ sources: few }).map(p => p.label)).toEqual(['Home', 'Search'])
+    const many = { ...few, rail: { plays: 2, full: 0 }, up_next: { plays: 5, full: 0 }, link: { plays: 1, full: 0 }, mystery: { plays: 1, full: 0 } }
+    expect(sourceParts({ sources: many })).toEqual([
+      { key: 'up_next', label: 'Up next', value: 5 }, { key: 'home', label: 'Home', value: 3 }, { key: 'rail', label: 'The side rail', value: 2 },
+      { key: 'search', label: 'Search', value: 1 }, { key: 'elsewhere', label: 'Elsewhere', value: 2 },
+    ])
+  })
+
+  it('names what a detail points at', () => {
+    expect(describeDetail({ source: 'search', detail: 'tides', detail_title: null })).toBe('“tides”')
+    expect(describeDetail({ source: 'channel', detail: 'UC1', detail_title: null })).toBe('UC1')
+    expect(describeDetail({ source: 'home', detail: null, detail_title: null })).toBeNull()
   })
 })
