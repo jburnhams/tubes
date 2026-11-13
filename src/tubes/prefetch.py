@@ -11,8 +11,9 @@ is ask or auto) gets those parts on top, so a skip lands on fetched video too; a
 
 Going easy on YouTube: each prefetch is a probe (two at once when signed in, as for a play) and two short downloads, so they run one at
 a time, GAP_SECONDS apart, never while a play's fetch runs, at most `prefetch_per_day` a day; a video whose prefetch failed is not tried
-again for RETRY_HOURS, and YouTube asking to slow down ("try again later", "not a bot") pauses prefetching for PAUSE_SECONDS. Only YouTube
-videos are prefetched (an iPlayer episode starts in about as long as its first segment takes anyway); live and scheduled streams are not."""
+again for RETRY_HOURS, and YouTube asking to slow down ("try again later", "not a bot") pauses prefetching for PAUSE_SECONDS. iPlayer
+episodes are prefetched too (their first segment comes 0.5-2.3 s after Play; their intro points come from iPlayer itself, segments.py);
+live and scheduled streams are not."""
 import collections, datetime, re, sys, threading, time
 
 from tubes import cache, fetcher, library, segments, settings, ytdlp
@@ -68,7 +69,7 @@ class Prefetcher:
     def eligible(self, video_id, now):
         if now - self.tried.get(video_id, -1e12) < RETRY_HOURS * 3600: return False
         v = library.video(video_id)
-        if not v or (v['platform'] or 'youtube') != 'youtube' or v['live'] in ('live', 'upcoming') or v['gone']: return False
+        if not v or (v['platform'] or 'youtube') not in ('youtube', 'iplayer') or v['live'] in ('live', 'upcoming') or v['gone']: return False
         return cache.entry(video_id) is None                                      # a copy of any kind (even failed, until it is played again) is left alone
 
     def step(self):

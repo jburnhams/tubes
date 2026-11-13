@@ -57,6 +57,7 @@ class Job:
         self.reached = False       # it stopped there on purpose
         self.wanted = False        # a play came after it stopped there: fetch the whole video once the prefix is kept
         self.prefer = prefer       # {video, audio}: the format ids a kept prefix was cut from, which this fetch must use too
+        self.ended = threading.Event()     # set once it has left `_running` (cancel waits for it: a prefetch runs in the prefetcher's thread, not its own)
 
     def stop(self, cancel=True):
         self.cancelled = self.cancelled or cancel
@@ -166,9 +167,8 @@ def running(prefetches=True):
 def start(video_id, title=None, channel=None, background=True, until=None):
     """Make sure the video is fetched or being fetched; returns its cache status. Raises FetchError when it cannot start. `title` and `channel`
     are what the library calls it, kept with the copy for the Cache screen. With `until` (seconds), only the start is fetched and kept as a
-    partial copy (a prefetch, YouTube only); without it, a partial copy is fetched whole from its prefix (see the module's notes)."""
+    partial copy (a prefetch); without it, a partial copy is fetched whole from its prefix (see the module's notes)."""
     where, url = source_url(video_id)
-    if until is not None and where != 'youtube': raise FetchError('Only YouTube videos are prefetched.')
     with _lock:
         if video_id in _running:
             job = _running[video_id]
@@ -193,8 +193,7 @@ def cancel(video_ids):
     """Stop the fetches of these videos (used before their copies are deleted)."""
     with _lock: jobs = [_running[v] for v in video_ids if v in _running]
     for j in jobs: j.stop()
-    for j in jobs:
-        if j.thread is not None: j.thread.join(timeout=30)
+    for j in jobs: j.ended.wait(timeout=30)
 
 
 def _run(job, url):
@@ -210,10 +209,7 @@ def _run(job, url):
         info_path = os.path.join(cache.folder(job.video_id), INFO)
         with open(info_path, 'w', encoding='utf8') as f: json.dump(info, f)
         error = attempts(job, lambda: pipeline(job, info_path, video['format_id'], audio['format_id'], info.get('duration'), signed_in))
-        if not error and job.reached:
-            with _lock:
-                if job.until is None: job.wanted = True                    # a play came while it stopped
-            kept = cache.keep_prefix(job.video_id, job.length, cache.stamp(), dict(video=video['format_id'], audio=audio['format_id'])) or -1
+        if not error and job.reached: kept = keep_start(job, dict(video=video['format_id'], audio=audio['format_id']))
     except ytdlp.YtdlpError as e: error = str(e)
     except OSError as e: error = f'Could not start the fetch: {e}'
     finally:
@@ -223,30 +219,50 @@ def _run(job, url):
         if error: keep_log(job.video_id, error)
         if not kept: cache.finish(job.video_id, cache.stamp(), error)
         with _lock: _running.pop(job.video_id, None)
+        job.ended.set()
     if ytdlp.says_blocked(error): catalogue.mark_blocked(job.video_id)   # not offered in this country: hidden until a fetch succeeds
     elif ytdlp.says_gone(error): catalogue.mark_gone(job.video_id)     # hidden from the lists until a recheck or a later fetch finds it
     if not error: catalogue.mark_found(job.video_id); cache.evict(cache.utcnow())
-    if job.wanted:                                                       # played as the prefetch stopped: now fetch it whole
-        try: start(job.video_id)
-        except FetchError as e: print(f'tubes: fetching {job.video_id} after its start was kept failed: {e}', file=sys.stderr, flush=True)
+    whole_after(job)
+
+
+def keep_start(job, formats):
+    """A prefetch that stopped at its length: keep the start as a partial copy (cache.keep_prefix); returns non-zero, so the copy is not finished as well."""
+    with _lock:
+        if job.until is None: job.wanted = True                    # a play came while it stopped
+    return cache.keep_prefix(job.video_id, job.length, cache.stamp(), formats) or -1
+
+
+def whole_after(job):
+    """Played as the prefetch stopped: now fetch it whole."""
+    if not job.wanted: return
+    try: start(job.video_id)
+    except FetchError as e: print(f'tubes: fetching {job.video_id} after its start was kept failed: {e}', file=sys.stderr, flush=True)
 
 
 def _run_iplayer(job, url):
-    """As `_run`, for an iPlayer episode: choose its stream, then ffmpeg alone (see the module's notes)."""
-    error = None
+    """As `_run`, for an iPlayer episode: choose its stream, then ffmpeg alone (see the module's notes). Its stream's label stands for the
+    formats a kept start was cut from: the same episode's same variant cuts the same segments (measured, 2026-11-13)."""
+    error = None; kept = 0
     try:
         with db.connect() as con: r = con.execute('SELECT duration FROM videos WHERE id = ?', (job.video_id,)).fetchone()
         stream_url, label = iplayer_stream(job.video_id, url, settings.get('max_height'))
+        if job.prefer and (job.prefer['video'], job.prefer['audio']) != (label, label):       # another variant now: start again without the kept start
+            note(job.video_id, '[tubes] the kept start\'s stream is not offered now; fetching from scratch')
+            cache.begin(job.video_id, cache.stamp()); job.prefer = None
         cache.set_formats(job.video_id, label)
         if not job.cancelled: error = attempts(job, lambda: direct_pipeline(job, stream_url, r[0] if r else None))
+        if not error and job.reached: kept = keep_start(job, dict(video=label, audio=label))
     except iplayer.IplayerError as e: error = str(e)
     except OSError as e: error = f'Could not start the fetch: {e}'
     finally:
         if job.cancelled and not error: error = 'The fetch was stopped.'
         if error: keep_log(job.video_id, error)
-        cache.finish(job.video_id, cache.stamp(), error)
+        if not kept: cache.finish(job.video_id, cache.stamp(), error)
         with _lock: _running.pop(job.video_id, None)
+        job.ended.set()
     if not error: catalogue.mark_found(job.video_id); cache.evict(cache.utcnow())
+    whole_after(job)
 
 
 def attempts(job, run):
@@ -337,7 +353,8 @@ def watch(job, clock=time.monotonic, sleep=time.sleep):
     last_size, last_change = -1, clock()
     while any(p.poll() is None for p in job.procs):
         if job.cancelled: job.stop(); return False
-        if job.until is not None and cache.covered(job.video_id) >= job.until:
+        until = job.until                                                 # read once: a play may clear it meanwhile
+        if until is not None and cache.covered(job.video_id) >= until:
             with _lock:
                 if job.until is not None: job.reached = True              # under the lock: a play that comes now lets it carry on instead
             if job.reached: job.stop(cancel=False); return False

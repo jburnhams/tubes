@@ -62,7 +62,7 @@ def test_videos_that_cannot_or_need_not_be_prefetched_are_passed_over(monkeypatc
     seed(); done = runs(monkeypatch); p = prefetch.Prefetcher(clock=lambda: DAY)
     from tubes import db
     with db.connect() as con:
-        con.execute("UPDATE videos SET platform = 'iplayer' WHERE id = 'aaaaaaaaaaa'")
+        con.execute("UPDATE videos SET platform = 'elsewhere' WHERE id = 'aaaaaaaaaaa'")
         con.execute("UPDATE videos SET live = 'upcoming' WHERE id = 'bbbbbbbbbbb'")
     cache.begin('ccccccccccc', cache.stamp())                                                   # already has a copy
     p.want(['aaaaaaaaaaa', 'bbbbbbbbbbb'])

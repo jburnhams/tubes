@@ -167,7 +167,7 @@ def test_a_cancelled_fetch_is_recorded_as_stopped(monkeypatch):
 
 def test_cancel_stops_running_processes(monkeypatch, fake_popen):
     job = fetcher.Job('aaaaaaaaaaa'); p = fake_popen(['x']); done = fake_popen(['y']); done.returncode = 0
-    job.procs = [p, done]; job.thread = threading.Thread(target=lambda: None); job.thread.start()
+    job.procs = [p, done]; job.thread = threading.Thread(target=job.ended.set); job.thread.start()
     killed = []; monkeypatch.setattr(oslib, 'kill_tree', lambda pid: killed.append(pid))
     fetcher._running['aaaaaaaaaaa'] = job
     fetcher.cancel(['aaaaaaaaaaa', 'not-running'])
@@ -550,8 +550,6 @@ def test_a_play_lets_a_running_prefetch_carry_on_to_the_end(monkeypatch):
     job2 = fetcher.Job('bbbbbbbbbbb', until=20); job2.reached = True; fetcher._running['bbbbbbbbbbb'] = job2
     fetcher.start('bbbbbbbbbbb')
     assert job2.wanted is True                                                                  # it had stopped: fetched whole once its start is kept
-    with pytest.raises(fetcher.FetchError, match='Only YouTube'):
-        monkeypatch.setattr(fetcher, 'platform', lambda vid: 'iplayer'); fetcher.start('b006m86d', until=20)
 
 
 def test_a_play_as_the_prefetch_stops_fetches_the_whole_video_after(monkeypatch):
@@ -617,3 +615,46 @@ def test_a_whole_fetch_that_cannot_start_after_a_kept_start_is_said_in_the_serve
     monkeypatch.setattr(fetcher, 'pipeline', racing)
     fetcher.start('aaaaaaaaaaa', background=False, until=10)
     assert cache.status('aaaaaaaaaaa')['state'] == 'partial' and 'after its start was kept failed: 3 videos are already being fetched' in capsys.readouterr().err
+
+
+def test_an_iplayer_prefetch_keeps_the_start_and_a_play_fetches_the_rest_from_the_same_stream(monkeypatch):
+    from test_cache import cut
+    seed_episode()
+    labels = iter(['1080p50 H.264 + AAC', '1080p50 H.264 + AAC', '1080p50 H.264 + AAC', '720p50 H.264 + AAC'])
+    monkeypatch.setattr(iplayer, 'stream', lambda pid, h: dict(url='https://cdn.test/fhd.m3u8', height=1080, fps=50, label=next(labels)))
+    runs = []
+    def fake_direct(job, url, duration):
+        runs.append(job.until)
+        if job.until is None: write_playlist(job.video_id, 2, True); return None
+        cut(job.video_id, [4.0] * 6); job.reached = True; return None
+    monkeypatch.setattr(fetcher, 'direct_pipeline', fake_direct); monkeypatch.setattr(cache, 'evict', lambda now: None)
+    st = fetcher.start(E, 'Chapter 1', 'Harbour Lights', background=False, until=10)
+    assert (st['state'], st['seconds']) == ('partial', 12.0) and cache.prefix(E)['video'] == '1080p50 H.264 + AAC'
+    begun = []; real = cache.begin; monkeypatch.setattr(cache, 'begin', lambda *a: begun.append(a[0]) or real(*a))
+    assert fetcher.start(E, background=False)['state'] == 'ready' and begun == [] and runs == [10, None]
+    fetcher.start(E, background=False, until=10)                                                   # (the copy was evicted, say) prefetched again
+    cache.forget([E]); begun.clear(); runs.clear()
+    fetcher.start(E, background=False, until=10); fetcher.start(E, background=False)              # iPlayer offers another variant now
+    assert begun == [E, E] and runs == [10, None] and cache.status(E)['state'] == 'ready'
+
+
+def test_cancel_waits_for_a_prefetch_running_in_another_thread(monkeypatch):
+    job = fetcher.Job('aaaaaaaaaaa', until=20); fetcher._running['aaaaaaaaaaa'] = job               # no thread of its own: the prefetcher's runs it
+    order = []
+    def finish():
+        order.append('job ends'); job.ended.set()
+    monkeypatch.setattr(oslib, 'kill_tree', lambda pid: None)
+    timer = threading.Timer(0.05, finish); timer.start()
+    fetcher.cancel(['aaaaaaaaaaa']); order.append('cancel returns')
+    assert order == ['job ends', 'cancel returns']
+
+
+def test_a_play_clearing_the_length_mid_check_does_not_break_the_watch(monkeypatch):
+    seed(); cache.begin('aaaaaaaaaaa', cache.stamp()); write_playlist('aaaaaaaaaaa', 2, False)
+    job = fetcher.Job('aaaaaaaaaaa', until=100); p = Proc(['x'], None); job.procs = [p]
+    real = cache.covered
+    def covered(vid):
+        job.until = None; return real(vid)                                                          # the play lands while the playlist is read
+    monkeypatch.setattr(cache, 'covered', covered)
+    def sleep(s): p.returncode = 0
+    assert fetcher.watch(job, clock=lambda: 0, sleep=sleep) is False and job.reached is False
