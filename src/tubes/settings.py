@@ -11,6 +11,9 @@
                    and signed out with the wait when the session cannot be read. The cookies stay in the browser, which keeps them fresh.
   half_life_days   how fast a play's weight fades in the eviction score (default 30: a play counts half as much 30 days later).
   protect_days     how long a fetched video that nobody has played yet is kept from eviction (default 7).
+  prefetch_seconds  how much of a video's start to fetch ahead of a play, for the videos Home and Up next show (prefetch.py), so they start
+                   at once (default 20; more when a part the player skips covers the start; 0 = no prefetching).
+  prefetch_per_day  at most this many prefetches a day, to go easy on YouTube (default 150).
   ytdlp, ffmpeg    the commands to run (default `yt-dlp` and `ffmpeg` from PATH).
   history_url      a database that keeps a viewing history (an SQLAlchemy URL, such as `postgresql+psycopg:///mydb`; default empty: none).
   history_table    the table or view in it to read, optionally with its schema (`schema.table`), with the columns account, at, video_id,
@@ -36,6 +39,8 @@ SPEC = {
     'cookies_from_browser': ('', str, None),
     'half_life_days': (30.0, float, None),
     'protect_days': (7.0, float, None),
+    'prefetch_seconds': (20.0, float, None),
+    'prefetch_per_day': (150, int, None),
     'ytdlp': ('yt-dlp', str, 'TUBES_YTDLP'),
     'ffmpeg': ('ffmpeg', str, 'TUBES_FFMPEG'),
     'history_url': ('', str, 'TUBES_HISTORY_URL'),

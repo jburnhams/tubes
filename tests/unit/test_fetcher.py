@@ -503,3 +503,117 @@ def test_keeping_a_log_never_fails_the_fetch(monkeypatch, tmp_path):
     cache.begin('aaaaaaaaaaa', cache.stamp()); fetcher.note('aaaaaaaaaaa', 'ran')
     with open(os.path.join(settings.data_dir(), fetcher.FAILED_LOGS), 'w') as f: f.write('a file where the folder goes')
     fetcher.keep_log('aaaaaaaaaaa', 'it broke')                                      # nowhere to keep it: the reason is still recorded
+
+
+def stop_at(job_seconds):
+    """A pipeline that lists segments until the job's `until` is covered (as watch does), then stops there; or runs to the end once a play cleared it."""
+    from test_cache import cut
+    def fake(job, info_path, v, a, duration, signed_in):
+        seen.append((v, a))
+        if job.until is None: write_playlist(job.video_id, 3, True); return None
+        cut(job.video_id, [4.0] * job_seconds); job.reached = True; return None
+    seen = []; fake.seen = seen; return fake
+
+
+def test_a_prefetch_keeps_the_start_and_a_play_fetches_the_rest_from_the_same_formats(monkeypatch):
+    seed()
+    probes = []
+    def probe(url, signed_in=False):
+        probes.append(url)                                                                      # the second probe ranks another format first
+        return INFO if len(probes) == 1 else dict(INFO, formats=[dict(INFO['formats'][0], format_id='401', height=1080)] + INFO['formats'])
+    monkeypatch.setattr(ytdlp, 'probe', probe)
+    pipe = stop_at(6); monkeypatch.setattr(fetcher, 'pipeline', pipe)
+    evicted = []; monkeypatch.setattr(cache, 'evict', lambda now: evicted.append(now))
+    st = fetcher.start('aaaaaaaaaaa', 'Building a shelf', 'Workshop', background=False, until=10)
+    assert (st['state'], st['segments'], st['seconds']) == ('partial', 3, 12.0) and cache.prefix('aaaaaaaaaaa')['video'] == '399'
+    assert fetcher.start('aaaaaaaaaaa', background=False, until=10)['state'] == 'partial'                # already prefetched: nothing runs
+    assert len(probes) == 1
+    st = fetcher.start('aaaaaaaaaaa', background=False)
+    assert pipe.seen == [('399', '140'), ('399', '140')] and st['state'] == 'ready' and st['complete'] is True
+    assert cache.prefix('aaaaaaaaaaa') is None and cache.entry('aaaaaaaaaaa')['title'] == 'Building a shelf'
+
+
+def test_a_prefix_whose_formats_are_gone_is_fetched_from_scratch(monkeypatch):
+    seed()
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: INFO)
+    monkeypatch.setattr(fetcher, 'pipeline', stop_at(6)); monkeypatch.setattr(cache, 'evict', lambda now: None)
+    fetcher.start('aaaaaaaaaaa', background=False, until=10)
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: dict(INFO, formats=[dict(INFO['formats'][0], format_id='398')] + INFO['formats'][1:]))
+    begun = []; real = cache.begin; monkeypatch.setattr(cache, 'begin', lambda *a: begun.append(a[0]) or real(*a))
+    assert fetcher.start('aaaaaaaaaaa', background=False)['complete'] is True and begun == ['aaaaaaaaaaa']
+
+
+def test_a_play_lets_a_running_prefetch_carry_on_to_the_end(monkeypatch):
+    seed(); job = fetcher.Job('aaaaaaaaaaa', until=20); fetcher._running['aaaaaaaaaaa'] = job
+    fetcher.start('aaaaaaaaaaa')
+    assert job.until is None and job.length == 20 and job.wanted is False
+    job2 = fetcher.Job('bbbbbbbbbbb', until=20); job2.reached = True; fetcher._running['bbbbbbbbbbb'] = job2
+    fetcher.start('bbbbbbbbbbb')
+    assert job2.wanted is True                                                                  # it had stopped: fetched whole once its start is kept
+    with pytest.raises(fetcher.FetchError, match='Only YouTube'):
+        monkeypatch.setattr(fetcher, 'platform', lambda vid: 'iplayer'); fetcher.start('b006m86d', until=20)
+
+
+def test_a_play_as_the_prefetch_stops_fetches_the_whole_video_after(monkeypatch):
+    seed()
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: INFO); monkeypatch.setattr(cache, 'evict', lambda now: None)
+    pipe = stop_at(6)
+    def racing(job, *a):
+        r = pipe(job, *a)
+        if job.reached and len(pipe.seen) == 1: job.until = None; job.wanted = True                # the play lands after the stop
+        return r
+    monkeypatch.setattr(fetcher, 'pipeline', racing)
+    started = []; real = fetcher.start
+    monkeypatch.setattr(fetcher, 'start', lambda vid, *a, **kw: started.append(vid) or real(vid, *a, **dict(kw, background=False)))
+    fetcher.start('aaaaaaaaaaa', until=10)
+    assert started == ['aaaaaaaaaaa', 'aaaaaaaaaaa'] and cache.status('aaaaaaaaaaa')['state'] == 'ready'
+
+
+def test_prefetches_do_not_hold_up_a_play(monkeypatch):
+    seed()
+    monkeypatch.setattr(fetcher, '_running', {f'v{i}': fetcher.Job(f'v{i}', until=20) for i in range(fetcher.MAX_RUNNING)})
+    monkeypatch.setattr(fetcher, '_run', lambda job, url: None)
+    assert fetcher.start('aaaaaaaaaaa')['state'] == 'fetching'
+    assert fetcher.running(prefetches=False) == ['aaaaaaaaaaa'] and len(fetcher.running()) == fetcher.MAX_RUNNING + 1
+
+
+def test_watch_stops_a_prefetch_once_its_length_is_covered(monkeypatch):
+    seed(); cache.begin('aaaaaaaaaaa', cache.stamp())
+    job = fetcher.Job('aaaaaaaaaaa', until=10); p = Proc(['x'], None); job.procs = [p]
+    killed = []; monkeypatch.setattr(oslib, 'kill_tree', lambda pid: killed.append(pid))
+    grown = iter([1, 3, 4])
+    assert fetcher.watch(job, clock=lambda: 0, sleep=lambda s: write_playlist('aaaaaaaaaaa', next(grown), False)) is False
+    assert job.reached is True and job.cancelled is False and killed == [1] and cache.covered('aaaaaaaaaaa') == 12.0
+    assert fetcher.outcome(job, [-15, -15, -15], False, 600) is None
+
+
+def test_a_prefixes_formats_win_when_offered(monkeypatch):
+    other = dict(INFO, formats=[dict(INFO['formats'][0], format_id='401')] + INFO['formats'])
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: other)
+    prefer = dict(video='399', audio='140')
+    assert chosen_ids(fetcher.choose_once('u', prefer=prefer))[:2] == ('399', '140')
+    assert chosen_ids(fetcher.choose_once('u', prefer=dict(video='9', audio='140')))[:2] == ('401', '140')
+    assert fetcher.same(fetcher.choose_once('u'), None) and not fetcher.same(fetcher.choose_once('u'), prefer)
+
+
+def test_signed_in_wins_when_only_it_offers_the_prefixes_formats(monkeypatch):
+    settings.save(dict(cookies_from_browser='chrome'))
+    out = dict(INFO, epoch=100, formats=[dict(f, available_at=100) for f in INFO['formats'][:1]] + [dict(INFO['formats'][1], format_id='251', acodec='opus', available_at=100)])
+    inn = dict(INFO, epoch=100, formats=[dict(f, available_at=100) for f in INFO['formats']])
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: inn if signed_in else out)
+    assert chosen_ids(fetcher.choose('u', dict(video='399', audio='140'))) == ('399', '140', True)
+    assert chosen_ids(fetcher.choose('u')) == ('399', '251', False)
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: dict(out, formats=out['formats'][:1] + [dict(out['formats'][1], format_id='140')]) if not signed_in else dict(inn, formats=[dict(INFO['formats'][0], format_id='401', available_at=100), INFO['formats'][1]]))
+    assert chosen_ids(fetcher.choose('u', dict(video='399', audio='140'))) == ('399', '140', False)  # only signed out offers them
+
+
+def test_a_whole_fetch_that_cannot_start_after_a_kept_start_is_said_in_the_server_log(monkeypatch, capsys):
+    seed()
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: INFO); monkeypatch.setattr(cache, 'evict', lambda now: None)
+    pipe = stop_at(6)
+    def racing(job, *a):
+        r = pipe(job, *a); job.until = None; job.wanted = True
+        fetcher._running.update({f'v{i}': None for i in range(fetcher.MAX_RUNNING)}); return r      # every slot taken by then
+    monkeypatch.setattr(fetcher, 'pipeline', racing)
+    fetcher.start('aaaaaaaaaaa', background=False, until=10)
+    assert cache.status('aaaaaaaaaaa')['state'] == 'partial' and 'after its start was kept failed: 3 videos are already being fetched' in capsys.readouterr().err

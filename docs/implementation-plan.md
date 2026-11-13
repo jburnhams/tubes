@@ -8,3 +8,4 @@
 - [ ] **Library, next**: refresh counts (views) of held videos now and then (storage never did); edit or hide single videos; a quota meter.
 - [ ] **M3 resume and history**: remember where each video was stopped; a "carry on" row on Home.
 - [ ] **M4 predict and pre-fetch**: score unplayed videos from what is played (channel, recency, similar titles; pgvector embeddings are an option on Postgres), fetch the top few ahead overnight, and recommend them on Home.
+  - [x] Instant starts (2026-11-13): the first 20 s of the videos Home, Up next and a channel's page offer are prefetched as partial copies (`prefetch.py`), and a play starts from them while the rest is fetched.

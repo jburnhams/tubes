@@ -6,13 +6,22 @@ The score mixes popularity and recency: every play counts, and a play counts hal
 video played 10 times two months ago (about 2.5) and one played 3 times this week (about 2.8) both stay ahead of one played once a month ago
 (0.5). Never evicted: a video being fetched, one pinned, one played in the last day. Kept for `protect_days` after it was fetched: a
 video nobody has played yet (it was just asked for, or prefetched). Failed fetches go first. An evicted video stays in the library and is
-fetched again the next time it is played. Plays are recorded here too (`record_play`), whether or not the copy is still kept."""
-import hashlib, os, re, shutil
+fetched again the next time it is played. Plays are recorded here too (`record_play`), whether or not the copy is still kept.
+
+A copy can also be `partial`: only its first seconds, fetched ahead of a play (prefetch.py), so the player starts at once. Its playlist is
+kept twice, as `index.m3u8` and `prefix.m3u8`, with its init segment as `prefix-init.mp4` and the formats it was cut from in `prefix.json`.
+When it is played, the whole video is fetched into the same folder (`resume`) from the same formats, and ffmpeg cuts the same segments
+under the same names, byte for byte (measured on the home server, 2026-11-13: three videos, each probed afresh): it rewrites them in place
+(each segment is written to a temporary name and renamed, so a reader never sees half of one) and starts `index.m3u8` again from nothing.
+Until that playlist is longer than the prefix's, the player is given the prefix's (`served_playlist`) and its init segment (`served_file`),
+so what it already plays never shrinks or changes."""
+import hashlib, json, os, re, shutil
 from datetime import datetime, timedelta, timezone
 
 from tubes import db, settings
 
 PLAYLIST = 'index.m3u8'
+PREFIX, PREFIX_INIT, PREFIX_INFO = 'prefix.m3u8', 'prefix-init.mp4', 'prefix.json'     # a partial copy's playlist, init segment and formats; never served by name
 FILE_NAME = re.compile(r'^(index\.m3u8|init\.mp4|seg_\d{5}\.m4s)$')
 SAFE_ID = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
 HIGH, LOW = 0.95, 0.90
@@ -33,6 +42,16 @@ def file_path(video_id, name):
     if not FILE_NAME.match(name or ''): return None
     p = os.path.join(folder(video_id), name)
     return p if os.path.isfile(p) else None
+
+
+def served_file(video_id, name):
+    """The path to serve for one of a video's files, or None: as file_path, except that while a copy is fetched again from its prefix, its
+    init segment is the prefix's (ffmpeg writes `init.mp4` again, identical, but not through a temporary name)."""
+    p = file_path(video_id, name)
+    if p and name == 'init.mp4':
+        keep = os.path.join(folder(video_id), PREFIX_INIT)
+        if os.path.isfile(keep): return keep
+    return p
 
 
 def folder_bytes(path):
@@ -66,7 +85,17 @@ def served_playlist(video_id, e=None):
         with open(os.path.join(folder(video_id), PLAYLIST), encoding='utf8') as f: text = f.read()
     except OSError: return None
     e = e or entry(video_id)
-    if not (e and e['state'] == 'fetching') or '#EXT-X-ENDLIST' not in text: return text
+    if not (e and e['state'] == 'fetching'): return text
+    text = _held_back(text)
+    try:
+        with open(os.path.join(folder(video_id), PREFIX), encoding='utf8') as f: prefix = f.read()
+    except OSError: return text
+    return prefix if summary(prefix)['segments'] > summary(text)['segments'] else text     # a fetch from a prefix: never less than the player was given
+
+
+def _held_back(text):
+    """A fetching copy's playlist without an ended attempt's end and last segment (see served_playlist)."""
+    if '#EXT-X-ENDLIST' not in text: return text
     # An attempt that ended: its last segment may be cut short (the stream stopped mid-segment), and a retry rewrites it whole under the same
     # name, so a player given the short one would keep it and jump a gap. Until the copy is ready, that segment is held back as well.
     lines = [ln for ln in text.splitlines(keepends=True) if ln.strip() != '#EXT-X-ENDLIST']
@@ -82,7 +111,7 @@ def entry(video_id):
 
 
 def status(video_id):
-    """The state of a video's copy for the player: `{state, segments, seconds, complete, playable, error, formats}`. `state` is none, fetching, ready or failed."""
+    """The state of a video's copy for the player: `{state, segments, seconds, complete, playable, error, formats}`. `state` is none, fetching, partial (the first seconds only), ready or failed."""
     e = entry(video_id)
     if e is None: return dict(state='none', segments=0, seconds=0.0, complete=False, playable=False, error=None, formats=None)
     if e['state'] == 'failed': p = dict(segments=0, seconds=0.0, complete=False)
@@ -104,9 +133,77 @@ def set_formats(video_id, formats):
     with db.connect() as con: con.execute('UPDATE copies SET formats = ? WHERE video_id = ?', (formats, video_id))
 
 
+def lengths(text):
+    """(seconds, segment name) of each segment a playlist's text lists, in order."""
+    out, length = [], None
+    for ln in (text or '').splitlines():
+        ln = ln.strip()
+        if ln.startswith('#EXTINF:'): length = float(ln[8:].split(',')[0])
+        elif ln and not ln.startswith('#') and length is not None: out.append((length, ln)); length = None
+    return out
+
+
+def covered(video_id):
+    """Seconds the playlist lists so far, not counting its last segment (cut short when the fetch is stopped there)."""
+    try:
+        with open(os.path.join(folder(video_id), PLAYLIST), encoding='utf8') as f: segs = lengths(f.read())
+    except OSError: return 0.0
+    return sum(n for n, _ in segs[:-1])
+
+
+def keep_prefix(video_id, until, now, formats):
+    """After a fetch stopped on purpose once `until` seconds were listed: keep the segments that reach it, never the last listed one (a
+    stop can cut it short, and a later fetch cuts it whole, so they would differ), drop the rest, and mark the copy partial. `formats` is
+    {video, audio}: the format ids it was cut from, which the whole fetch must use too. Returns the seconds kept (0: nothing worth keeping,
+    and the copy is forgotten)."""
+    d = folder(video_id)
+    try:
+        with open(os.path.join(d, PLAYLIST), encoding='utf8') as f: text = f.read()
+    except OSError: text = ''
+    segs, kept = lengths(text)[:-1], []
+    for length, name in segs:
+        if sum(n for n, _ in kept) >= until: break
+        kept.append((length, name))
+    if not kept or not os.path.isfile(os.path.join(d, 'init.mp4')): forget([video_id]); return 0.0
+    head = [ln for ln in text.splitlines() if ln.startswith('#') and not ln.startswith(('#EXTINF', '#EXT-X-ENDLIST'))]
+    playlist = '\n'.join(head + [f'#EXTINF:{n:.6f},\n{name}' for n, name in kept]) + '\n'
+    names = {name for _, name in kept} | {'init.mp4'}
+    for f in os.listdir(d):
+        if f not in names: os.remove(os.path.join(d, f))           # later segments, a half-written one, the fetch's log and probe
+    for name in (PLAYLIST, PREFIX):
+        with open(os.path.join(d, name), 'w', encoding='utf8') as f: f.write(playlist)
+    shutil.copyfile(os.path.join(d, 'init.mp4'), os.path.join(d, PREFIX_INIT))
+    with open(os.path.join(d, PREFIX_INFO), 'w', encoding='utf8') as f: json.dump(dict(formats, seconds=round(sum(n for n, _ in kept), 3)), f)
+    with db.connect() as con:
+        con.execute("UPDATE copies SET state = 'partial', bytes = ?, finished = ?, error = NULL WHERE video_id = ?", (folder_bytes(d), now, video_id))
+    return round(sum(n for n, _ in kept), 3)
+
+
+def prefix(video_id):
+    """A partial copy's `{video, audio, seconds}` (the format ids it was cut from), or None when the copy has no prefix."""
+    try:
+        with open(os.path.join(folder(video_id), PREFIX_INFO), encoding='utf8') as f: d = json.load(f)
+    except (OSError, ValueError): return None
+    return d if isinstance(d, dict) and d.get('video') and d.get('audio') else None
+
+
+def resume(video_id, now):
+    """Mark a partial copy as fetching again, keeping its files: the whole video is fetched into the same folder (see the module's notes)."""
+    with db.connect() as con:
+        con.execute("UPDATE copies SET state = 'fetching', started = ?, finished = NULL, error = NULL WHERE video_id = ?", (now, video_id))
+
+
+def drop_prefix(video_id):
+    """Forget a copy's prefix files (the whole fetch could not use its formats, or no longer needs them)."""
+    for name in (PREFIX, PREFIX_INIT, PREFIX_INFO):
+        try: os.remove(os.path.join(folder(video_id), name))
+        except OSError: pass
+
+
 def finish(video_id, now, error=None):
     """Record how a fetch ended. A failed fetch keeps its row (so the player can say why) but not its files."""
     if error: shutil.rmtree(folder(video_id), ignore_errors=True)
+    else: drop_prefix(video_id)
     size = 0 if error else folder_bytes(folder(video_id))
     with db.connect() as con:
         con.execute('UPDATE copies SET state = ?, bytes = ?, finished = ?, error = ? WHERE video_id = ?', ('failed' if error else 'ready', size, now, error, video_id))
@@ -128,8 +225,26 @@ def forget(video_ids):
 def recover(now):
     """After a restart: a fetch that was running when the server stopped cannot be resumed, so it is marked failed and its files removed."""
     with db.connect() as con: stale = [r[0] for r in con.execute("SELECT video_id FROM copies WHERE state = 'fetching'")]
-    for vid in stale: finish(vid, now, error='The server stopped while this was being fetched; play it again to fetch it again.')
+    for vid in stale:
+        if prefix(vid) and back_to_prefix(vid, now): continue          # a whole fetch from a prefix: the prefix is still good
+        finish(vid, now, error='The server stopped while this was being fetched; play it again to fetch it again.')
     return stale
+
+
+def back_to_prefix(video_id, now):
+    """Make a copy partial again from its kept prefix (the whole fetch from it stopped): its playlist, and only the files that lists."""
+    d = folder(video_id)
+    try:
+        with open(os.path.join(d, PREFIX), encoding='utf8') as f: text = f.read()
+    except OSError: return False
+    keep = {name for _, name in lengths(text)} | {'init.mp4', PREFIX, PREFIX_INIT, PREFIX_INFO}
+    for f in os.listdir(d):
+        if f not in keep: os.remove(os.path.join(d, f))
+    shutil.copyfile(os.path.join(d, PREFIX_INIT), os.path.join(d, 'init.mp4'))
+    with open(os.path.join(d, PLAYLIST), 'w', encoding='utf8') as f: f.write(text)
+    with db.connect() as con:
+        con.execute("UPDATE copies SET state = 'partial', bytes = ?, finished = ?, error = NULL WHERE video_id = ?", (folder_bytes(d), now, video_id))
+    return True
 
 
 def record_play(video_id, now):
@@ -172,7 +287,7 @@ def protected(e, now, protect_days):
     last = parse_time(e['last_played'])
     if last and now - last < RECENT_PLAY: return 'played in the last day'
     fetched = parse_time(e['finished'] or e['started'])
-    if e['plays'] == 0 and e['state'] == 'ready' and fetched and now - fetched < timedelta(days=protect_days): return 'not played yet'
+    if e['plays'] == 0 and e['state'] in ('ready', 'partial') and fetched and now - fetched < timedelta(days=protect_days): return 'not played yet'
     return None
 
 
@@ -193,7 +308,7 @@ def plan(items, limit_bytes, now, protect_days):
 def usage(now):
     """`{used, limit, high, low, entries, by_state}` for the Cache screen. Sizes are bytes."""
     items = entries(now); limit = settings.cache_limit_bytes()
-    by_state = {s: sum(1 for e in items if e['state'] == s) for s in ('fetching', 'ready', 'failed')}
+    by_state = {s: sum(1 for e in items if e['state'] == s) for s in ('fetching', 'partial', 'ready', 'failed')}
     return dict(used=sum(e['bytes'] for e in items), limit=limit, high=int(HIGH * limit), low=int(LOW * limit), count=len(items), by_state=by_state)
 
 

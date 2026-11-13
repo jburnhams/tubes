@@ -176,7 +176,7 @@ export interface SyncJob {
 /** `POST /api/library`: what was added, and the sync that started for a new channel. */
 export type Added = { kind: 'channel'; channel: Channel; sync: SyncJob } | { kind: 'video'; video: Video }
 
-export type CacheState = 'fetching' | 'ready' | 'failed'
+export type CacheState = 'fetching' | 'partial' | 'ready' | 'failed'     // partial: only its first seconds, prefetched so a play starts at once
 
 export interface Video {
   id: string

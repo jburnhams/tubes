@@ -154,7 +154,7 @@ export const cacheItems: CacheItem[] = [
 /** Builds a report from items: what the server works out (sizes in bytes, thresholds at 95% and 90%). */
 export function report(items: CacheItem[], limit = 1000 * GB): CacheReport {
   const by = (s: CacheItem['state']) => items.filter(i => i.state === s).length
-  return { used: items.reduce((n, i) => n + i.bytes, 0), limit, high: 0.95 * limit, low: 0.9 * limit, count: items.length, by_state: { fetching: by('fetching'), ready: by('ready'), failed: by('failed') }, items }
+  return { used: items.reduce((n, i) => n + i.bytes, 0), limit, high: 0.95 * limit, low: 0.9 * limit, count: items.length, by_state: { fetching: by('fetching'), partial: by('partial'), ready: by('ready'), failed: by('failed') }, items }
 }
 
 export const systemStatus: SystemStatus = {

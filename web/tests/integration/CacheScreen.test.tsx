@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cacheEmpty, cacheError, cacheNearlyFull, dropFails, evictFails, pinFails } from '../../src/mocks/handlers'
+import { cacheEmpty, cacheError, cacheNearlyFull, cacheWithStart, dropFails, evictFails, pinFails } from '../../src/mocks/handlers'
 import { openApp, screen, waitFor, within } from '../utils/render'
 import { mock, server } from '../utils/server'
 
@@ -88,6 +88,13 @@ describe('Cache', () => {
     const { user } = openApp('/admin/cache')
     await user.click(await screen.findByRole('button', { name: 'Trim now' }))
     await waitFor(() => expect(screen.getByRole('button', { name: /Trim now|Try again/ })).toBeInTheDocument())
+  })
+
+  it('marks a copy that holds only a prefetched start', async () => {
+    server.use(cacheWithStart)
+    openApp('/admin/cache')
+    const table = await screen.findByRole('table', { name: 'Copies, highest score first' })
+    expect(within(table).getByText('Start saved')).toBeInTheDocument()
   })
 
   it('says when it is over the trimming line', async () => {

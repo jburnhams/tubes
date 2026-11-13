@@ -29,6 +29,7 @@ export function describeEvicted(e: Evicted): string {
 function StateWord({ i }: { i: CacheItem }) {
   if (i.state === 'ready') return <Status tone="success">Saved</Status>
   if (i.state === 'fetching') return <Status tone="info">Fetching</Status>
+  if (i.state === 'partial') return <Status tone="neutral">Start saved</Status>
   return <Status tone="danger">Failed</Status>
 }
 
