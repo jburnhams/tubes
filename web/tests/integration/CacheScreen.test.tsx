@@ -1,19 +1,19 @@
 import { describe, expect, it } from 'vitest'
-import { cacheEmpty, cacheError, cacheNearlyFull, dropFails, evictFails, pinFails } from '../../src/mocks/handlers'
+import { cacheAllWhole, cacheEmpty, cacheError, cacheNearlyFull, dropFails, evictFails, pinFails } from '../../src/mocks/handlers'
 import { openApp, screen, waitFor, within } from '../utils/render'
 import { mock, server } from '../utils/server'
 
 describe('Cache', () => {
   it('says how full it is, and lists the copies highest score first', async () => {
     openApp('/admin/cache')
-    expect(await screen.findByText(/used by 6\svideos\. Trimming starts at/)).toBeInTheDocument()
+    expect(await screen.findByText(/used by 7\svideos\. Trimming starts at/)).toBeInTheDocument()
     expect(screen.getByRole('meter', { name: 'Cache used' })).toBeInTheDocument()
     const table = screen.getByRole('table', { name: 'Copies, highest score first' })
     const rows = within(table).getAllByRole('row').slice(1)
-    expect(rows).toHaveLength(6)
+    expect(rows).toHaveLength(7)
     expect(rows[0]).toHaveTextContent('played in the last day')
     expect(within(table).getByText('Goes first')).toBeInTheDocument()
-    expect(within(table).getAllByText('Never')).toHaveLength(1)
+    expect(within(table).getAllByText('Never')).toHaveLength(2)
     expect(within(table).getByText('Fetching')).toBeInTheDocument()
     expect(within(table).getByText('Failed')).toBeInTheDocument()
     expect(within(table).getAllByRole('link')[0]).toHaveAttribute('href', `/watch/${mock.items[0].video_id}`)
@@ -88,6 +88,25 @@ describe('Cache', () => {
     const { user } = openApp('/admin/cache')
     await user.click(await screen.findByRole('button', { name: 'Trim now' }))
     await waitFor(() => expect(screen.getByRole('button', { name: /Trim now|Try again/ })).toBeInTheDocument())
+  })
+
+  it('totals whole copies and saved starts apart, and shows one kind at a time', async () => {
+    const { user, router } = openApp('/admin/cache')
+    const table = await screen.findByRole('table', { name: 'Copies, highest score first' })
+    expect(within(table).getByText('Start saved')).toBeInTheDocument()
+    expect(screen.getByText('Whole videos')).toBeInTheDocument()
+    expect(screen.getByText(/^2\sMB · Start at once/)).toBeInTheDocument()
+    await user.click(screen.getByRole('tab', { name: /Starts/ }))
+    expect(router.state.location.search).toBe('?show=partial')
+    expect(within(screen.getByRole('table', { name: 'Copies, highest score first' })).getAllByRole('row').slice(1)).toHaveLength(1)
+    await user.click(screen.getByRole('tab', { name: /Whole/ }))
+    expect(within(screen.getByRole('table', { name: 'Copies, highest score first' })).getAllByRole('row').slice(1)).toHaveLength(4)
+  })
+
+  it('says when there are no copies of the kind chosen', async () => {
+    server.use(cacheAllWhole)
+    openApp('/admin/cache?show=partial')
+    expect(await screen.findByText('None of this kind')).toBeInTheDocument()
   })
 
   it('says when it is over the trimming line', async () => {

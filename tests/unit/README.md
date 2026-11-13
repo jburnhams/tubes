@@ -18,6 +18,7 @@ Fast and isolated: synthetic data and fakes; no external services, no network. E
 | `paste.py` | `test_paste.py` | ~100% | done | splitting a paste (bullets, several links a line), YouTube links, ids, handles and videos, iPlayer programme and episode links (one-offs refused), names on both (handle first, a bounded search, exact titles on iPlayer), followed and dismissed ones, failures per line, kept through a regroup |
 | `cache.py` | `test_cache.py` | ~100% | done | copy states, plays, score and eviction order, protections, pin, drop |
 | `fetcher.py` | `test_fetcher.py` | ~100% | done | the yt-dlp to ffmpeg pipeline with a stand-in yt-dlp, playable after three segments, failures, the fetch limit; iPlayer episodes through ffmpeg alone, the yt-dlp fallback |
+| `prefetch.py` | `test_prefetch.py` | 100% | done | how much of a start (skipped parts at the start added), offered videos before Home's, passed-over videos, waiting for a play's fetch, the day's limit, failures forgotten, slowing down |
 | `iplayer.py` | `test_iplayer.py` | 100% | done | links, BBC times and durations, the version to play, titles from `Series 1: 2. Name`, rows, the catalogue and mediaselector calls and refusals against the stand-in (tests/utils/fake_iplayer.py), 1080p50 then the best listed variant |
 | `ytdlp.py` | `test_ytdlp.py` | 100% | done | format choice (codec order, width as well as height, original audio), video ids |
 | `oslib.py` | `test_oslib.py` | 100% | done | file locks, process liveness, process tree termination, priority, venv/cli helpers |

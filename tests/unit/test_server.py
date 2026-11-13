@@ -156,9 +156,15 @@ def test_play_stream_and_media(client, monkeypatch):
     r = client.get('/api/media/aaaaaaaaaaa/index.m3u8')
     assert r.status_code == 200 and r.headers['content-type'] == 'application/vnd.apple.mpegurl' and r.headers['cache-control'] == 'no-store'
     seg = client.get('/api/media/aaaaaaaaaaa/seg_00000.m4s')
-    assert seg.headers['content-type'] == 'video/iso.segment' and seg.headers['cache-control'] == 'private, max-age=86400' and len(seg.content) == 1000
-    write_playlist('aaaaaaaaaaa', 2, True)
-    assert client.get('/api/media/aaaaaaaaaaa/index.m3u8').headers['cache-control'] == 'private, max-age=86400'
+    assert seg.headers['content-type'] == 'video/iso.segment' and seg.headers['cache-control'] == 'no-store' and len(seg.content) == 1000   # a retry may rewrite it
+    write_playlist('aaaaaaaaaaa', 2, True)          # an attempt that ended (short or not) while the copy is still fetching: a retry may follow
+    r = client.get('/api/media/aaaaaaaaaaa/index.m3u8')
+    assert r.headers['cache-control'] == 'no-store' and 'seg_00000.m4s' in r.text and 'seg_00001.m4s' not in r.text and '#EXT-X-ENDLIST' not in r.text
+    assert client.get('/api/videos/aaaaaaaaaaa/stream').json()['complete'] is False
+    cache.finish('aaaaaaaaaaa', cache.stamp())
+    r = client.get('/api/media/aaaaaaaaaaa/index.m3u8')
+    assert r.headers['cache-control'] == 'private, max-age=86400' and '#EXT-X-ENDLIST' in r.text
+    assert client.get('/api/media/aaaaaaaaaaa/seg_00000.m4s').headers['cache-control'] == 'private, max-age=86400'
     assert client.get('/api/videos/aaaaaaaaaaa/stream').json()['complete'] is True
     for bad in ('fetch.log', 'init.mp4', '..%2Fx'):
         assert client.get(f'/api/media/aaaaaaaaaaa/{bad}').status_code == 404
@@ -335,3 +341,25 @@ def test_plays_say_where_they_came_from_and_how_they_went(client, monkeypatch):
     got = client.get('/api/plays?limit=1').json()
     assert [(p['id'], p['source'], p['outcome']) for p in got['items']] == [(2, 'link', 'none')]
     assert got['summary']['sources'] == dict(channel=dict(plays=1, full=0), link=dict(plays=1, full=0)) and got['summary']['channel_views'] == dict(link=1, rail=1)
+
+
+def test_offered_videos_are_prefetched_and_system_says_how_it_goes(monkeypatch):
+    seed(); app = create_app(); c = TestClient(app)
+    shown = [v['id'] for v in c.get('/api/videos/shuffle', params=dict(count=2)).json()]
+    assert list(reversed(app.state.prefetch.asked)) == list(reversed(shown))
+    c.get('/api/videos', params=dict(channel=CHANNELS[1]['id']))
+    assert list(app.state.prefetch.asked)[-2:] == ['ccccccccccc', 'ddddddddddd']
+    before = list(app.state.prefetch.asked); c.get('/api/videos'); c.get('/api/videos', params=dict(q='shelf'))
+    assert list(app.state.prefetch.asked) == before                                             # Home is prefetched anyway; a search is not
+    assert app.state.prefetch.thread is None                                                     # only `tubes serve` starts it
+    assert c.get('/api/system').json()['prefetch'] == dict(enabled=True, seconds=20.0, today=0, per_day=150, paused_until=None, last=None)
+
+
+def test_a_fetch_from_a_prefix_serves_the_prefixes_init_segment(client):
+    from test_cache import keep
+    keep(); cache.resume('aaaaaaaaaaa', cache.stamp())
+    d = cache.folder('aaaaaaaaaaa')
+    with open(os.path.join(d, 'init.mp4'), 'wb') as f: f.write(b'')                              # ffmpeg writing it again
+    assert client.get('/api/media/aaaaaaaaaaa/init.mp4').content == b'i'
+    assert client.get('/api/media/aaaaaaaaaaa/prefix.json').status_code == 404
+    assert client.get('/api/media/aaaaaaaaaaa/index.m3u8').text.count('seg_') == 3
