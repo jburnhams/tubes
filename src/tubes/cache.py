@@ -306,10 +306,12 @@ def plan(items, limit_bytes, now, protect_days):
 
 
 def usage(now):
-    """`{used, limit, high, low, entries, by_state}` for the Cache screen. Sizes are bytes."""
+    """`{used, limit, high, low, count, by_state, bytes_by_state}` for the Cache screen: how many copies, and how many bytes, are whole (ready), only a start (partial), fetching or failed. Sizes are bytes."""
     items = entries(now); limit = settings.cache_limit_bytes()
-    by_state = {s: sum(1 for e in items if e['state'] == s) for s in ('fetching', 'partial', 'ready', 'failed')}
-    return dict(used=sum(e['bytes'] for e in items), limit=limit, high=int(HIGH * limit), low=int(LOW * limit), count=len(items), by_state=by_state)
+    states = ('fetching', 'partial', 'ready', 'failed')
+    by_state = {s: sum(1 for e in items if e['state'] == s) for s in states}
+    bytes_by_state = {s: sum(e['bytes'] for e in items if e['state'] == s) for s in states}
+    return dict(used=sum(e['bytes'] for e in items), limit=limit, high=int(HIGH * limit), low=int(LOW * limit), count=len(items), by_state=by_state, bytes_by_state=bytes_by_state)
 
 
 def evict(now, dry_run=False):

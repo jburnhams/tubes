@@ -107,7 +107,7 @@ def test_entries_usage_and_evict(monkeypatch):
     items = cache.entries(NOW)
     assert [(e['video_id'], e['plays'], e['score']) for e in items] == [('bbbbbbbbbbb', 1, pytest.approx(0.9548, abs=1e-3)), ('aaaaaaaaaaa', 1, 0.5)]
     u = cache.usage(NOW)
-    assert u['count'] == 2 and u['by_state'] == dict(fetching=0, partial=0, ready=2, failed=0) and u['used'] == sum(e['bytes'] for e in items)
+    assert u['count'] == 2 and u['by_state'] == dict(fetching=0, partial=0, ready=2, failed=0) and u['bytes_by_state'] == dict(fetching=0, partial=0, ready=u['used'], failed=0) and u['used'] == sum(e['bytes'] for e in items)
     settings.save(dict(cache_limit_gb=u['used'] / 1e9 * 1.2))
     assert cache.evict(NOW) == dict(evicted=[], freed=0, dry_run=False)
     settings.save(dict(cache_limit_gb=u['used'] / 1e9))                                     # over 95%: the lower score goes

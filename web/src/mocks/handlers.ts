@@ -366,9 +366,9 @@ export const playFails = http.post(at('/api/videos/:id/play'), () => refused('3 
 
 export const cacheLoading = http.get(at(paths.cache), () => delay('infinite'))
 export const cacheError = http.get(at(paths.cache), down)
+export const cacheAllWhole = http.get(at(paths.cache), () => HttpResponse.json(report(mock.items.filter(i => i.state === 'ready'))))
 export const cacheEmpty = http.get(at(paths.cache), () => HttpResponse.json(report([])))
 /** Over the 95% line: 960 GB of 1000 GB. */
-export const cacheWithStart = http.get(at(paths.cache), () => HttpResponse.json(report(mock.items.map((i, n) => (n === 1 ? { ...i, state: 'partial' as const, bytes: 3e6, protected: 'not played yet' } : i)))))
 export const cacheNearlyFull = http.get(at(paths.cache), () => HttpResponse.json(report(mock.items.map(i => ({ ...i, bytes: i.state === 'failed' ? 0 : 192 * 1e9 })))))
 export const pinFails = http.put(at('/api/cache/:id'), down)
 export const dropFails = http.delete(at('/api/cache/:id'), down)

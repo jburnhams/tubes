@@ -148,13 +148,19 @@ export const cacheItems: CacheItem[] = [
   item(videos[5], { plays: 2, score: 0.9 }),
   item(videos[1], { state: 'fetching', bytes: 0.05 * GB, finished: null, plays: 1, score: 1, last_played: '2026-11-09T09:00:00+00:00', protected: 'fetching' }),
   item(videos[8], { plays: 0, score: 0, last_played: null, protected: 'not played yet', bytes: 0.33 * GB }),
+  item(videos[6], { state: 'partial', bytes: 0.002 * GB, plays: 0, score: 0, last_played: null, protected: 'not played yet' }),
   item(videos[2], { state: 'failed', bytes: 0, error: 'Video unavailable. This video is private.', formats: null, plays: 1, score: 0.1, finished: '2026-11-03T10:00:00+00:00' }),
 ]
 
 /** Builds a report from items: what the server works out (sizes in bytes, thresholds at 95% and 90%). */
 export function report(items: CacheItem[], limit = 1000 * GB): CacheReport {
   const by = (s: CacheItem['state']) => items.filter(i => i.state === s).length
-  return { used: items.reduce((n, i) => n + i.bytes, 0), limit, high: 0.95 * limit, low: 0.9 * limit, count: items.length, by_state: { fetching: by('fetching'), partial: by('partial'), ready: by('ready'), failed: by('failed') }, items }
+  const size = (s: CacheItem['state']) => items.filter(i => i.state === s).reduce((n, i) => n + i.bytes, 0)
+  const states = ['fetching', 'partial', 'ready', 'failed'] as const
+  return {
+    used: items.reduce((n, i) => n + i.bytes, 0), limit, high: 0.95 * limit, low: 0.9 * limit, count: items.length,
+    by_state: Object.fromEntries(states.map(s => [s, by(s)])) as CacheReport['by_state'], bytes_by_state: Object.fromEntries(states.map(s => [s, size(s)])) as CacheReport['bytes_by_state'], items,
+  }
 }
 
 export const systemStatus: SystemStatus = {

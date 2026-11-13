@@ -256,6 +256,7 @@ export interface CacheReport {
   low: number
   count: number
   by_state: Record<CacheState, number>
+  bytes_by_state: Record<CacheState, number>
   items: CacheItem[]
 }
 
