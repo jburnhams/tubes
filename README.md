@@ -5,7 +5,7 @@ A home video server: it keeps a video library (YouTube channels and videos, adde
 - **Library**: channels and single videos are added in Admin > Library (or `tubes add`) by link, id or @handle, and their details come from the YouTube Data API. A followed channel's uploads are read back to its first video once, and each sync (every few hours, or Sync in Admin) picks up the new ones. The app browses and searches the library from Tubes' own database.
 - **Fetch on play**: yt-dlp downloads the best format up to the chosen height (AV1, then VP9, then H.264, original audio) and ffmpeg writes it as an HLS playlist as it arrives, so playback starts after the first few seconds are on disk (about 2 s on a home connection).
 - **Cache**: one folder with a size limit (default 1 TB). Above 95% of it, copies go lowest score first until it is under 90%; the score is every play, each worth half as much per half-life (default 30 days). Pinned copies, copies being fetched and recent unplayed fetches are kept.
-- **Web app**: the watching side (Home, Search, Channels, Watch) in the old Tubes look, a video site's layout with Tubes' own mark; the admin area under `/admin` (Library, Suggestions, History, Cache, YouTube quota, System, Settings) in [strata-react](https://github.com/jburnhams/strata-react)'s look. Latest Chrome is the target.
+- **Web app**: the watching side (Home, Search, Channels, Watch) in the old Tubes look, a video site's layout with Tubes' own mark; the admin area under `/admin` (Library, Suggestions, Viewing, History, Cache, YouTube quota, System, Settings) in [strata-react](https://github.com/jburnhams/strata-react)'s look. Latest Chrome is the target.
 
 ## Quick start
 

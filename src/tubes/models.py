@@ -16,7 +16,10 @@ carry them, so they sort and compare as text on both engines.
   copies             one row per video that has (or is getting) a copy in the cache folder: fetching, partial (the first seconds only, prefetched), ready or failed, its size, whether it is
                      pinned, and the title and channel the library gave when it was fetched (kept, so a copy still has a name after its video
                      leaves the library). No foreign key to videos for the same reason.
-  plays              one row per play, for the eviction score and, later, for predicting what to fetch next.
+  plays              one row per play, for the eviction score, Continue watching and predicting what to watch or fetch next: where it was
+                     started from (home, a channel, a search, Up next...), and as the player reports it, how much was seen and where it
+                     stopped, summed up as an `outcome` (short, partial, or full at 90% and more), viewing.py.
+  channel_views      one row each time a channel's page is opened, and where from (the rail, the Channels page, a video's card...).
   watches            a viewing history brought in from elsewhere (a Google Takeout watch history, history.py), one row per watch, under the
                      `source` it was imported as: what suggestions are made from. Not plays: they never touch the eviction score.
   suggestions        one row per channel in the history: how often and how lately it was watched (`score` fades a watch by its age), its
@@ -116,10 +119,29 @@ class Copy(Base):
 
 class Play(Base):
     __tablename__ = 'plays'
-    __table_args__ = (Index('ix_plays_video', 'video_id', 'at'),)
+    __table_args__ = (Index('ix_plays_video', 'video_id', 'at'), Index('ix_plays_at', 'at'))
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
     video_id: Mapped[str] = mapped_column(String(64))
     at: Mapped[str] = mapped_column(String(40))
+    # How the play went (viewing.py); every one is None on a play from before these were kept (2026-11-12) or recorded by cache.record_play.
+    source: Mapped[str | None] = mapped_column(String(32), default=None)     # where it was started: home, continue, channel, search, up_next, link (viewing.SOURCES)
+    detail: Mapped[str | None] = mapped_column(Text, default=None)           # which one: the channel's id, the search words, the video Up next was beside
+    rank: Mapped[int | None] = mapped_column(default=None)                   # its place in that list, from 0
+    length: Mapped[float | None] = mapped_column(Float, default=None)        # the video's running time in seconds, as the player found it
+    watched: Mapped[float | None] = mapped_column(Float, default=None)       # seconds of it seen, each second once (a part played again counts once; a part skipped counts as seen)
+    position: Mapped[float | None] = mapped_column(Float, default=None)      # where the player was at the last report: where a later play picks up
+    outcome: Mapped[str | None] = mapped_column(String(16), default=None)    # none, short, partial or full (90% and more seen), viewing.outcome
+    updated: Mapped[str | None] = mapped_column(String(40), default=None)    # the last report
+
+
+class ChannelView(Base):
+    __tablename__ = 'channel_views'
+    __table_args__ = (Index('ix_channel_views_channel', 'channel_id', 'at'), Index('ix_channel_views_at', 'at'))
+    id: Mapped[int] = mapped_column(primary_key=True, init=False)
+    channel_id: Mapped[str] = mapped_column(String(64))
+    at: Mapped[str] = mapped_column(String(40))
+    source: Mapped[str | None] = mapped_column(String(32), default=None)     # where it was opened from: rail, chips, channels, home, watch... (viewing.SOURCES)
+    detail: Mapped[str | None] = mapped_column(Text, default=None)
 
 
 class Watch(Base):

@@ -6,6 +6,7 @@ import { useLoad } from 'strata-react'
 import { api, keys } from '../api'
 import { Avatar } from './cards'
 import { countFor } from './format'
+import { fromState } from './from'
 import { Nothing, Shown } from './Shown'
 
 const grid = 'grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-5 2xl:grid-cols-6'
@@ -23,9 +24,9 @@ export function ChannelsScreen() {
       >
         {cs => (
           <ul aria-label="Channels" className={grid}>
-            {cs.map(c => (
+            {cs.map((c, i) => (
               <li key={c.id}>
-                <Link to={`/channels/${encodeURIComponent(c.id)}`} className="grid justify-items-center gap-3 text-center">
+                <Link to={`/channels/${encodeURIComponent(c.id)}`} state={fromState({ source: 'channels' }, i)} className="grid justify-items-center gap-3 text-center">
                   <Avatar channel={c} size="aspect-square w-3/4 text-tube-xl" />
                   <span className="grid gap-0.5">
                     <span className="text-tube-base font-medium">{c.title}</span>

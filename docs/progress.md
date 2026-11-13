@@ -1,5 +1,11 @@
 # Progress log
 
+## 2026-11-13: Admin > Viewing, every play in full
+
+- Asked for: a viewing history page in Admin with full details for each play.
+- `viewing.recent` pages plays newest first by a cursor (`at|id`, as the server orders them), filtered by outcome and source (`none` and `link` also match plays from before those were kept), with the channel or the video a `detail` points at named (`detail_title`); `viewing.channel_visits` pages the channel page visits the same way; `summary` adds seconds seen and different videos. `GET /api/plays` now answers `{items, has_more}` (`tubes plays` reads `items`), new `GET /api/plays/summary?days=` and `GET /api/channel-views`.
+- Admin > Viewing (`/admin/viewing`, after Suggestions): the last 30 days in a sentence and five numbers (plays, to the end, part watched, short looks, time watched), a CompositionBar of where plays were started (five parts at most, as the bar has five colours: past four, the rest are Elsewhere), then every play newest first as a Disclosure that opens to the video and channel, when it started and last reported, where it was started from and which one, its place in that list, the running time, the seconds seen and their share, and where it stopped; filters and open plays in the URL (`?outcome=&source=&open=`). Last, the channel pages visited and where from. The imported Takeout history stays on History, as it has no progress in it.
+
 ## 2026-11-13: the start of offered videos fetched ahead, so a play starts at once
 
 - Asked for: fetch the first 10-20 s (more when the start is a skippable intro) of the videos Home and the recommendations offer, before anyone plays them, so a play starts at once and the rest follows.
@@ -24,6 +30,16 @@
 - Review (Codex): an attempt that stops mid-segment still writes that short last segment, which the retry rewrites whole under the same name; a player that had buffered the short one would jump a gap. While the copy is fetching, a playlist that has ended is also served without its last segment (only an attempt's final segment can be short); the whole playlist is served once the copy is ready.
 - Review (Codex): with that segment held back, an attempt that ended after one segment served an empty playlist while `status` still said playable, so the player would start on a playlist hls.js rejects. While fetching, `status` now counts what is served (`cache.summary` of `served_playlist`), so it is not playable until a segment is.
 - So the next one can be explained: a failed fetch's log is copied to `failed-fetches/<id>.log` in the data folder before the copy's folder goes, and `tubes: fetching <id> failed: <reason>` is printed to the server's log (the journal). `ytdlp.last_error` passes over yt-dlp's broken pipe line and its `[info]`/`[download]`/`[tubes]` lines for ffmpeg's own line (which has no `ERROR:` prefix), keeping the broken pipe only when nothing else was said. A stall (it already waited two minutes) and YouTube saying the video is gone or blocked are not run again.
+
+## 2026-11-12: what is watched here, and how much
+
+- Asked for: capture viewing so recently part-watched videos come first in what is suggested next, count a video watched at 90% and more, and keep data for later recommendations (clicks that end in a full, partial or short watch), plus channel page views and where each video view came from.
+- `plays` (one row per play, as before, so the cache's eviction score is unchanged) gains `source` (home, continue, channel, search, up_next, link for a typed or shared address; `other` for a name the server does not know), `detail` (the channel, the search words, the video Up next was beside), `rank` (place in that list), `length`, `watched`, `position`, `outcome` and `updated`; new `channel_views` (channel, when, source, detail). Migration `b5e8c1d2a7f4`. Plays from before have no outcome and are left out of Continue watching.
+- `watched` counts each second once, as the player passes it by playing (a seek counts nothing; going back over a part does not add to it), and a part the player skips (sponsor, intro) counts as seen, so skipped parts do not keep a video under 90%. The page reports every 15 s while playing, on pause, on end, when the tab is hidden and as it is left (`fetch` with keepalive); the server only moves `watched` up. A report counts as sent only once the server answers, so a failed one goes again with the next (the one on leaving included). Outcome: full at 90%+, partial at 10%+, short under that (under 60 s when no length is known), none when nothing was seen.
+- Continue watching: videos with a partial play in the last 30 days and no full play since (nor one that stopped in the last tenth, so a video finished over two visits leaves the list), last played first, through `library.shown()`; a row on Home (absent when empty), the same videos first in Up next, a red bar along each one's picture. A new play picks up where the last stopped (`resume` from POST /play) if that part of the copy is already on the server and it is past 10 s and before the last tenth, with "Picked up at 4:05 · Start over" for 8 s.
+- Where a click came from travels in React Router's location state (`watch/from.tsx`), not the URL, so shared links stay clean. `GET /api/plays` and `tubes plays` list the latest plays and sum up the last 30 days by outcome and source.
+- Imported histories (Takeout, the history database) are kept apart: they have no progress and feed the channel suggestions, which only list channels not followed, while plays here are of followed channels.
+- Visual: one new story (Home with Continue watching), light and dark; every other shot unchanged. Written in Chromium 1243, as before.
 
 ## 2026-11-12: region, language and subtitle filters
 

@@ -10,11 +10,17 @@ src/tubes/db.py
 src/tubes/fetcher.py
 src/tubes/history.py
 src/tubes/iplayer.py
+src/tubes/iplayer_suggest.py
 src/tubes/library.py
 src/tubes/models.py
 src/tubes/oslib.py
+src/tubes/paste.py
+src/tubes/prefetch.py
+src/tubes/quota.py
 src/tubes/related.py
+src/tubes/segments.py
 src/tubes/settings.py
+src/tubes/viewing.py
 src/tubes/youtube.py
 src/tubes/ytdlp.py
 src/tubes.egg-info/PKG-INFO

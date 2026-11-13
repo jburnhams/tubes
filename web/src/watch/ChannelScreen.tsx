@@ -2,11 +2,14 @@
 // many videos) over a Videos tab and a grid of its videos, newest first, a page at a time. A channel
 // the library no longer has (an old link) says so. An iPlayer programme reads the same, with its
 // episodes under a heading for each series as the list reaches it (newest first, so the latest series leads).
+// Each visit is recorded with where it came from (viewing.py): a query keyed on the visit (the location's key)
+// with gcTime 0, as the watch page's play is, so React's double mount does not count it twice and coming back counts again.
 import { HttpError, describeHttpError, useLoad } from 'strata-react'
-import { useParams } from 'react-router'
+import { useLocation, useParams } from 'react-router'
 import { api, keys, type Channel, type Video } from '../api'
 import { Avatar, GridSkeleton, More, VideoGrid } from './cards'
 import { countFor } from './format'
+import { FromHere, useArrivedFrom } from './from'
 import { Nothing, Shown } from './Shown'
 import { useVideos } from './useVideos'
 
@@ -45,6 +48,14 @@ function Videos({ c }: { c: Channel }) {
   )
 }
 
+/** Records the visit; draws nothing (a visit that could not be recorded is not the person's problem). */
+function Visit({ id }: { id: string }) {
+  const from = useArrivedFrom()
+  const { key } = useLocation()
+  useLoad({ queryKey: keys.channelView(id, key), queryFn: () => api.channelView(id, from), staleTime: Infinity, gcTime: 0, retry: false })
+  return null
+}
+
 export function ChannelScreen() {
   const { id = '' } = useParams()
   const load = useLoad({
@@ -66,7 +77,8 @@ export function ChannelScreen() {
             <div className="mb-6 border-b border-tube-line">
               <span className="inline-block border-b-2 border-tube-ink px-3 pb-3 text-tube-base font-medium">{c.platform === 'iplayer' ? 'Episodes' : 'Videos'}</span>
             </div>
-            <Videos c={c} />
+            <Visit id={c.id} />
+            <FromHere source="channel" detail={c.id}><Videos c={c} /></FromHere>
           </>
         )}
       </Shown>

@@ -323,6 +323,31 @@ def test_segments_endpoint(client, monkeypatch):
     assert next(k for k in client.get('/api/skipping').json() if k['id'] == 'intro')['mode'] == 'auto'
 
 
+def test_plays_say_where_they_came_from_and_how_they_went(client, monkeypatch):
+    seed()
+    monkeypatch.setattr(fetcher, 'start', lambda vid, title, channel: cache.status(vid))
+    first = client.post('/api/videos/aaaaaaaaaaa/play', json=dict(source='channel', detail=CHANNELS[0]['id'], rank=1)).json()
+    assert (first['play_id'], first['resume'], first['plays']) == (1, None, 1)
+    assert client.post('/api/plays/1', json=dict(position=250, watched=240, length=600)).json() == dict(play_id=1, video_id='aaaaaaaaaaa', watched=240, position=250, length=600, outcome='partial')
+    assert client.post('/api/plays/9', json=dict(watched=1)).json() == dict(detail='There is no play 9.')
+    assert client.post('/api/plays/1', json=dict(watched=-1)).status_code == 422
+    assert client.post('/api/videos/bbbbbbbbbbb/play', json=dict(rank=-2)).status_code == 422
+    assert [(v['id'], v['resume'], v['progress']) for v in client.get('/api/videos/continue').json()] == [('aaaaaaaaaaa', 250, round(250 / 600, 4))]
+    again = client.post('/api/videos/aaaaaaaaaaa/play').json()                              # no body: an old page, or a typed address
+    assert (again['play_id'], again['resume'], again['plays']) == (2, 250, 2)
+    assert client.post(f"/api/channels/{CHANNELS[0]['id']}/views", json=dict(source='rail')).json() == dict(id=1)
+    assert client.post(f"/api/channels/{CHANNELS[1]['id']}/views").json() == dict(id=2)
+    assert client.post('/api/channels/UCnope/views').status_code == 404
+    got = client.get('/api/plays?limit=1').json()
+    assert [(p['id'], p['source'], p['outcome']) for p in got['items']] == [(2, 'link', 'none')] and got['has_more'] is True
+    older = client.get('/api/plays', params=dict(after=f"{got['items'][0]['at']}|2", outcome='partial', source='channel')).json()
+    assert [(p['id'], p['detail_title']) for p in older['items']] == [(1, 'Workshop')]
+    s = client.get('/api/plays/summary').json()
+    assert s['sources'] == dict(channel=dict(plays=1, full=0), link=dict(plays=1, full=0)) and s['channel_views'] == dict(link=1, rail=1) and s['seconds'] == 240
+    visits = client.get('/api/channel-views', params=dict(limit=1)).json()
+    assert [(v['id'], v['title']) for v in visits['items']] == [(2, 'night sky')] and visits['has_more'] is True
+
+
 def test_offered_videos_are_prefetched_and_system_says_how_it_goes(monkeypatch):
     seed(); app = create_app(); c = TestClient(app)
     shown = [v['id'] for v in c.get('/api/videos/shuffle', params=dict(count=2)).json()]

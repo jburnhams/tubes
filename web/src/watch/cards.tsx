@@ -4,12 +4,15 @@
 // and avatar are links too, for the mouse, but hidden from the keyboard and screen readers so each video is said once.
 // A thumbnail that fails tries YouTube's hqdefault size first, then reports its video as missing (missing.ts); a video the server then hides
 // leaves every list at once, as the server leaves it out of the next page it serves.
+// Every link hands on the list it is in and its place there (from.tsx), so the play or the visit it starts is kept with where it came from.
+// A video part watched (Continue watching) has a red bar along the foot of its picture, as far as it got.
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { useLoad, type InfiniteLoad } from 'strata-react'
 import { api, keys, type Channel, type Video } from '../api'
 import { runningTime, viewsAndAge } from './format'
 import { fallbackThumbnail, isPlaceholder, reportMissing, useHidden } from './missing'
+import { fromState, useHere } from './from'
 import { Pill } from './Shown'
 
 /** The channels, by id, from the one shared read (the rail reads the same query). */
@@ -38,7 +41,8 @@ export function Picture({ v, className = '' }: { v: Video; className?: string })
     <span className={`relative block aspect-video overflow-hidden rounded-tube bg-tube-chip ${className}`}>
       {src && <img src={src} alt="" className="size-full object-cover" onError={failed} onLoad={e => isPlaceholder(e.currentTarget) && reportMissing(v.id)} />}
       {saved && <span className="absolute top-2 left-2 rounded-tube-sm bg-tube-badge px-1.5 py-0.5 text-tube-xs font-medium text-tube-on-screen">{saved}</span>}
-      {v.duration ? <span className="absolute right-2 bottom-2 rounded-tube-sm bg-tube-badge px-1 text-tube-xs font-medium text-tube-on-screen tabular-nums">{runningTime(v.duration)}</span> : null}
+      {v.duration ? <span className={`absolute right-2 ${v.progress ? 'bottom-3' : 'bottom-2'} rounded-tube-sm bg-tube-badge px-1 text-tube-xs font-medium text-tube-on-screen tabular-nums`}>{runningTime(v.duration)}</span> : null}
+      {v.progress ? <span aria-hidden className="absolute inset-x-0 bottom-0 h-1 bg-tube-badge"><span className="block h-full bg-tube-red" style={{ width: `${Math.max(v.progress * 100, 2)}%` }} /></span> : null}
     </span>
   )
 }
@@ -50,16 +54,23 @@ export function useGone(v: Video): boolean {
   return useHidden().has(v.id)
 }
 
-export function VideoCard({ v, channel, showChannel = true }: { v: Video; channel?: Channel; showChannel?: boolean }) {
+/** Says, for a screen reader, how far a part-watched video got. */
+function watchedText(v: Video): string | null {
+  return v.progress ? `, ${Math.round(v.progress * 100)}% watched` : null
+}
+
+export function VideoCard({ v, channel, showChannel = true, rank, className = '' }: { v: Video; channel?: Channel; showChannel?: boolean; rank?: number; className?: string }) {
+  const here = useHere()
   if (useGone(v)) return null
+  const to = fromState(here, rank), toChannel = fromState(here)
   return (
-    <li className="grid content-start gap-3">
-      <Link to={watchPath(v)} tabIndex={-1} aria-hidden><Picture v={v} /></Link>
+    <li className={`grid content-start gap-3 ${className}`}>
+      <Link to={watchPath(v)} state={to} tabIndex={-1} aria-hidden><Picture v={v} /></Link>
       <div className="flex gap-3">
-        {showChannel && <Link to={`/channels/${encodeURIComponent(v.channel_id)}`} tabIndex={-1} aria-hidden><Avatar channel={channel} name={v.channel} /></Link>}
+        {showChannel && <Link to={`/channels/${encodeURIComponent(v.channel_id)}`} state={toChannel} tabIndex={-1} aria-hidden><Avatar channel={channel} name={v.channel} /></Link>}
         <div className="grid min-w-0 content-start gap-1">
-          <Link to={watchPath(v)} className="line-clamp-2 text-tube-base font-medium text-tube-ink">{v.title}</Link>
-          {showChannel && <Link to={`/channels/${encodeURIComponent(v.channel_id)}`} className="text-tube-sm text-tube-quiet hover:text-tube-ink">{v.channel ?? channel?.title ?? 'Channel'}</Link>}
+          <Link to={watchPath(v)} state={to} className="line-clamp-2 text-tube-base font-medium text-tube-ink">{v.title}{watchedText(v) && <span className="sr-only">{watchedText(v)}</span>}</Link>
+          {showChannel && <Link to={`/channels/${encodeURIComponent(v.channel_id)}`} state={toChannel} className="text-tube-sm text-tube-quiet hover:text-tube-ink">{v.channel ?? channel?.title ?? 'Channel'}</Link>}
           <span className="text-tube-sm text-tube-quiet">{viewsAndAge(v)}</span>
         </div>
       </div>
@@ -71,7 +82,7 @@ export const gridClass = 'grid grid-cols-1 gap-x-4 gap-y-10 sm:grid-cols-2 lg:gr
 
 export function VideoGrid({ videos, label, showChannel = true }: { videos: Video[]; label: string; showChannel?: boolean }) {
   const byId = useChannelsById()
-  return <ul aria-label={label} className={gridClass}>{videos.map(v => <VideoCard key={v.id} v={v} channel={byId.get(v.channel_id)} showChannel={showChannel} />)}</ul>
+  return <ul aria-label={label} className={gridClass}>{videos.map((v, i) => <VideoCard key={v.id} v={v} channel={byId.get(v.channel_id)} showChannel={showChannel} rank={i} />)}</ul>
 }
 
 /** Mirrors VideoGrid: grey thumbnails, a grey disc and two grey lines. */
@@ -89,16 +100,17 @@ export function GridSkeleton({ cards = 12 }: { cards?: number }) {
 }
 
 /** A video as a wide row: search results and Up next. */
-export function VideoRow({ v, channel, size = 'large' }: { v: Video; channel?: Channel; size?: 'large' | 'small' }) {
+export function VideoRow({ v, channel, size = 'large', rank }: { v: Video; channel?: Channel; size?: 'large' | 'small'; rank?: number }) {
   const large = size === 'large'
+  const here = useHere()
   if (useGone(v)) return null
   return (
     <li>
       {/* A large row stacks on a phone, where a picture beside the title leaves the title no room. */}
-      <Link to={watchPath(v)} className={`flex items-start ${large ? 'flex-col gap-3 sm:flex-row sm:gap-4' : 'gap-2'}`}>
+      <Link to={watchPath(v)} state={fromState(here, rank)} className={`flex items-start ${large ? 'flex-col gap-3 sm:flex-row sm:gap-4' : 'gap-2'}`}>
         <Picture v={v} className={large ? 'w-full shrink-0 sm:w-80 lg:w-96' : 'w-40 shrink-0'} />
         <span className={`grid min-w-0 content-start ${large ? 'gap-2 pt-1' : 'gap-1'}`}>
-          <span className={`line-clamp-2 font-medium text-tube-ink ${large ? 'text-tube-lg' : 'text-tube-sm'}`}>{v.title}</span>
+          <span className={`line-clamp-2 font-medium text-tube-ink ${large ? 'text-tube-lg' : 'text-tube-sm'}`}>{v.title}{watchedText(v) && <span className="sr-only">{watchedText(v)}</span>}</span>
           {large && <span className="text-tube-xs text-tube-quiet">{viewsAndAge(v)}</span>}
           <span className="flex items-center gap-2 text-tube-xs text-tube-quiet">{large && <Avatar channel={channel} name={v.channel} size="size-6" />}{v.channel ?? channel?.title}</span>
           {!large && <span className="text-tube-xs text-tube-quiet">{viewsAndAge(v)}</span>}
