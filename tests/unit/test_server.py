@@ -321,3 +321,25 @@ def test_segments_endpoint(client, monkeypatch):
     assert client.get('/api/videos/zzzzzzzzzzz/segments').status_code == 404
     client.put('/api/settings', json=dict(skip_intro='auto'))
     assert next(k for k in client.get('/api/skipping').json() if k['id'] == 'intro')['mode'] == 'auto'
+
+
+def test_offered_videos_are_prefetched_and_system_says_how_it_goes(monkeypatch):
+    seed(); app = create_app(); c = TestClient(app)
+    shown = [v['id'] for v in c.get('/api/videos/shuffle', params=dict(count=2)).json()]
+    assert list(reversed(app.state.prefetch.asked)) == list(reversed(shown))
+    c.get('/api/videos', params=dict(channel=CHANNELS[1]['id']))
+    assert list(app.state.prefetch.asked)[-2:] == ['ccccccccccc', 'ddddddddddd']
+    before = list(app.state.prefetch.asked); c.get('/api/videos'); c.get('/api/videos', params=dict(q='shelf'))
+    assert list(app.state.prefetch.asked) == before                                             # Home is prefetched anyway; a search is not
+    assert app.state.prefetch.thread is None                                                     # only `tubes serve` starts it
+    assert c.get('/api/system').json()['prefetch'] == dict(enabled=True, seconds=20.0, today=0, per_day=150, paused_until=None, last=None)
+
+
+def test_a_fetch_from_a_prefix_serves_the_prefixes_init_segment(client):
+    from test_cache import keep
+    keep(); cache.resume('aaaaaaaaaaa', cache.stamp())
+    d = cache.folder('aaaaaaaaaaa')
+    with open(os.path.join(d, 'init.mp4'), 'wb') as f: f.write(b'')                              # ffmpeg writing it again
+    assert client.get('/api/media/aaaaaaaaaaa/init.mp4').content == b'i'
+    assert client.get('/api/media/aaaaaaaaaaa/prefix.json').status_code == 404
+    assert client.get('/api/media/aaaaaaaaaaa/index.m3u8').text.count('seg_') == 3

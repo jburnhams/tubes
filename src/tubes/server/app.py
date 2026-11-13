@@ -6,7 +6,7 @@ The library (channels and videos) is managed here, from YouTube and BBC iPlayer 
 
 API (JSON):
   GET  /api/health                         {ok, version}
-  GET  /api/system                         versions (app, Python, yt-dlp, ffmpeg), folders, disk, cache use, the library copy's state
+  GET  /api/system                         versions (app, Python, yt-dlp, ffmpeg), folders, disk, cache use, the library copy's state, prefetching (prefetch.py)
   GET  /api/skipping                      [{id, label, detail, mode}]: every kind of segment, with what the player does in it (settings skip_<id>)
   GET  /api/videos/{id}/segments          {segments: [{category, start, end, action}], categories: [{id, label, detail, mode}], error}: what can be skipped
   GET  /api/settings, PUT /api/settings    every setting (settings.py); PUT takes any subset, a null resets one
@@ -53,7 +53,7 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from tubes import __version__, cache, catalogue, fetcher, history, iplayer, library, oslib, paste, quota, segments, settings, youtube, ytdlp
+from tubes import __version__, cache, catalogue, fetcher, history, iplayer, library, oslib, paste, prefetch, quota, segments, settings, youtube, ytdlp
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 LANDING = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'landing.html')
@@ -111,6 +111,7 @@ def create_app():
     app = FastAPI(title='tubes', docs_url='/api/docs', openapi_url='/api/openapi.json')
     cache.recover(cache.stamp())
     job = app.state.sync = catalogue.Job()
+    ahead = app.state.prefetch = prefetch.Prefetcher()             # its thread is started by main(), so tests and other hosts of the app start none
 
     def guard(fn, *a, **kw):
         try: return fn(*a, **kw)
@@ -128,7 +129,7 @@ def create_app():
     def get_health(): return dict(ok=True, version=__version__)
 
     @app.get('/api/system')
-    def get_system(): return system_status()
+    def get_system(): return dict(system_status(), prefetch=ahead.state())
 
     @app.get('/api/settings')
     def get_settings(): return settings.all_settings()
@@ -196,6 +197,7 @@ def create_app():
     def get_videos(channel: str | None = None, q: str | None = None, after: str | None = None, limit: int = Query(24, ge=1, le=200)):
         while True:                                                               # a past stream whose recording went is left out at once
             r = library.videos(channel, q, after, limit); gone = catalogue.recheck_past(r['videos'])
+            if channel and not q and not after: ahead.want([v['id'] for v in r['videos'] if v['id'] not in gone][:12])   # a channel's newest: prefetch their starts (Home's are anyway)
             if not gone: return r
             shown = [v for v in r['videos'] if v['id'] not in gone]
             if shown or not r['has_more']: return dict(r, videos=shown)
@@ -204,7 +206,7 @@ def create_app():
     @app.get('/api/videos/shuffle')
     def get_shuffle(count: int = Query(24, ge=1, le=200), channel: str | None = None):
         rows = library.shuffle(count, channel); gone = catalogue.recheck_past(rows)
-        return [v for v in rows if v['id'] not in gone]
+        shown = [v for v in rows if v['id'] not in gone]; ahead.want([v['id'] for v in shown[:12]]); return shown     # Up next: prefetch their starts
 
     @app.post('/api/videos/check')
     def post_check(b: CheckIn):
@@ -239,7 +241,7 @@ def create_app():
 
     @app.get('/api/media/{video_id}/{name}')
     def get_media(video_id: str, name: str):
-        p = cache.file_path(video_id, name)
+        p = cache.served_file(video_id, name)
         if p is None: raise HTTPException(404, 'no such file')
         e = cache.entry(video_id)
         if e and e['state'] == 'fetching':        # still changing: a retried download (fetcher.attempts) rewrites the playlist and its segments under the same names
@@ -343,4 +345,5 @@ def with_base(html: str, path: str) -> str:
 def main(argv=None):
     import argparse, uvicorn
     a = argparse.ArgumentParser(); a.add_argument('--host', default='127.0.0.1'); a.add_argument('--port', type=int, default=DEFAULT_PORT); a = a.parse_args(argv)
-    print(f'data folder: {settings.data_dir()}\ncache folder: {settings.cache_dir()}\nhttp://{a.host}:{a.port}/'); uvicorn.run(create_app(), host=a.host, port=a.port, log_level='warning')
+    print(f'data folder: {settings.data_dir()}\ncache folder: {settings.cache_dir()}\nhttp://{a.host}:{a.port}/'); app = create_app(); app.state.prefetch.start()
+    uvicorn.run(app, host=a.host, port=a.port, log_level='warning')

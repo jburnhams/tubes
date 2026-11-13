@@ -107,7 +107,7 @@ def test_entries_usage_and_evict(monkeypatch):
     items = cache.entries(NOW)
     assert [(e['video_id'], e['plays'], e['score']) for e in items] == [('bbbbbbbbbbb', 1, pytest.approx(0.9548, abs=1e-3)), ('aaaaaaaaaaa', 1, 0.5)]
     u = cache.usage(NOW)
-    assert u['count'] == 2 and u['by_state'] == dict(fetching=0, ready=2, failed=0) and u['used'] == sum(e['bytes'] for e in items)
+    assert u['count'] == 2 and u['by_state'] == dict(fetching=0, partial=0, ready=2, failed=0) and u['bytes_by_state'] == dict(fetching=0, partial=0, ready=u['used'], failed=0) and u['used'] == sum(e['bytes'] for e in items)
     settings.save(dict(cache_limit_gb=u['used'] / 1e9 * 1.2))
     assert cache.evict(NOW) == dict(evicted=[], freed=0, dry_run=False)
     settings.save(dict(cache_limit_gb=u['used'] / 1e9))                                     # over 95%: the lower score goes
@@ -161,3 +161,78 @@ def test_a_fetching_copy_is_never_served_as_ended():
     assert cache.status('aaaaaaaaaaa')['complete'] is False and cache.read_playlist('aaaaaaaaaaa')['complete'] is True
     cache.finish('aaaaaaaaaaa', cache.stamp())
     assert cache.served_playlist('aaaaaaaaaaa').endswith('#EXT-X-ENDLIST\n') and cache.status('aaaaaaaaaaa')['complete'] is True
+
+
+def cut(vid, lengths, complete=False):
+    """A fetch stopped part way: a playlist listing these segment lengths, their files, an init segment, a half-written segment and a log."""
+    d = cache.folder(vid); os.makedirs(d, exist_ok=True)
+    body = '#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-MAP:URI="init.mp4"\n' + ''.join(f'#EXTINF:{n:.6f},\nseg_{i:05d}.m4s\n' for i, n in enumerate(lengths)) + ('#EXT-X-ENDLIST\n' if complete else '')
+    with open(os.path.join(d, 'index.m3u8'), 'w') as f: f.write(body)
+    for name in [f'seg_{i:05d}.m4s' for i in range(len(lengths))] + ['init.mp4', f'seg_{len(lengths):05d}.m4s.tmp', 'fetch.log', 'probe.json']:
+        with open(os.path.join(d, name), 'wb') as f: f.write(b'i' if name == 'init.mp4' else b'x' * 100)
+
+
+def test_a_prefix_keeps_what_reaches_its_length_but_never_the_last_listed_segment():
+    seed(); cache.begin('aaaaaaaaaaa', cache.stamp(), 'Building a shelf')
+    cut('aaaaaaaaaaa', [4.0, 6.0, 4.0, 8.0, 4.0, 3.0], complete=True)
+    assert cache.keep_prefix('aaaaaaaaaaa', 13, cache.stamp(), dict(video='399', audio='140')) == 14.0
+    d = cache.folder('aaaaaaaaaaa')
+    assert sorted(os.listdir(d)) == ['index.m3u8', 'init.mp4', 'prefix-init.mp4', 'prefix.json', 'prefix.m3u8', 'seg_00000.m4s', 'seg_00001.m4s', 'seg_00002.m4s']
+    text = open(os.path.join(d, 'index.m3u8')).read()
+    assert text == open(os.path.join(d, 'prefix.m3u8')).read() and '#EXT-X-ENDLIST' not in text and '#EXT-X-VERSION:7' in text
+    assert cache.lengths(text) == [(4.0, 'seg_00000.m4s'), (6.0, 'seg_00001.m4s'), (4.0, 'seg_00002.m4s')]
+    assert cache.prefix('aaaaaaaaaaa') == dict(video='399', audio='140', seconds=14.0)
+    st = cache.status('aaaaaaaaaaa')
+    assert (st['state'], st['segments'], st['seconds'], st['complete'], st['playable']) == ('partial', 3, 14.0, False, True)
+    assert cache.entry('aaaaaaaaaaa')['bytes'] == cache.folder_bytes(d) > 0
+
+
+def test_a_prefix_with_nothing_worth_keeping_is_forgotten():
+    seed(); cache.begin('aaaaaaaaaaa', cache.stamp())
+    cut('aaaaaaaaaaa', [4.0])                                                                  # only the last one, which may be cut short
+    assert cache.keep_prefix('aaaaaaaaaaa', 20, cache.stamp(), dict(video='399', audio='140')) == 0
+    assert cache.entry('aaaaaaaaaaa') is None and not os.path.exists(cache.folder('aaaaaaaaaaa'))
+    assert cache.prefix('bbbbbbbbbbb') is None
+    cache.begin('bbbbbbbbbbb', cache.stamp())                                                  # stopped before ffmpeg wrote a playlist
+    assert cache.keep_prefix('bbbbbbbbbbb', 20, cache.stamp(), dict(video='399', audio='140')) == 0 and cache.entry('bbbbbbbbbbb') is None
+
+
+def keep(vid='aaaaaaaaaaa', lengths=(4.0, 4.0, 4.0, 4.0)):
+    seed(); cache.begin(vid, cache.stamp()); cut(vid, list(lengths))
+    cache.keep_prefix(vid, 10, cache.stamp(), dict(video='399', audio='140'))
+
+
+def test_a_fetch_from_a_prefix_serves_the_prefix_until_it_has_more():
+    keep(); cache.resume('aaaaaaaaaaa', cache.stamp())
+    assert cache.entry('aaaaaaaaaaa')['state'] == 'fetching'
+    d = cache.folder('aaaaaaaaaaa')
+    with open(os.path.join(d, 'index.m3u8'), 'w') as f: f.write('#EXTM3U\n')        # ffmpeg starts the playlist again
+    assert cache.served_playlist('aaaaaaaaaaa') == open(os.path.join(d, 'prefix.m3u8')).read()
+    assert cache.status('aaaaaaaaaaa')['segments'] == 3
+    with open(os.path.join(d, 'init.mp4'), 'wb') as f: f.write(b'')                     # being written again
+    assert cache.served_file('aaaaaaaaaaa', 'init.mp4') == os.path.join(d, 'prefix-init.mp4')
+    assert cache.served_file('aaaaaaaaaaa', 'seg_00000.m4s') == os.path.join(d, 'seg_00000.m4s') and cache.served_file('aaaaaaaaaaa', 'prefix.json') is None
+    write_playlist('aaaaaaaaaaa', 5, False)
+    assert cache.summary(cache.served_playlist('aaaaaaaaaaa'))['segments'] == 5
+    cache.finish('aaaaaaaaaaa', cache.stamp())
+    assert cache.prefix('aaaaaaaaaaa') is None and not os.path.exists(os.path.join(d, 'prefix-init.mp4'))
+    assert cache.served_file('aaaaaaaaaaa', 'init.mp4') == os.path.join(d, 'init.mp4')
+
+
+def test_a_restart_during_a_fetch_from_a_prefix_goes_back_to_the_prefix():
+    keep(); cache.resume('aaaaaaaaaaa', cache.stamp())
+    write_playlist('aaaaaaaaaaa', 6, False)
+    open(os.path.join(cache.folder('aaaaaaaaaaa'), 'seg_00006.m4s.tmp'), 'wb').close()
+    cache.begin('bbbbbbbbbbb', cache.stamp())                                                  # a fetch with no prefix fails as before
+    assert sorted(cache.recover(cache.stamp())) == ['aaaaaaaaaaa', 'bbbbbbbbbbb']
+    assert cache.entry('bbbbbbbbbbb')['state'] == 'failed'
+    st = cache.status('aaaaaaaaaaa')
+    assert (st['state'], st['segments']) == ('partial', 3)
+    assert sorted(f for f in os.listdir(cache.folder('aaaaaaaaaaa')) if f.startswith('seg_')) == ['seg_00000.m4s', 'seg_00001.m4s', 'seg_00002.m4s']
+    assert cache.back_to_prefix('ccccccccccc', cache.stamp()) is False
+
+
+def test_an_unplayed_prefix_is_kept_like_an_unplayed_copy():
+    e = dict(state='partial', pinned=False, last_played=None, plays=0, finished=(NOW - timedelta(days=1)).isoformat(), started=None)
+    assert cache.protected(e, NOW, 7) == 'not played yet'
+    assert cache.protected(dict(e, finished=(NOW - timedelta(days=8)).isoformat()), NOW, 7) is None

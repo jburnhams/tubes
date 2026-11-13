@@ -13,7 +13,7 @@ carry them, so they sort and compare as text on both engines.
                      that stopped part way resumes from, and `complete` says every page has been read once (later syncs then read only
                      the newest pages, until one brings nothing new). `total_videos`, `subscribers` and `views` are YouTube's counts.
   meta               single values by key, such as when the library was last synced.
-  copies             one row per video that has (or is getting) a copy in the cache folder: fetching, ready or failed, its size, whether it is
+  copies             one row per video that has (or is getting) a copy in the cache folder: fetching, partial (the first seconds only, prefetched), ready or failed, its size, whether it is
                      pinned, and the title and channel the library gave when it was fetched (kept, so a copy still has a name after its video
                      leaves the library). No foreign key to videos for the same reason.
   plays              one row per play, for the eviction score and, later, for predicting what to fetch next.
@@ -103,7 +103,7 @@ class Meta(Base):
 class Copy(Base):
     __tablename__ = 'copies'
     video_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    state: Mapped[str] = mapped_column(String(16))                    # fetching, ready or failed
+    state: Mapped[str] = mapped_column(String(16))                    # fetching, partial (only its start, prefetched), ready or failed
     started: Mapped[str] = mapped_column(String(40))
     title: Mapped[str | None] = mapped_column(default=None)
     channel: Mapped[str | None] = mapped_column(default=None)
