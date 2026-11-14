@@ -30,3 +30,18 @@ def test_one_engine_per_url(monkeypatch, tmp_path):
     monkeypatch.setenv('TUBES_DATABASE_URL', str(tmp_path / 'other.db'))
     assert db.engine() is not first and db.url().endswith('other.db')
     with db.connect() as con: assert con.execute('SELECT COUNT(*) FROM copies').scalar() == 0     # migrated on first use
+
+
+def test_threads_asking_at_once_migrate_once_and_one_at_a_time(monkeypatch, tmp_path):
+    import threading, time
+    from omarchy_db import Project
+    monkeypatch.setenv('TUBES_DATABASE_URL', str(tmp_path / 'fresh.db'))         # not migrated yet in this process
+    running, ran, overlapped = [], [], []
+    def upgrade(self, engine):
+        if running: overlapped.append(True)
+        running.append(1); time.sleep(0.05); ran.append(1); running.pop()
+    monkeypatch.setattr(Project, 'upgrade', upgrade)
+    threads = [threading.Thread(target=db.engine) for _ in range(4)]
+    for t in threads: t.start()
+    for t in threads: t.join()
+    assert ran == [1] and overlapped == []

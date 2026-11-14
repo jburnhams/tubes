@@ -5,6 +5,7 @@ shared server over its Unix socket; a plain path means SQLite, which the tests u
 Queries are plain SQL that runs on both engines (no Postgres-only features). `connect()` gives one transaction, committed when the block
 ends and rolled back on an error; its `execute` takes `?` placeholders with a tuple, or `:name` with a dict, so call sites stay short."""
 import contextlib
+import threading
 
 from sqlalchemy import text
 
@@ -12,6 +13,9 @@ from omarchy_db import Project, connect as connect_engine, url_for
 
 APP = 'tubes'
 _engines = {}                # url -> migrated engine
+# Alembic keeps the running migration in module globals, so two threads migrating at once (a request and a background prefetch on a
+# fresh database, or a test's leftover thread) break each other (KeyError: 'script'): one migration at a time, and once per URL.
+_migrating = threading.Lock()
 
 
 def url():
@@ -22,7 +26,9 @@ def engine():
     """The engine for the current URL, migrated to head the first time it is asked for in this process."""
     u = url()
     if u not in _engines:
-        e = connect_engine(u); Project.load(__file__).upgrade(e); _engines[u] = e
+        with _migrating:
+            if u not in _engines:
+                e = connect_engine(u); Project.load(__file__).upgrade(e); _engines[u] = e
     return _engines[u]
 
 
