@@ -4,7 +4,7 @@ import os, socket, sys
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'utils'))
-TUNING = ('TUBES_IPLAYER_API', 'TUBES_MEDIASELECTOR', 'TUBES_YOUTUBE_API', 'TUBES_YOUTUBE_WEB', 'YOUTUBE_API_KEY', 'YOUTUBE_API_REFERER', 'TUBES_CACHE', 'TUBES_YTDLP', 'TUBES_FFMPEG', 'OMARCHY_DB_URL', 'FAKE_YTDLP_SECONDS', 'FAKE_YTDLP_FAIL')
+TUNING = ('TUBES_IPLAYER_API', 'TUBES_MEDIASELECTOR', 'TUBES_YOUTUBE_API', 'TUBES_YOUTUBE_WEB', 'YOUTUBE_API_KEY', 'YOUTUBE_API_REFERER', 'TUBES_CACHE', 'TUBES_YTDLP', 'TUBES_FFMPEG', 'OMARCHY_DB_URL', 'FAKE_YTDLP_SECONDS', 'FAKE_YTDLP_FAIL', 'PLEX_URL', 'PLEX_TOKEN')
 FAKE_YTDLP = os.path.join(os.path.dirname(__file__), 'utils', 'fake_ytdlp.py')
 
 
@@ -104,5 +104,16 @@ def fake_iplayer(monkeypatch):
     from fake_iplayer import FakeIplayer
     f = FakeIplayer()
     monkeypatch.setenv('TUBES_IPLAYER_API', f.ibl); monkeypatch.setenv('TUBES_MEDIASELECTOR', f.ms)
+    yield f
+    f.close()
+
+
+@pytest.fixture
+def fake_plex(monkeypatch):
+    """A stand-in Plex Media Server on localhost (tests/utils/fake_plex.py), with PLEX_URL and PLEX_TOKEN pointing at it; fill it with
+    `fake_plex.film(key, title)` or `fake_plex.show(key, title, episodes=n)`, then check `.calls`."""
+    from fake_plex import FakePlex, TOKEN
+    f = FakePlex()
+    monkeypatch.setenv('PLEX_URL', f.url); monkeypatch.setenv('PLEX_TOKEN', TOKEN)
     yield f
     f.close()

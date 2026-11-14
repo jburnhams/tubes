@@ -23,6 +23,13 @@ AAC in MPEG-TS, copied into the same fMP4 HLS (`direct_command`; the AAC needs `
 when the episode has it, else 720p50. Should the BBC's services stop answering as iplayer.py expects, yt-dlp's own iPlayer support is
 asked for its best muxed HLS stream instead (720p at most, as of 2026-11), so a change there costs quality rather than playback.
 
+Plex films and episodes (plex.py) are read by ffmpeg straight from the Plex server (the file's part address, token included, on this
+machine only). Plex never transcodes; what has to change is changed here (`plex_command`): the sound always becomes stereo AAC (Chrome
+plays neither DTS nor AC-3), the video is copied when it is H.264, else converted to H.264 no taller than `max_height` (HDR tone-mapped),
+unless the browser said it plays the file's own video (`plex_copy`: the player sends what MediaCapabilities says it decodes), when a
+second copy, `<id>~native`, keeps it (4K HEVC HDR as it is). Measured on the LAN (2026-11-14): the first segment 0.3 s after the start
+when copied, 2.7 s when a 4K HEVC episode is converted to 1080p H.264 (about 4 times real time); a whole copied film at the link's 117 MB/s.
+
 Fetches run in background threads of the server process, one per video, at most `MAX_RUNNING` at a time; a play of a video already being fetched
 joins it. A fetch can stop on purpose once `until` seconds are listed: a prefetch of a video's start (prefetch.py), kept as a partial copy
 (cache.keep_prefix) and fetched whole from the same formats when it is played (see cache.py's notes). A play of a video whose prefetch is
@@ -30,7 +37,7 @@ running lets it carry on to the end instead. Prefetches do not count against `MA
 import json, os, shutil, subprocess, sys, threading, time
 from concurrent.futures import ThreadPoolExecutor
 
-from tubes import cache, catalogue, db, iplayer, oslib, settings, ytdlp
+from tubes import cache, catalogue, db, iplayer, oslib, plex, settings, ytdlp
 
 MAX_RUNNING = 3
 ATTEMPTS = 2                 # a download that fails is run once more before the copy is marked failed (most failures are passing: a retry by hand worked)
@@ -127,15 +134,62 @@ def choose(url, prefer=None):
             if attempt == 2: raise
 
 
+NATIVE = '~native'           # a Plex copy kept as the file has it (its HEVC, AV1, HDR), for a browser that decodes that; without it, one any browser plays (H.264)
+
+
+def base_id(copy_id):
+    """The library video a copy is of: a Plex video's native copy is `<id>~native` (see `plex_copy`)."""
+    return copy_id[:-len(NATIVE)] if (copy_id or '').endswith(NATIVE) else copy_id
+
+
 def platform(video_id):
     """Where a library video comes from (`youtube` when the library does not have it, as before there was a choice)."""
-    with db.connect() as con: r = con.execute('SELECT platform, duration FROM videos WHERE id = ?', (video_id,)).fetchone()
+    with db.connect() as con: r = con.execute('SELECT platform, duration FROM videos WHERE id = ?', (base_id(video_id),)).fetchone()
     return (r[0] if r else None) or 'youtube'
+
+
+def browser_plays(codec, decodes):
+    """Whether a browser that says it decodes these (`decodes`: h264, hevc, av1, vp9, hdr...) plays a file's video as it is."""
+    d = {x.lower() for x in decodes or []}
+    return codec in d or (codec == 'h264' and not d)
+
+
+def plex_copy(video_id, decodes=None):
+    """Which copy of a Plex video to fetch and play for a browser that decodes `decodes` (the player says, from MediaCapabilities): the
+    native one (`<id>~native`, the file's own video, nothing converted but the sound) when the file's video is not H.264 and the browser
+    decodes it, HDR included only when it says `hdr`; else the one any browser plays (`<id>`: H.264 as it is, or converted here). Each is
+    a copy of its own in the cache. Any other video's copy is the video itself."""
+    with db.connect() as con: r = con.execute('SELECT platform, hdr FROM videos WHERE id = ?', (video_id,)).fetchone()
+    if not r or r[0] != 'plex' or not decodes: return video_id
+    m = plex.item(plex.rating_key(video_id), details=False)
+    c = plex.codecs((m or {}).get('Media'))
+    if c['video'] and c['video'] != 'h264' and browser_plays(c['video'], decodes) and (not r[1] or 'hdr' in {x.lower() for x in decodes}): return video_id + NATIVE
+    return video_id
+
+
+def plex_command(url, codec, native, max_height, hdr=False, out_name=cache.PLAYLIST):
+    """ffmpeg reading a Plex file (`url`, plex.file_url) into growing fMP4 HLS: its first video and first sound. The sound becomes stereo
+    AAC unless it is already AAC (Chrome plays neither DTS nor AC-3); the video is copied when it is H.264 or the copy is `native` (HEVC is
+    tagged `hvc1`, which Chrome needs in MP4), else converted here to H.264 no taller than `max_height` (an HDR file tone-mapped to SDR)."""
+    copy = native or codec == 'h264'
+    if copy: video = ['-c:v', 'copy'] + (['-tag:v', 'hvc1'] if codec == 'hevc' else [])
+    else:
+        size = f"zscale=w=-2:h='min(ih,{int(max_height)})':t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p" if hdr \
+            else f"scale=-2:'min(ih,{int(max_height)})',format=yuv420p"
+        video = ['-vf', size, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-g', '96', '-keyint_min', '96', '-sc_threshold', '0']
+    return [settings.get('ffmpeg'), '-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-i', url, '-map', '0:v:0', '-map', '0:a:0', *video,
+            '-c:a', 'aac', '-ac', '2', '-b:a', '192k',
+            '-f', 'hls', '-hls_time', '4', '-hls_segment_type', 'fmp4', '-hls_playlist_type', 'event',
+            '-hls_flags', 'independent_segments+temp_file', '-hls_fmp4_init_filename', 'init.mp4', '-hls_segment_filename', 'seg_%05d.m4s', out_name]
 
 
 def source_url(video_id):
     """(platform, the link to fetch from) for a library video, or FetchError when its id cannot be one (it goes on a command line)."""
     where = platform(video_id)
+    if where == 'plex':
+        with db.connect() as con: r = con.execute('SELECT source FROM videos WHERE id = ?', (base_id(video_id),)).fetchone()
+        try: return where, plex.file_url(r[0] if r else None)
+        except plex.PlexError as e: raise FetchError(str(e)) from None
     if where == 'iplayer':
         if not iplayer.PID.match(video_id or ''): raise FetchError(f'{video_id!r} is not an iPlayer episode id.')
         return where, iplayer.episode_url(video_id)
@@ -183,7 +237,7 @@ def start(video_id, title=None, channel=None, background=True, until=None):
         job = _running[video_id] = Job(video_id, until, prefer)
         if prefer: cache.resume(video_id, cache.stamp())
         else: cache.begin(video_id, cache.stamp(), title, channel)
-    run = _run_iplayer if where == 'iplayer' else _run
+    run = _run_iplayer if where == 'iplayer' else _run_plex if where == 'plex' else _run
     if not background: run(job, url); return cache.status(video_id)
     job.thread = threading.Thread(target=run, args=(job, url), name=f'fetch-{video_id}', daemon=True); job.thread.start()
     return cache.status(video_id)
@@ -265,6 +319,30 @@ def _run_iplayer(job, url):
     whole_after(job)
 
 
+def _run_plex(job, url):
+    """As `_run`, for a Plex file: ffmpeg alone, reading it from Plex (see `plex_command`); what it does to the file is the copy's formats."""
+    error = None
+    try:
+        vid = base_id(job.video_id)
+        with db.connect() as con: r = con.execute('SELECT duration, hdr FROM videos WHERE id = ?', (vid,)).fetchone()
+        m = plex.item(plex.rating_key(vid), details=False)
+        if m is None: raise plex.PlexError('Plex no longer has this item.')
+        c = plex.codecs(m.get('Media')); native = job.video_id.endswith(NATIVE)
+        copy = native or c['video'] == 'h264'
+        cache.set_formats(job.video_id, f"{c['video'] or '?'} {'copied' if copy else 'converted to H.264'}, {c['audio'] or '?'} {'copied' if c['audio'] == 'aac' else 'converted to AAC'} (Plex {c['container'] or 'file'})")
+        cmd = plex_command(url, c['video'], native, settings.get('max_height'), hdr=bool(r and r[1]))
+        if not job.cancelled: error = attempts(job, lambda: direct_pipeline(job, url, r[0] if r else None, cmd))
+    except plex.PlexError as e: error = str(e)
+    except OSError as e: error = f'Could not start the fetch: {e}'
+    finally:
+        if job.cancelled and not error: error = 'The fetch was stopped.'
+        if error: keep_log(job.video_id, error)
+        cache.finish(job.video_id, cache.stamp(), error)
+        with _lock: _running.pop(job.video_id, None)
+        job.ended.set()
+    if not error: cache.evict(cache.utcnow())
+
+
 def attempts(job, run):
     """Run one download (`pipeline` or `direct_pipeline`) up to ATTEMPTS times, until it completes or is stopped; returns the last one's reason.
     A retry reuses the probe and the same streams, so ffmpeg cuts the same segments under the same names: it rewrites the playlist and
@@ -304,11 +382,11 @@ def keep_log(video_id, error):
     except OSError: pass
 
 
-def direct_pipeline(job, url, duration=None):
-    """Run ffmpeg on one stream until it ends; returns None when the playlist is complete, else the reason it is not (as `pipeline`)."""
+def direct_pipeline(job, url, duration=None, command=None):
+    """Run ffmpeg on one stream (`direct_command`, or this `command`) until it ends; returns None when the playlist is complete, else the reason it is not (as `pipeline`)."""
     out = cache.folder(job.video_id)
     with open(os.path.join(out, LOG), 'ab') as log:
-        job.procs.append(subprocess.Popen(direct_command(url), cwd=out, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=log))
+        job.procs.append(subprocess.Popen(command or direct_command(url), cwd=out, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=log))
         if job.cancelled: job.stop()
         stalled = not job.cancelled and watch(job)
     return outcome(job, [p.wait() for p in job.procs], stalled, duration)

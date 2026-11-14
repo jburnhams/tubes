@@ -93,7 +93,7 @@ def for_video(video_id, now=None):
         v = con.execute('SELECT platform FROM videos WHERE id = ?', (video_id,)).fetchone()
         check = con.execute('SELECT checked, error FROM segment_checks WHERE video_id = ?', (video_id,)).fetchone()
     platform = (v[0] if v else None) or 'youtube'
-    due = check is None or check[0] < (_ago(now, hours=RETRY_HOURS) if check[1] else _ago(now, days=FRESH_DAYS))
+    due = platform != 'plex' and (check is None or check[0] < (_ago(now, hours=RETRY_HOURS) if check[1] else _ago(now, days=FRESH_DAYS)))    # Plex: no skip points yet (its markers need its analysis on)
     error = check[1] if check else None
     if due:
         try:

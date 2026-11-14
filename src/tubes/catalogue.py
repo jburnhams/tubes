@@ -36,17 +36,17 @@ side's reports leave iPlayer episodes alone.
 runs `tubes sync` (cli.py), which calls `sync` directly."""
 import datetime, json, math, re, threading
 
-from tubes import cache, db, iplayer, library, metadata, quota, youtube
+from tubes import cache, db, iplayer, library, metadata, plex, quota, youtube
 
 RECHECK = 2500                                                                   # videos per recheck: 50 quota units of the 10,000 a day
 LIVE_GAP = datetime.timedelta(days=1)                                          # a past stream is asked about again after this (see the notes)
 REPORT_GAP = datetime.timedelta(minutes=10)                                      # a reported video asked about this recently is not asked again (a page of broken thumbnails, reloaded)
 CHANNEL_FIELDS = ('platform', 'title', 'handle', 'thumbnail', 'description', 'published', 'country', 'language', 'subscribers', 'total_videos', 'views', 'uploads',
-                  'kind', 'tagline', 'network', 'content_rating', 'min_age', 'kids', 'colours')
+                  'kind', 'tagline', 'network', 'content_rating', 'min_age', 'kids', 'colours', 'source')
 VIDEO_FIELDS = ('platform', 'channel_id', 'title', 'published', 'duration', 'thumbnail', 'views', 'description', 'likes', 'comments', 'definition', 'live', 'expires', 'series', 'episode', 'language', 'captions', 'regions_allowed', 'regions_blocked',
-                'kind', 'tagline', 'year', 'network', 'season', 'content_rating', 'min_age', 'kids', 'width', 'height', 'hdr', 'colours')
+                'kind', 'tagline', 'year', 'network', 'season', 'content_rating', 'min_age', 'kids', 'width', 'height', 'hdr', 'colours', 'source')
 # the shared metadata's fields (metadata.py): a source that does not say one leaves it None
-ERRORS = (youtube.YoutubeError, iplayer.IplayerError)                          # what a sync notes against a channel and goes on from
+ERRORS = (youtube.YoutubeError, iplayer.IplayerError, plex.PlexError)                          # what a sync notes against a channel and goes on from
 
 
 class NotFound(LookupError):
@@ -88,6 +88,8 @@ def add(text, now=None):
     """Add what a person pasted: a channel (followed, and synced by the caller) or one video. Returns `{kind, channel}` or `{kind, video}`;
     adding something already there refreshes it (and follows a channel that was only there for one of its videos)."""
     now = now or cache.stamp()
+    key = plex.parse(text)
+    if key: return add_plex(key, now=now)
     bbc = iplayer.parse(text)
     if bbc: return add_iplayer(*bbc, now=now)
     kind, value = youtube.parse(text)
@@ -106,6 +108,107 @@ def add(text, now=None):
     row = youtube.channel_row(_channel(kind, value), now)
     with db.connect() as con: save_channel(con, row, follow=True)
     return dict(kind='channel', channel=library.channel(row['id']))
+
+
+def add_plex(key, now=None):
+    """Add a Plex show (followed: its episodes come with the sync) or film (under the Plex Films channel), by its ratingKey, as `add`.
+    An episode given on its own brings its show in, followed."""
+    now = now or cache.stamp()
+    m = plex.item(key)
+    if m is None: raise NotFound(f'Plex has no item {key}.')
+    if m.get('type') == 'episode' and m.get('grandparentRatingKey'): return add_plex(m['grandparentRatingKey'], now)
+    if m.get('type') == 'show':
+        row = plex.channel_row(m, now)
+        with db.connect() as con: save_channel(con, row, follow=True)
+        return dict(kind='channel', channel=library.channel(row['id']))
+    if m.get('type') != 'movie': raise NotFound(f'Plex item {key} is not a film or a show.')
+    with db.connect() as con:
+        if not con.execute('SELECT 1 FROM channels WHERE id = ?', (plex.FILMS,)).fetchone(): save_channel(con, plex.films_row(now), follow=True)
+    _save_plex(plex.FILMS, [plex.video_row(m, plex.FILMS, now)])
+    return dict(kind='video', video=library.video(plex.video_id(key)))
+
+
+def add_plex_filter(section, params, title, now=None):
+    """Follow a Plex library listing with filters as a channel of its own (plex.py's notes); returns `{kind, channel}`. The same filters
+    again refresh the one already followed (and rename it)."""
+    now = now or cache.stamp()
+    sec = next((s for s in plex.sections() if s['key'] == str(section)), None)
+    if sec is None: raise NotFound(f'Plex has no film or TV library {section}.')
+    title = (title or '').strip() or sec['title']
+    src = json.dumps(dict(section=str(int(section)), params=plex.clean(params)), sort_keys=True)
+    with db.connect() as con:
+        same = con.execute("SELECT id FROM channels WHERE platform = 'plex' AND source = ?", (src,)).fetchone()
+        n = [int(r[0][len(plex.FILTER):]) for r in con.execute("SELECT id FROM channels WHERE id LIKE ?", (plex.FILTER + '%',)) if r[0][len(plex.FILTER):].isdigit()]
+        cid = same[0] if same else f'{plex.FILTER}{max(n, default=0) + 1}'
+        save_channel(con, plex.filter_row(cid, title, section, params, now), follow=True)
+    return dict(kind='channel', channel=library.channel(cid))
+
+
+def _save_plex(channel_id, rows, now=None):
+    """Save Plex videos under a channel, holding it as _store does; one already kept under another Plex channel (a show also matched by a
+    filter) stays where it is. `gone` and `checked` come from the rows (Plex's deletedAt and updatedAt). Returns how many were new, or None
+    when the channel was removed meanwhile."""
+    if not rows: return 0
+    ids = [r['id'] for r in rows]
+    with db.connect() as con:
+        if not con.execute('UPDATE channels SET id = id WHERE id = ?', (channel_id,)).rowcount: return None
+        have = {r[0]: r[1] for r in con.execute(f"SELECT id, channel_id FROM videos WHERE id IN ({', '.join('?' * len(ids))})", tuple(ids))}
+        for r in rows: r['channel_id'] = have.get(r['id'], channel_id)
+        save_videos(con, rows)
+        con.executemany('UPDATE videos SET gone = :gone, checked = :checked WHERE id = :id', [dict(id=r['id'], gone=r.get('gone'), checked=r.get('checked')) for r in rows])
+    return sum(1 for i in ids if i not in have)
+
+
+def _plex_rows(items, channel_id, now):
+    """(rows to save, {id: gone} of the rest) for these list items: an item Plex changed since it was last read (its `updatedAt`, kept as
+    `checked`) or not yet kept is read in full; one unchanged only has its `gone` brought up to date (Plex's deletedAt)."""
+    keys = [plex.video_id(m['ratingKey']) for m in items]
+    with db.connect() as con:
+        checked = {r[0]: r[1] for r in con.execute(f"SELECT id, checked FROM videos WHERE id IN ({', '.join('?' * len(keys))})", tuple(keys))} if keys else {}
+    rows, same = [], {}
+    for m in items:
+        vid = plex.video_id(m['ratingKey'])
+        if checked.get(vid) and checked[vid] == plex.version(m): same[vid] = plex.video_row(m, channel_id, now, details=False)['gone']; continue
+        full = plex.item(m['ratingKey'])
+        rows.append(plex.video_row(full or m, channel_id, now, details=full is not None))
+    return rows, same
+
+
+def sync_plex(channel_id, now=None, progress=None):
+    """Bring a Plex show, the Films channel or a followed filter up to date (plex.py's notes); returns what `sync_channel` does."""
+    now = now or cache.stamp()
+    with db.connect() as con: c = db.row(con.execute('SELECT id, kind, source FROM channels WHERE id = ?', (channel_id,)))
+    if c['kind'] == 'filter':
+        src = json.loads(c['source'] or '{}')
+        sec = next((s for s in plex.sections() if s['key'] == src.get('section')), None)
+        if sec is None: raise NotFound(f"Plex has no library {src.get('section')} any more.")
+        found = plex.everything(sec['key'], src.get('params'))
+        items = found if sec['type'] == 'movie' else [e for show in found for e in plex.episodes(show['ratingKey'])]
+        title = None
+    elif c['kind'] == 'category':
+        with db.connect() as con: keys = [plex.rating_key(r[0]) for r in con.execute('SELECT id FROM videos WHERE channel_id = ?', (channel_id,))]
+        items = [m for m in (plex.item(k, details=False) for k in keys if k) if m]
+        title = None
+    else:
+        show = plex.item(plex.rating_key(channel_id))
+        if show is None: raise NotFound(f'Plex has no show {channel_id} any more.')
+        with db.connect() as con: held = update_channel(con, plex.channel_row(show, now))
+        if not held: raise _gone(channel_id)
+        items, title = plex.episodes(show['ratingKey']), show.get('title')
+    rows, same = _plex_rows(items, channel_id, now)
+    added = _save_plex(channel_id, rows, now)
+    if added is None: raise _gone(channel_id)
+    if same:
+        with db.connect() as con: con.executemany('UPDATE videos SET gone = :gone WHERE id = :id', [dict(id=i, gone=g) for i, g in same.items()])
+    if progress: progress(added)
+    seen = {plex.video_id(m['ratingKey']) for m in items}
+    with db.connect() as con:
+        old = [r[0] for r in con.execute('SELECT id FROM videos WHERE channel_id = ? AND gone IS NULL', (channel_id,))]
+        missing = [i for i in old if i not in seen]
+        if missing: con.executemany('UPDATE videos SET gone = :now WHERE id = :id', [dict(id=i, now=now) for i in missing])     # no longer listed (or no longer matching a filter)
+        con.execute('UPDATE channels SET sync_token = NULL, complete = ?, synced = ?, total_videos = ? WHERE id = ?', (True, now, len(items), channel_id))
+        name = con.execute('SELECT title FROM channels WHERE id = ?', (channel_id,)).fetchone()
+    return dict(channel=channel_id, title=title or (name[0] if name else channel_id), added=added, pages=1, complete=True)
 
 
 def add_iplayer(kind, pid, now=None):
@@ -205,6 +308,7 @@ def sync_channel(channel_id, now=None, progress=None):
     with db.connect() as con: c = db.row(con.execute('SELECT id, platform, sync_token, complete FROM channels WHERE id = ?', (channel_id,)))
     if c is None: raise NotFound(f'There is no channel {channel_id} in the library.')
     if c['platform'] == 'iplayer': return sync_programme(channel_id, now, progress)
+    if c['platform'] == 'plex': return sync_plex(channel_id, now, progress)
     row = youtube.channel_row(_channel('channel', channel_id), now)              # fresh counts and the uploads playlist, one unit
     with db.connect() as con:                                                    # an update, never an insert: a channel removed meanwhile stays removed
         held = update_channel(con, row)

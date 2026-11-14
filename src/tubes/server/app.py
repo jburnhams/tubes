@@ -51,16 +51,24 @@ API (JSON):
   PUT  /api/suggestions/{channel} {dismissed}   dismiss a suggestion or bring it back
   POST /api/suggestions/{channel}/videos   add the channel's watched videos to the library without following it: {added, already, missing}
   (following a suggestion is POST /api/library with its `link`)
+  GET  /api/plex                           whether Plex is set up and answers, and its film and TV libraries (plex.py)
+  GET  /api/plex/sections/{key}/filters    the filters a library offers; /filters/{name} the values one takes (genre: Action, Animation...)
+  GET  /api/plex/browse?section=&start=&size=&<filter>=...   a page of a library with Plex's own filters: {items, total}, each item `followed`
+  GET  /api/plex/search?q=                 films and shows whose title matches
+  POST /api/plex/follow {key} | {section, params, title}   follow a show or a film, or a filtered listing as a channel of its own (then synced)
+  GET  /api/plex/image?path=&w=            one of Plex's pictures, scaled and kept here (the token never reaches the browser)
+  A play's body may say what the browser decodes (`decodes`: h264, hevc, av1, vp9, hdr): a Plex film or episode is then fetched as its
+  file has it when the browser plays that, else converted to H.264 (fetcher.plex_copy); the answer's `copy` is the id its files are under.
 Every other path serves the web app (`src/tubes/server/static/index.html` when built with `cd web && npm run build`, else the plain stand-in
 `landing.html`), so a reload or a shared link opens that screen: the app routes in the browser (React Router)."""
 import os, platform, shutil
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from tubes import __version__, cache, catalogue, fetcher, history, iplayer, library, oslib, paste, prefetch, quota, segments, settings, viewing, youtube, ytdlp
+from tubes import __version__, cache, catalogue, db, fetcher, history, iplayer, library, oslib, paste, plex, prefetch, quota, segments, settings, viewing, youtube, ytdlp
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 LANDING = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'landing.html')
@@ -110,6 +118,15 @@ class FromIn(BaseModel):
     source: str | None = Field(None, max_length=32)
     detail: str | None = Field(None, max_length=500)
     rank: int | None = Field(None, ge=0)
+    decodes: list[str] | None = Field(None, max_length=20)      # what the browser plays as it is (h264, hevc, av1, vp9, hdr): which copy of a Plex video to fetch
+
+
+class FollowIn(BaseModel):
+    """A Plex show or film by its ratingKey, or a library listing with filters to follow as a channel."""
+    key: str | None = Field(None, max_length=12)
+    section: str | None = Field(None, max_length=12)
+    params: dict[str, str] | None = None
+    title: str | None = Field(None, max_length=200)
 
 
 class ProgressIn(BaseModel):
@@ -141,6 +158,7 @@ def create_app():
         except catalogue.Job.Busy as e: raise HTTPException(409, str(e))
         except youtube.YoutubeError as e: raise HTTPException(503 if not youtube.configured() else 502, str(e))
         except iplayer.IplayerError as e: raise HTTPException(502, str(e))
+        except plex.PlexError as e: raise HTTPException(503 if not plex.configured() else 502, str(e))
         except KeyError as e: raise HTTPException(400, str(e.args[0]))
 
     def stream(video_id): return dict(cache.status(video_id), **cache.plays(video_id))
@@ -254,10 +272,54 @@ def create_app():
     @app.post('/api/videos/{video_id}/play')
     def post_play(video_id: str, b: FromIn | None = None):
         v = video_or_404(video_id)
-        guard(fetcher.start, video_id, v['title'], v['channel'])
         b = b or FromIn()
+        copy = guard(fetcher.plex_copy, video_id, b.decodes)                      # the video itself, but for a Plex file a browser plays as it is
+        guard(fetcher.start, copy, v['title'], v['channel'])
         started = viewing.start(video_id, cache.stamp(), source=b.source, detail=b.detail, rank=b.rank)    # before the status, so its count has this play
-        return dict(stream(video_id), **started)
+        return dict(stream(copy), copy=copy, **started)
+
+    @app.get('/api/plex')
+    def get_plex():
+        if not plex.configured(): return dict(configured=False, reachable=False, version=None, sections=[])
+        ok, said = plex.reachable()
+        return dict(configured=True, reachable=ok, version=said if ok else None, error=None if ok else said, sections=guard(plex.sections) if ok else [])
+
+    @app.get('/api/plex/sections/{section}/filters')
+    def get_plex_filters(section: str): return guard(plex.filters, section)
+
+    @app.get('/api/plex/sections/{section}/filters/{name}')
+    def get_plex_choices(section: str, name: str): return guard(plex.choices, section, name)
+
+    def followed(items):
+        ids = [plex.video_id(i['key']) for i in items if i.get('key', '').isdigit()]
+        if not ids: return items
+        with db.connect() as con:
+            have = {r[0] for r in con.execute(f"SELECT id FROM channels WHERE follow = ? AND id IN ({', '.join('?' * len(ids))})", (True, *ids))}
+            have |= {r[0] for r in con.execute(f"SELECT id FROM videos WHERE id IN ({', '.join('?' * len(ids))})", tuple(ids))}
+        return [dict(i, followed=plex.video_id(i['key']) in have) for i in items]
+
+    @app.get('/api/plex/browse')
+    def get_plex_browse(request: Request, section: str, start: int = Query(0, ge=0), size: int = Query(50, ge=1, le=200)):
+        params = {k: v for k, v in request.query_params.items() if k not in ('section', 'start', 'size')}
+        r = guard(plex.browse, section, params, start, size)
+        return dict(r, items=followed(r['items']), params=plex.clean(params))
+
+    @app.get('/api/plex/search')
+    def get_plex_search(q: str = Query(..., min_length=1, max_length=200)): return followed(guard(plex.search, q))
+
+    @app.post('/api/plex/follow')
+    def post_plex_follow(b: FollowIn):
+        if b.key: r = guard(catalogue.add_plex, b.key)
+        elif b.section: r = guard(catalogue.add_plex_filter, b.section, b.params or {}, b.title)
+        else: raise HTTPException(400, 'Say which show or film (key), or which library and filters (section, params).')
+        cid = r['channel']['id'] if r['kind'] == 'channel' else plex.FILMS
+        if r['kind'] == 'channel': r['sync'] = job.follow_up([cid])
+        return r
+
+    @app.get('/api/plex/image')
+    def get_plex_image(path: str = Query(..., max_length=300), w: int = Query(640, ge=16, le=4000)):
+        f = guard(plex.cached_image, path, w)
+        return FileResponse(f, media_type='image/jpeg', headers={'Cache-Control': 'public, max-age=604800'})
 
     @app.post('/api/plays/{play_id}')
     def post_progress(play_id: int, b: ProgressIn):
