@@ -6,7 +6,7 @@ Everything is portable SQL (no Postgres-only types), so the tests run on SQLite.
 carry them, so they sort and compare as text on both engines.
 
   channels, videos   the library: channels added in Admin (or by `tubes add`) and their videos, filled from the YouTube Data API by
-                     catalogue.py. `platform` says where a row comes from: `youtube`, or `iplayer` (iplayer.py), where a channel is a
+                     catalogue.py. `platform` says where a row comes from: `youtube`, `iplayer` (iplayer.py) or `plex` (plex.py: shows, films and followed filters), where a channel is a
                      programme and a video one of its episodes; ids cannot collide (iPlayer's are 8 characters, YouTube's 11 or 24). An
                      episode also has its `series` title, its `episode` number in it and when iPlayer stops offering it (`expires`). A channel that is `follow`ed has all its uploads fetched and new ones picked up by every sync; one that
                      is not only names the videos added one by one. `uploads` is its uploads playlist, `sync_token` the page a backfill
@@ -80,6 +80,7 @@ class Channel(Base):
     min_age: Mapped[int | None] = mapped_column(default=None)                  # the youngest age it is rated for
     kids: Mapped[bool | None] = mapped_column(default=None)                     # made for children: YouTube's madeForKids, iPlayer's childrens, a Plex age up to 7
     colours: Mapped[str | None] = mapped_column(Text, default=None)             # JSON {topLeft, topRight, bottomRight, bottomLeft} hex colours for a backdrop behind it
+    source: Mapped[str | None] = mapped_column(Text, default=None)              # Plex: a followed filter's JSON {section, params} (plex.py)
 
 
 class Video(Base):
@@ -122,6 +123,7 @@ class Video(Base):
     height: Mapped[int | None] = mapped_column(default=None)
     hdr: Mapped[bool | None] = mapped_column(default=None)
     colours: Mapped[str | None] = mapped_column(Text, default=None)             # JSON {topLeft, topRight, bottomRight, bottomLeft} hex colours for a backdrop behind it
+    source: Mapped[str | None] = mapped_column(Text, default=None)              # Plex: its file's part key, what ffmpeg reads (plex.py)
 
 
 class Meta(Base):
