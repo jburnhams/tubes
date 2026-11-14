@@ -136,9 +136,9 @@ def test_chapters_follow_youtubes_rule(description, n):
 
 def test_channel_metadata():
     item = dict(id='UCx', snippet=dict(thumbnails=dict(high=dict(url='h', width=800, height=800))), status=dict(madeForKids=False),
-                brandingSettings=dict(channel=dict(keywords='"Sesame Street" kids  elmo kids'), image=dict(bannerExternalUrl='https://yt3.test/banner')),
+                brandingSettings=dict(channel=dict(keywords='"Harbour Lights" kids  puppets kids'), image=dict(bannerExternalUrl='https://yt3.test/banner')),
                 topicDetails=dict(topicCategories=['https://en.wikipedia.org/wiki/Entertainment']))
     c = youtube.channel_row(item, 'now')
     assert (c['kind'], c['kids']) == ('channel', False)
     assert c['meta'] == dict(images=[dict(kind='avatar', url='h', width=800, height=800), dict(kind='banner', url='https://yt3.test/banner')],
-                             tags=[dict(kind='keyword', value='Sesame Street'), dict(kind='keyword', value='kids'), dict(kind='keyword', value='elmo'), dict(kind='topic', value='Entertainment')])
+                             tags=[dict(kind='keyword', value='Harbour Lights'), dict(kind='keyword', value='kids'), dict(kind='keyword', value='puppets'), dict(kind='topic', value='Entertainment')])
