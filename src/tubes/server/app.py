@@ -158,8 +158,8 @@ def create_app():
     def put_settings(changes: dict):
         guard(settings.save, changes); return settings.all_settings()
 
-    def video_or_404(video_id):
-        v = library.video(video_id)
+    def video_or_404(video_id, meta=False):
+        v = library.video(video_id, meta=meta)
         if v is None: raise HTTPException(404, f'There is no video {video_id} in the library.')
         return v
 
@@ -247,8 +247,8 @@ def create_app():
 
     @app.get('/api/videos/{video_id}')
     def get_video(video_id: str):
-        v = video_or_404(video_id)
-        if catalogue.recheck_past([v]): v = video_or_404(video_id)                     # it went: the page says so
+        v = video_or_404(video_id, meta=True)                                        # the Watch page: its description and every metadata table too
+        if catalogue.recheck_past([v]): v = video_or_404(video_id, meta=True)          # it went: the page says so
         return dict(v, **cache.plays(video_id))
 
     @app.post('/api/videos/{video_id}/play')

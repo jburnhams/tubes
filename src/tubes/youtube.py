@@ -15,13 +15,17 @@ from tubes import quota
 
 API = 'https://www.googleapis.com/youtube/v3'
 TIMEOUT = 30
-VIDEO_PARTS = 'snippet,contentDetails,statistics,liveStreamingDetails'           # parts cost no quota of their own: still one unit per 50
-CHANNEL_PARTS = 'snippet,statistics,contentDetails'
+VIDEO_PARTS = 'snippet,contentDetails,statistics,liveStreamingDetails,status,topicDetails'     # parts cost no quota of their own: still one unit per 50
+CHANNEL_PARTS = 'snippet,statistics,contentDetails,brandingSettings,status,topicDetails'
 LOOKUP_PARTS = 'snippet,statistics,status,topicDetails'                         # what a suggestion shows of a channel (history.py)
 VIDEO_ID = re.compile(r'^[A-Za-z0-9_-]{11}$')
 CHANNEL_ID = re.compile(r'^UC[A-Za-z0-9_-]{22}$')
 DURATION = re.compile(r'^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$')
 THUMBS = ('maxres', 'standard', 'high', 'medium', 'default')
+CATEGORIES = {'1': 'Film & Animation', '2': 'Autos & Vehicles', '10': 'Music', '15': 'Pets & Animals', '17': 'Sports', '18': 'Short Movies', '19': 'Travel & Events',
+              '20': 'Gaming', '21': 'Videoblogging', '22': 'People & Blogs', '23': 'Comedy', '24': 'Entertainment', '25': 'News & Politics', '26': 'Howto & Style',
+              '27': 'Education', '28': 'Science & Technology', '29': 'Nonprofits & Activism', '30': 'Movies', '43': 'Shows', '44': 'Trailers'}   # videoCategories (the same everywhere); a lookup would cost a unit
+CHAPTER = re.compile(r'^\s*(?:[-*•▶►]\s*)?\(?((?:\d{1,2}:)?\d{1,2}:\d{2})\)?\s*(?:[-–—:|.]\s*)?(.*?)\s*$')
 
 
 class YoutubeError(RuntimeError):
@@ -112,6 +116,51 @@ def best_thumbnail(thumbnails):
     return next((known[k]['url'] for k in THUMBS if k in known), ts[0]['url'])
 
 
+def images(thumbnails, kind):
+    """Every size of a thumbnails dict as `images` rows of this kind, the largest first (rank 0, the one to show: `best_thumbnail`'s choice)."""
+    ts = [t for k, t in (thumbnails or {}).items() if k in THUMBS and isinstance(t, dict) and t.get('url')]
+    best = best_thumbnail(thumbnails)
+    ts.sort(key=lambda t: (t['url'] != best, -(t.get('width') or 0) * (t.get('height') or 0)))
+    return [dict(kind=kind, url=t['url'], width=t.get('width'), height=t.get('height')) for t in ts]
+
+
+def topics(item):
+    """A resource's topic names (`Music`, `Lifestyle`), as YouTube orders them, once each."""
+    return list(dict.fromkeys(t for t in (topic_name(u) for u in (item.get('topicDetails') or {}).get('topicCategories') or []) if t))
+
+
+def keywords(text):
+    """A channel's keywords (`brandingSettings.channel.keywords`): words, or phrases in double quotes."""
+    words = [(quoted or bare).strip()[:200] for quoted, bare in re.findall(r'"([^"]+)"|(\S+)', text or '')]
+    return list(dict.fromkeys(w for w in words if w))
+
+
+def clock(text):
+    """Seconds from `1:02:03` or `2:03`."""
+    n = 0
+    for part in text.split(':'): n = n * 60 + int(part)
+    return n
+
+
+def chapters(description, duration=None):
+    """The chapters a description lists, by YouTube's own rule (the first at 0:00, at least three, ascending, each at least 10 s long), as
+    `chapters` rows; empty when it lists none that way."""
+    marks = []
+    for line in (description or '').splitlines():
+        m = CHAPTER.match(line)
+        if m and m[2]: marks.append((clock(m[1]), m[2][:200]))
+    if len(marks) < 3 or marks[0][0] != 0: return []
+    starts = [t for t, _ in marks]
+    ends = starts[1:] + [duration]
+    if any(b is not None and b - a < 10 for a, b in zip(starts, ends)): return []
+    return [dict(start=float(a), end=float(b) if b is not None else None, title=t) for (a, t), b in zip(marks, ends)]
+
+
+def age_rating(cd):
+    """(content_rating, min_age) for a video YouTube restricts by age (`ytAgeRestricted`), else (None, None)."""
+    return ('18', 18) if ((cd or {}).get('contentRating') or {}).get('ytRating') == 'ytAgeRestricted' else (None, None)
+
+
 def _int(v):
     try: return int(v)
     except (TypeError, ValueError): return None
@@ -123,7 +172,16 @@ def channel_row(item, now):
     return dict(id=item['id'], platform='youtube', title=sn.get('title') or item['id'], handle=sn.get('customUrl') or None, thumbnail=best_thumbnail(sn.get('thumbnails')),
                 description=sn.get('description') or None, published=sn.get('publishedAt'), country=sn.get('country'), language=language(sn.get('defaultLanguage')),
                 subscribers=None if st.get('hiddenSubscriberCount') else _int(st.get('subscriberCount')), total_videos=_int(st.get('videoCount')), views=_int(st.get('viewCount')),
-                uploads=((item.get('contentDetails') or {}).get('relatedPlaylists') or {}).get('uploads'), added=now)
+                uploads=((item.get('contentDetails') or {}).get('relatedPlaylists') or {}).get('uploads'), added=now,
+                kind='channel', kids=(item.get('status') or {}).get('madeForKids'), meta=channel_meta(item))
+
+
+def channel_meta(item):
+    """A channel's `meta` (metadata.py): its avatar in every size, its banner, its keywords and topics."""
+    sn, br = item.get('snippet') or {}, item.get('brandingSettings') or {}
+    banner = (br.get('image') or {}).get('bannerExternalUrl')
+    return dict(images=images(sn.get('thumbnails'), 'avatar') + ([dict(kind='banner', url=banner)] if banner else []),
+                tags=[dict(kind='keyword', value=k) for k in keywords((br.get('channel') or {}).get('keywords'))] + [dict(kind='topic', value=t) for t in topics(item)])
 
 
 def video_row(item, now):
@@ -133,7 +191,23 @@ def video_row(item, now):
                 duration=seconds(cd.get('duration')), thumbnail=best_thumbnail(sn.get('thumbnails')), views=_int(st.get('viewCount')),
                 description=sn.get('description') or None, likes=_int(st.get('likeCount')), comments=_int(st.get('commentCount')), definition=cd.get('definition'), live=live(item),
                 expires=None, series=None, episode=None, language=language(sn.get('defaultAudioLanguage') or sn.get('defaultLanguage')),
-                captions={'true': True, 'false': False}.get(str(cd.get('caption')).lower()), **regions(cd.get('regionRestriction')), added=now)
+                captions={'true': True, 'false': False}.get(str(cd.get('caption')).lower()), **regions(cd.get('regionRestriction')), added=now,
+                kind='video', year=_year(sn.get('publishedAt')), kids=(item.get('status') or {}).get('madeForKids'), **dict(zip(('content_rating', 'min_age'), age_rating(cd))),
+                meta=video_meta(item))
+
+
+def _year(stamp):
+    m = re.match(r'^(\d{4})-', stamp or '')
+    return int(m[1]) if m else None
+
+
+def video_meta(item):
+    """A video's `meta` (metadata.py): its thumbnails in every size, its tags, category and topics, and the chapters its description lists."""
+    sn, cd = item.get('snippet') or {}, item.get('contentDetails') or {}
+    cat = CATEGORIES.get(str(sn.get('categoryId') or ''))
+    return dict(images=images(sn.get('thumbnails'), 'thumb'),
+                tags=[dict(kind='keyword', value=str(t)[:200]) for t in sn.get('tags') or [] if str(t).strip()] + ([dict(kind='category', value=cat)] if cat else []) + [dict(kind='topic', value=t) for t in topics(item)],
+                chapters=chapters(sn.get('description'), seconds(cd.get('duration'))))
 
 
 def language(code):

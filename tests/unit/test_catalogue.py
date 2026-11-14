@@ -411,3 +411,22 @@ def test_a_category_page_of_series_only_does_not_end_its_sync(fake_iplayer, monk
     fake_iplayer.categories['films'][1].remove('p0000002'); fake_iplayer.drop('p0000002')
     catalogue.sync_channel('iplayer-films', now='t2')                                            # the last page is series only: the list was still read whole
     assert library.video('p0000002')['gone'] == 't2'
+
+
+def test_metadata_is_kept_refreshed_by_a_recheck_and_removed_with_its_channel(fake_youtube):
+    from tubes import metadata
+    fake_youtube.channel(A, 'Workshop', videos=2, topics=['Hobby'], kids=True)
+    catalogue.add(A); catalogue.sync_channel(A)
+    v = vid(A, 1)
+    page = library.video(v, meta=True)
+    assert (page['kind'], page['year'], page['description']) == ('video', 2020, 'Upload 1 of Workshop, described')
+    assert [i['url'] for i in page['meta']['images']] == [f'https://img.test/{v}/x.jpg', f'https://img.test/{v}/m.jpg']
+    ch = library.channel(A)
+    assert (ch['kind'], ch['kids'], ch['description']) == ('channel', True, 'About Workshop') and ch['meta']['tags'] == [dict(kind='topic', value='Hobby', rank=0)]
+    fake_youtube.videos[v]['snippet'].update(tags=['wood'], categoryId='26'); fake_youtube.videos[v]['status'] = dict(madeForKids=True)
+    catalogue.recheck(limit=0)                                                       # how a video saved before the metadata existed gets it
+    page = library.video(v, meta=True)
+    assert page['kids'] is True and [(t['kind'], t['value']) for t in page['meta']['tags']] == [('category', 'Howto & Style'), ('keyword', 'wood')]
+    assert 'meta' not in library.video(v) and library.videos(A)['videos'][0]['kind'] == 'video'
+    catalogue.remove(A)
+    assert metadata.get('video', v)['images'] == [] and metadata.get('channel', A)['tags'] == []

@@ -103,3 +103,42 @@ def test_channels_and_lookup_rows(fake_youtube):
     r = youtube.lookup_row(found[1])
     assert r == dict(channel_id=ids[1], title='Channel 01', handle=None, thumbnail=f'https://img.test/{ids[1]}/l.jpg', subscribers=50, total_videos=0, topics='Music|Pop music', made_for_kids=True)
     assert youtube.lookup_row(dict(id='UCx'))['topics'] is None and youtube.lookup_row(dict(id='UCx'))['made_for_kids'] is None
+
+
+def test_video_metadata():
+    item = dict(id='abcdefghijk', snippet=dict(publishedAt='2012-01-13T16:21:38Z', categoryId='24', tags=['song', ' ', 'dance', 'song'],
+                                               thumbnails=dict(default=dict(url='d', width=120, height=90), maxres=dict(url='x', width=1280, height=720), fhddefault=dict(url='f', width=1920, height=1080)),
+                                               description='Sing along\n0:00 Intro\n0:15 - The song\n(1:02) Goodbye'),
+                contentDetails=dict(duration='PT1M30S', contentRating=dict(ytRating='ytAgeRestricted')), status=dict(madeForKids=True),
+                topicDetails=dict(topicCategories=['https://en.wikipedia.org/wiki/Music', 'https://en.wikipedia.org/wiki/Pop_music', 'https://en.wikipedia.org/wiki/Music']))
+    v = youtube.video_row(item, 'now')
+    assert (v['kind'], v['year'], v['kids'], v['content_rating'], v['min_age']) == ('video', 2012, True, '18', 18)
+    assert v['meta']['images'] == [dict(kind='thumb', url='x', width=1280, height=720), dict(kind='thumb', url='d', width=120, height=90)]     # not the sizes i.ytimg.com does not serve
+    assert v['meta']['tags'] == [dict(kind='keyword', value='song'), dict(kind='keyword', value='dance'), dict(kind='keyword', value='song'), dict(kind='category', value='Entertainment'),
+                                 dict(kind='topic', value='Music'), dict(kind='topic', value='Pop music')]      # metadata.save keeps the first of a repeat
+    assert v['meta']['chapters'] == [dict(start=0.0, end=15.0, title='Intro'), dict(start=15.0, end=62.0, title='The song'), dict(start=62.0, end=90.0, title='Goodbye')]
+    bare = youtube.video_row(dict(id='abcdefghijk'), 'now')
+    assert (bare['year'], bare['kids'], bare['content_rating'], bare['meta']) == (None, None, None, dict(images=[], tags=[], chapters=[]))
+
+
+@pytest.mark.parametrize('description, n', [
+    ('0:00 a\n0:10 b\n0:20 c', 3),
+    ('0:05 a\n0:10 b\n0:20 c', 0),                  # the first is not at 0:00
+    ('0:00 a\n0:10 b', 0),                          # fewer than three
+    ('0:00 a\n0:05 b\n0:20 c', 0),                  # one shorter than 10 s
+    ('0:00 a\n0:30 b\n0:20 c', 0),                  # not in order
+    ('0:00 a\n1:00:00 b\n1:10:00 c', 3),
+    ('0:00\n0:10\n0:20', 0),                        # times without names
+])
+def test_chapters_follow_youtubes_rule(description, n):
+    assert len(youtube.chapters(description, 5000)) == n
+
+
+def test_channel_metadata():
+    item = dict(id='UCx', snippet=dict(thumbnails=dict(high=dict(url='h', width=800, height=800))), status=dict(madeForKids=False),
+                brandingSettings=dict(channel=dict(keywords='"Sesame Street" kids  elmo kids'), image=dict(bannerExternalUrl='https://yt3.test/banner')),
+                topicDetails=dict(topicCategories=['https://en.wikipedia.org/wiki/Entertainment']))
+    c = youtube.channel_row(item, 'now')
+    assert (c['kind'], c['kids']) == ('channel', False)
+    assert c['meta'] == dict(images=[dict(kind='avatar', url='h', width=800, height=800), dict(kind='banner', url='https://yt3.test/banner')],
+                             tags=[dict(kind='keyword', value='Sesame Street'), dict(kind='keyword', value='kids'), dict(kind='keyword', value='elmo'), dict(kind='topic', value='Entertainment')])

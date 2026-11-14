@@ -63,16 +63,23 @@ def test_rows(fake_iplayer):
     fake_iplayer.programme(P, 'Harbour Lights', episodes=2)
     c = iplayer.channel_row(iplayer.programme(P), 'now')
     assert c == dict(id=P, platform='iplayer', title='Harbour Lights', handle=None, thumbnail=f'https://img.test/ic/480x480/{P}.jpg', description='All about Harbour Lights',
-                     published=None, country='GB', language='en', subscribers=None, total_videos=2, views=None, uploads=None, added='now')
+                     published=None, country='GB', language='en', subscribers=None, total_videos=2, views=None, uploads=None, added='now',
+                     kind='programme', tagline='About Harbour Lights', network='BBC One',
+                     meta=dict(images=[dict(kind='avatar', url=f'https://img.test/ic/480x480/{P}.jpg', width=480, height=480), dict(kind='backdrop', url=f'https://img.test/ic/1920x1080/{P}.jpg', width=1920, height=1080)],
+                               tags=[dict(kind='category', value='drama')]))
     e = ep_id(P, 2)
     v = iplayer.video_row(iplayer.episode(e), 'now')
     assert v == dict(id=e, platform='iplayer', channel_id=P, title='Chapter 2', published='2026-01-02T19:30:00+00:00', duration=6.0, thumbnail=f'https://img.test/ic/1280x720/{e}.jpg',
                      views=None, description='Chapter 2, told', likes=None, comments=None, definition='hd', live=None, expires='2099-01-01T00:00:00+00:00', series='Series 1', episode=2,
-                     language='en', captions=None, regions_allowed='GB', regions_blocked=None, added='now')
+                     language='en', captions=None, regions_allowed='GB', regions_blocked=None, added='now',
+                     kind='episode', tagline='Chapter 2 in short', year=2026, network='BBC One', season=1, kids=None, width=1920, height=1080, hdr=None,
+                     meta=dict(images=[dict(kind='thumb', url=f'https://img.test/ic/1280x720/{e}.jpg', width=1280, height=720), dict(kind='backdrop', url=f'https://img.test/ic/1920x1080/{e}.jpg', width=1920, height=1080)],
+                               tags=[], tracks=[]))
     film = iplayer.video_row(iplayer.episode(fake_iplayer.one_off('p0000009', 'A Film')), 'now')
     assert (film['channel_id'], film['title'], film['definition'], film['duration'], film['published']) == ('bbc_two', 'A Film', 'sd', 5400, 'now')
     assert iplayer.network_row(fake_iplayer.episodes['p0000009'], 'now')['title'] == 'BBC Two'
     assert iplayer.network_row(dict(id='x'), 'now')['id'] == 'bbc' and iplayer.channel_of(dict(id='x', tleo_id='x')) == 'bbc'
+    assert (film['kind'], film['height'], film['year'], film['network']) == ('episode', None, None, 'BBC Two')     # a one-off outside Films; `now` is no date
     bare = iplayer.video_row(dict(id='m9', versions=[]), 'now')
     assert (bare['definition'], bare['expires'], bare['duration'], bare['published']) == (None, None, None, 'now')
 
@@ -196,3 +203,25 @@ def test_a_film_is_filed_under_films_and_another_one_off_under_its_network(fake_
     film = iplayer.episode(fake_iplayer.one_off('p0000001', 'A Film', categories=('films',)))
     doc = iplayer.episode(fake_iplayer.one_off('p0000002', 'A Documentary', categories=('documentaries',)))
     assert iplayer.channel_of(film) == 'iplayer-films' and iplayer.channel_of(doc) == 'bbc_two'
+
+
+def test_richer_metadata(fake_iplayer):
+    """A children's film in UHD HDR with portrait and promotional images, a label, and audio-described and signed versions."""
+    e = fake_iplayer.one_off('p0000008', 'A Cartoon Film', categories=('films',))
+    ep = fake_iplayer.episodes[e]
+    ep.update(childrens=True, labels=dict(category='CBeebies'), release_date_time='2022-09-05T00:00:00.000Z', synopses=dict(small='Short', large='A longer synopsis'),
+              images=dict(standard='https://img.test/ic/{recipe}/s.jpg', portrait='https://img.test/ic/{recipe}/p.jpg', promotional='https://img.test/ic/{recipe}/w.jpg'))
+    ep['versions'][0].update(uhd=True, hdr=True)
+    ep['versions'] += [dict(id='vad', kind='audio-described'), dict(id='vsg', kind='signed'), dict(kind='signed')]
+    v = iplayer.video_row(iplayer.episode(e), '2026-01-01T00:00:00+00:00')
+    assert (v['kind'], v['kids'], v['width'], v['height'], v['hdr'], v['tagline'], v['description'], v['year']) == ('film', True, 3840, 2160, True, 'Short', 'A longer synopsis', 2022)
+    assert v['meta']['images'] == [dict(kind='thumb', url='https://img.test/ic/1280x720/s.jpg', width=1280, height=720), dict(kind='backdrop', url='https://img.test/ic/1920x1080/w.jpg', width=1920, height=1080),
+                                   dict(kind='portrait', url='https://img.test/ic/640x960/p.jpg', width=640, height=960)]
+    assert v['meta']['tags'] == [dict(kind='category', value='films'), dict(kind='label', value='CBeebies')]
+    assert v['meta']['tracks'] == [dict(kind='version', label='Audio described', ref='vad', language='en'), dict(kind='version', label='Signed', ref='vsg', language='en')]
+    assert iplayer.tagline(dict(small='Same', medium='Same')) is None and iplayer.images({}, 'thumb') == []
+
+
+@pytest.mark.parametrize('series, n', [('Series 4', 4), ('season 12', 12), ('Christmas Special', None), (None, None), ('Series 2: Part 1', None)])
+def test_season(series, n):
+    assert iplayer.season(series) == n
