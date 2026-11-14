@@ -177,7 +177,7 @@ def plex_command(url, codec, native, max_height, hdr=False, out_name=cache.PLAYL
         size = f"zscale=w=-2:h='min(ih,{int(max_height)})':t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p" if hdr \
             else f"scale=-2:'min(ih,{int(max_height)})',format=yuv420p"
         video = ['-vf', size, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-g', '96', '-keyint_min', '96', '-sc_threshold', '0']
-    return [settings.get('ffmpeg'), '-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-i', url, '-map', '0:v:0', '-map', '0:a:0', *video,
+    return [settings.get('ffmpeg'), '-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-headers', plex.headers(), '-i', url, '-map', '0:v:0', '-map', '0:a:0', *video,
             '-c:a', 'aac', '-ac', '2', '-b:a', '192k',
             '-f', 'hls', '-hls_time', '4', '-hls_segment_type', 'fmp4', '-hls_playlist_type', 'event',
             '-hls_flags', 'independent_segments+temp_file', '-hls_fmp4_init_filename', 'init.mp4', '-hls_segment_filename', 'seg_%05d.m4s', out_name]
@@ -336,6 +336,7 @@ def _run_plex(job, url):
     except OSError as e: error = f'Could not start the fetch: {e}'
     finally:
         if job.cancelled and not error: error = 'The fetch was stopped.'
+        error = plex.redact(error)                                               # the token is sent as a header, but an error is shown to browsers: never with it
         if error: keep_log(job.video_id, error)
         cache.finish(job.video_id, cache.stamp(), error)
         with _lock: _running.pop(job.video_id, None)

@@ -1,5 +1,5 @@
 """plex.py, and the Plex parts of catalogue.py, fetcher.py and the server, against the stand-in Plex server (tests/utils/fake_plex.py)."""
-import json, os, shutil
+import json, os
 import pytest
 from fastapi.testclient import TestClient
 from tubes import catalogue, db, fetcher, library, metadata, plex, segments
@@ -133,10 +133,12 @@ def test_which_copy_and_how_it_is_made(fake_plex):
     assert fetcher.plex_copy('nothere', ['hevc']) == 'nothere'
     assert fetcher.base_id('plex-201~native') == 'plex-201' and fetcher.platform('plex-201~native') == 'plex'
     where, url = fetcher.source_url('plex-201~native')
-    assert where == 'plex' and url == f'{fake_plex.url}/library/parts/201/1700000000/file.mkv?X-Plex-Token=test-token'
+    assert where == 'plex' and url == f'{fake_plex.url}/library/parts/201/1700000000/file.mkv'      # the token goes as a header, never in an address an error could repeat
+    assert plex.headers() == 'X-Plex-Token: test-token\r\n' and plex.redact('GET /x?X-Plex-Token=test-token failed') == 'GET /x?X-Plex-Token=*** failed' and plex.redact(None) is None
     with db.connect() as con: con.execute("UPDATE videos SET source = '/etc/passwd' WHERE id = 'plex-101'")
     with pytest.raises(fetcher.FetchError, match='is not a Plex file'): fetcher.source_url('plex-101')
     native = fetcher.plex_command('U', 'hevc', True, 1080)
+    assert native[native.index('-headers') + 1] == 'X-Plex-Token: test-token\r\n' and native[native.index('-i') + 1] == 'U'
     assert native[native.index('-c:v') + 1:native.index('-c:v') + 4] == ['copy', '-tag:v', 'hvc1'] and native[native.index('-c:a') + 1] == 'aac'
     plain = fetcher.plex_command('U', 'h264', False, 1080)
     assert plain[plain.index('-c:v') + 1] == 'copy' and '-tag:v' not in plain
@@ -163,13 +165,41 @@ def test_a_plex_fetch_runs_ffmpeg_on_the_file(fake_plex, monkeypatch):
     assert fetcher.cache.entry('plex-101') is None or fetcher.cache.entry('plex-101')['error'] == 'Plex no longer has this item.'
 
 
-@pytest.mark.skipif(not shutil.which('ffmpeg'), reason='needs ffmpeg')
-def test_pictures_are_scaled_once_and_kept(fake_plex):
+def fake_scaler(monkeypatch):
+    """ffmpeg as a stand-in (unit tests run no other processes): writes the picture it was given, and records how it was asked."""
+    import subprocess
+    asked = []
+    def run(cmd, input=None, **kw):
+        asked.append(cmd)
+        with open(cmd[-1], 'wb') as f: f.write(input)
+        return subprocess.CompletedProcess(cmd, 0, b'', b'')
+    monkeypatch.setattr(subprocess, 'run', run)
+    return asked
+
+
+def test_pictures_are_scaled_once_and_kept(fake_plex, monkeypatch):
+    asked = fake_scaler(monkeypatch)
     p = plex.cached_image('/library/metadata/101/thumb/1', 300)
-    assert p.endswith('-320.jpg') and os.path.getsize(p) > 0
+    assert p.endswith('-320.jpg') and os.path.getsize(p) > 0 and "scale='min(320,iw)':-2" in asked[0]
     n = len(fake_plex.calls)
-    assert plex.cached_image('/library/metadata/101/thumb/1', 320) == p and len(fake_plex.calls) == n
+    assert plex.cached_image('/library/metadata/101/thumb/1', 320) == p and len(fake_plex.calls) == n and len(asked) == 1
+    assert os.listdir(os.path.dirname(p)) == [os.path.basename(p)]                 # no temporary file left behind
     with pytest.raises(plex.PlexError, match='not a Plex picture'): plex.cached_image('/etc/passwd', 300)
+    import subprocess
+    monkeypatch.setattr(subprocess, 'run', lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1, b'', b''))
+    with pytest.raises(plex.PlexError, match='could not be scaled'): plex.cached_image('/library/metadata/102/thumb/1', 300)
+    assert os.listdir(os.path.dirname(p)) == [os.path.basename(p)]
+
+
+def test_overlapping_filters_leave_a_film_to_the_one_it_belongs_to(fake_plex):
+    fake_plex.film(101, 'Harbour Lights', genres=('Animation',), rating='gb/U')
+    a = catalogue.add_plex_filter('1', dict(genre='1'), 'Cartoons')['channel']['id']
+    b = catalogue.add_plex_filter('1', dict(contentRating='gb/U'), 'For everyone')['channel']['id']
+    catalogue.sync_channel(a, now=NOW); catalogue.sync_channel(b, now=NOW)
+    assert library.video('plex-101')['channel_id'] == a
+    fake_plex.items[101]['Genre'] = []                                             # it leaves A, still matches B
+    catalogue.sync_channel(a, now=NOW); catalogue.sync_channel(b, now=NOW)
+    assert library.video('plex-101')['gone'] == NOW                              # B does not bring back what A hid
 
 
 def test_server_endpoints(fake_plex, monkeypatch):
@@ -193,7 +223,7 @@ def test_server_endpoints(fake_plex, monkeypatch):
     monkeypatch.setattr(fetcher, 'start', lambda *a, **k: None)
     p = c.post('/api/videos/plex-101/play', json=dict(decodes=['h264', 'hevc'])).json()
     assert p['copy'] == 'plex-101'
-    if shutil.which('ffmpeg'):
-        img = c.get('/api/plex/image?path=/library/metadata/101/thumb/1&w=200')
-        assert img.status_code == 200 and img.headers['content-type'] == 'image/jpeg'
+    fake_scaler(monkeypatch)
+    img = c.get('/api/plex/image?path=/library/metadata/101/thumb/1&w=200')
+    assert img.status_code == 200 and img.headers['content-type'] == 'image/jpeg'
     assert c.get('/api/plex/image?path=/etc/passwd').status_code == 502

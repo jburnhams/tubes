@@ -145,17 +145,19 @@ def add_plex_filter(section, params, title, now=None):
 
 
 def _save_plex(channel_id, rows, now=None):
-    """Save Plex videos under a channel, holding it as _store does; one already kept under another Plex channel (a show also matched by a
-    filter) stays where it is. `gone` and `checked` come from the rows (Plex's deletedAt and updatedAt). Returns how many were new, or None
-    when the channel was removed meanwhile."""
+    """Save Plex videos under a channel, holding it as _store does. One already kept under another Plex channel (a show also matched by a
+    filter, a film in two filters) belongs to that one: it is left as it is, and only its own channel's sync changes it or hides it.
+    `gone` and `checked` come from the rows (Plex's deletedAt and updatedAt). Returns how many were new, or None when the channel was
+    removed meanwhile."""
     if not rows: return 0
     ids = [r['id'] for r in rows]
     with db.connect() as con:
         if not con.execute('UPDATE channels SET id = id WHERE id = ?', (channel_id,)).rowcount: return None
         have = {r[0]: r[1] for r in con.execute(f"SELECT id, channel_id FROM videos WHERE id IN ({', '.join('?' * len(ids))})", tuple(ids))}
-        for r in rows: r['channel_id'] = have.get(r['id'], channel_id)
-        save_videos(con, rows)
-        con.executemany('UPDATE videos SET gone = :gone, checked = :checked WHERE id = :id', [dict(id=r['id'], gone=r.get('gone'), checked=r.get('checked')) for r in rows])
+        mine = [r for r in rows if have.get(r['id'], channel_id) == channel_id]
+        if mine:
+            save_videos(con, mine)
+            con.executemany('UPDATE videos SET gone = :gone, checked = :checked WHERE id = :id', [dict(id=r['id'], gone=r.get('gone'), checked=r.get('checked')) for r in mine])
     return sum(1 for i in ids if i not in have)
 
 
@@ -199,7 +201,7 @@ def sync_plex(channel_id, now=None, progress=None):
     added = _save_plex(channel_id, rows, now)
     if added is None: raise _gone(channel_id)
     if same:
-        with db.connect() as con: con.executemany('UPDATE videos SET gone = :gone WHERE id = :id', [dict(id=i, gone=g) for i, g in same.items()])
+        with db.connect() as con: con.executemany('UPDATE videos SET gone = :gone WHERE id = :id AND channel_id = :c', [dict(id=i, gone=g, c=channel_id) for i, g in same.items()])
     if progress: progress(added)
     seen = {plex.video_id(m['ratingKey']) for m in items}
     with db.connect() as con:

@@ -79,9 +79,21 @@ def image_bytes(path):
 
 
 def file_url(part_key):
-    """The address ffmpeg reads a file from: its part key, with the token (on a command line on this machine only, never sent to a browser)."""
+    """The address ffmpeg reads a file from: its part key on the server, without the token, which ffmpeg sends as a header (`headers`), so
+    no error message or log that names the address carries it."""
     if not PART.match(part_key or ''): raise PlexError(f'{part_key!r} is not a Plex file.')
-    return f"{base()}{part_key}?{urllib.parse.urlencode({'X-Plex-Token': os.environ['PLEX_TOKEN']})}"
+    return f"{base()}{part_key}"
+
+
+def headers():
+    """The HTTP headers ffmpeg sends with a Plex file request (its -headers option)."""
+    return f"X-Plex-Token: {os.environ.get('PLEX_TOKEN', '')}\r\n"
+
+
+def redact(text):
+    """Text with the token taken out, should anything have put it there (an error kept on a copy is shown to browsers)."""
+    token = os.environ.get('PLEX_TOKEN')
+    return text.replace(token, '***') if text and token else text
 
 
 def reachable():
@@ -358,7 +370,8 @@ def cached_image(path, width=640):
     out = os.path.join(folder, f"{hashlib.sha1(path.encode()).hexdigest()[:20]}-{w}.jpg")
     if os.path.exists(out): return out
     data = image_bytes(path)
-    tmp = out + '.part'
+    import tempfile
+    fd, tmp = tempfile.mkstemp(suffix='.part', dir=folder); os.close(fd)        # its own: two requests for one picture at once must not share a file
     try:
         p = subprocess.run([settings.get('ffmpeg'), '-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-i', 'pipe:0', '-vf', f"scale='min({w},iw)':-2", '-frames:v', '1', '-q:v', '3', '-f', 'mjpeg', tmp],
                            input=data, capture_output=True, timeout=60)
