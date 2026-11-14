@@ -8,7 +8,7 @@ describe('Cache', () => {
     openApp('/admin/cache')
     expect(await screen.findByText(/used by 7\svideos\. Trimming starts at/)).toBeInTheDocument()
     expect(screen.getByRole('meter', { name: 'Cache used' })).toBeInTheDocument()
-    const table = screen.getByRole('table', { name: 'Copies, highest score first' })
+    const table = screen.getByRole('grid', { name: 'Copies, highest score first' })
     const rows = within(table).getAllByRole('row').slice(1)
     expect(rows).toHaveLength(7)
     expect(rows[0]).toHaveTextContent('played in the last day')
@@ -21,12 +21,12 @@ describe('Cache', () => {
 
   it('sorts by size, plays and score, with the sort in the URL', async () => {
     const { user, router } = openApp('/admin/cache')
-    const table = await screen.findByRole('table', { name: 'Copies, highest score first' })
+    const table = await screen.findByRole('grid', { name: 'Copies, highest score first' })
     for (const name of ['Size', 'Plays', 'Score']) {
-      await user.click(within(table).getByRole('button', { name }))
+      await user.click(within(table).getByRole('columnheader', { name }))
       expect(router.state.location.search).toMatch(/sort=/)
     }
-    await user.click(within(table).getByRole('button', { name: 'Size' }))
+    await user.click(within(table).getByRole('columnheader', { name: 'Size' }))
     expect(within(table).getByRole('columnheader', { name: 'Size' })).toHaveAttribute('aria-sort')
   })
 
@@ -92,15 +92,15 @@ describe('Cache', () => {
 
   it('totals whole copies and saved starts apart, and shows one kind at a time', async () => {
     const { user, router } = openApp('/admin/cache')
-    const table = await screen.findByRole('table', { name: 'Copies, highest score first' })
+    const table = await screen.findByRole('grid', { name: 'Copies, highest score first' })
     expect(within(table).getByText('Start saved')).toBeInTheDocument()
     expect(screen.getByText('Whole videos')).toBeInTheDocument()
     expect(screen.getByText(/^2\sMB · Start at once/)).toBeInTheDocument()
     await user.click(screen.getByRole('tab', { name: /Starts/ }))
     expect(router.state.location.search).toBe('?show=partial')
-    expect(within(screen.getByRole('table', { name: 'Copies, highest score first' })).getAllByRole('row').slice(1)).toHaveLength(1)
+    expect(within(screen.getByRole('grid', { name: 'Copies, highest score first' })).getAllByRole('row').slice(1)).toHaveLength(1)
     await user.click(screen.getByRole('tab', { name: /Whole/ }))
-    expect(within(screen.getByRole('table', { name: 'Copies, highest score first' })).getAllByRole('row').slice(1)).toHaveLength(4)
+    expect(within(screen.getByRole('grid', { name: 'Copies, highest score first' })).getAllByRole('row').slice(1)).toHaveLength(4)
   })
 
   it('says when there are no copies of the kind chosen', async () => {

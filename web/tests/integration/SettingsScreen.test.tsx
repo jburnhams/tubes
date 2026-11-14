@@ -61,7 +61,7 @@ describe('Settings', () => {
   it('opens on a tab from a link', () => {
     openApp('/admin/settings?tab=appearance')
     expect(screen.getByRole('tab', { name: 'Appearance' })).toHaveAttribute('aria-selected', 'true')
-    expect(screen.getByRole('group', { name: 'Colour scheme' })).toBeInTheDocument()
+    expect(screen.getByRole('radiogroup', { name: 'Colour scheme' })).toBeInTheDocument()
   })
 
   it('sets which videos are shown, in minutes, and says what they leave out', async () => {
@@ -177,12 +177,12 @@ describe('Settings', () => {
 describe('Settings > Skipping', () => {
   it('has a choice for each kind of segment, starting from the server, and saves them', async () => {
     const { user } = openApp('/admin/settings?tab=skipping')
-    const sponsor = await screen.findByRole('group', { name: 'Sponsor' })
+    const sponsor = await screen.findByRole('radiogroup', { name: 'Sponsor' })
     expect(within(sponsor).getByRole('radio', { name: /^Skip/ })).toBeChecked()
-    const filler = screen.getByRole('group', { name: 'Filler or tangent' })
+    const filler = screen.getByRole('radiogroup', { name: 'Filler or tangent' })
     expect(within(filler).getByRole('radio', { name: /^Off/ })).toBeChecked()
-    expect(screen.getAllByRole('group')).toHaveLength(9)
-    await user.click(within(screen.getByRole('group', { name: 'Intro' })).getByRole('radio', { name: /^Skip/ }))
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(9)
+    await user.click(within(screen.getByRole('radiogroup', { name: 'Intro' })).getByRole('radio', { name: /^Skip/ }))
     await user.click(within(sponsor).getByRole('radio', { name: /^Ask/ }))
     await user.click(screen.getByRole('button', { name: 'Save skipping' }))
     expect(await screen.findByText('Saved', { selector: '[role=status]' })).toBeInTheDocument()

@@ -106,7 +106,7 @@ describe('Channel visits', () => {
 describe('A play', () => {
   it('reports how it went as the page is left, and Home then offers it to continue', async () => {
     const { router } = openApp(`/watch/${id}`)
-    const video = drive((await screen.findByLabelText('Building a bird box', { selector: 'video' })) as HTMLVideoElement)
+    const video = drive((await screen.findByLabelText('Building a bird box, video', { selector: 'video' })) as HTMLVideoElement)
     await video.play(50)
     mock.unfinished = [{ ...videos[0], resume: 50, progress: 0.0833 }]                          // what the server makes of the report
     await router.navigate('/')
@@ -161,7 +161,7 @@ describe('The player', () => {
   it('reports the seconds seen as it plays, pauses, is hidden and ends', async () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
     openApp(`/watch/${id}`)
-    const video = drive((await screen.findByLabelText('Building a bird box', { selector: 'video' })) as HTMLVideoElement)
+    const video = drive((await screen.findByLabelText('Building a bird box, video', { selector: 'video' })) as HTMLVideoElement)
     await waitFor(() => expect(mock.plays).toHaveLength(1))
     await video.play(30)
     await act(() => { vi.advanceTimersByTime(15_000) })                                     // every 15 seconds while it plays
@@ -187,7 +187,7 @@ describe('The player', () => {
 
   it('counts a part it skips as seen', async () => {
     const { user } = openApp(`/watch/${id}`)
-    const video = drive((await screen.findByLabelText('Building a bird box', { selector: 'video' })) as HTMLVideoElement)
+    const video = drive((await screen.findByLabelText('Building a bird box, video', { selector: 'video' })) as HTMLVideoElement)
     await screen.findByRole('img', { name: /Parts that can be skipped/ })
     await video.play(60.5)                                                                  // into the sponsor read (1:00-1:35), skipped as it starts
     await waitFor(() => expect(video.state.t).toBe(95))
@@ -206,7 +206,7 @@ describe('The player', () => {
       return HttpResponse.json({ outcome: 'short' })
     }))
     const { router } = openApp(`/watch/${id}`)
-    const video = drive((await screen.findByLabelText('Building a bird box', { selector: 'video' })) as HTMLVideoElement)
+    const video = drive((await screen.findByLabelText('Building a bird box, video', { selector: 'video' })) as HTMLVideoElement)
     await video.play(5); video.state.paused = true; await video.fire('pause')
     expect(screen.queryByText(/could not/)).not.toBeInTheDocument()
     down = false

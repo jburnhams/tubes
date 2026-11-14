@@ -1,35 +1,26 @@
-// The watching side's way of showing a remote read (Strata's `Load`): its own skeleton while it
-// loads, a plain sentence with Try again when it fails, an empty state that says where videos come
-// from, else the content. DataView does the same for the admin area in Strata's look.
+// The watching side's pieces for a remote read, drawn in its own look. Every read goes through
+// Strata's `DataView` (skeleton while it loads, `empty`, else the content); a failed read is drawn by
+// `trouble` (DataView's `error`): a plain sentence with Try again, inside DataView's alert. DataView
+// does the same for the admin area in Strata's look.
 import type { ReactNode } from 'react'
-import type { Load } from 'strata-react'
+import { Button, type LoadFailure } from 'strata-react'
 
-export function Shown<T>({ state, skeleton, isEmpty = () => false, empty = null, children }: { state: Load<T>; skeleton: ReactNode; isEmpty?: (data: T) => boolean; empty?: ReactNode; children: (data: T) => ReactNode }) {
-  if (state.status === 'loading') return <>{skeleton}</>
-  if (state.status === 'error') return <Trouble message={state.message} retry={state.retry} />
-  return <>{isEmpty(state.data) ? empty : children(state.data)}</>
-}
+/** DataView's `error` on the watching side. */
+export const trouble = (failure: LoadFailure) => <Trouble {...failure} />
 
 export function Trouble({ message, retry }: { message: string; retry?: () => void }) {
   return (
-    <div role="alert" className="grid justify-items-center gap-4 py-16 text-center">
+    <div className="grid justify-items-center gap-4 py-16 text-center">
       <p className="max-w-md text-tube-base text-tube-ink">{message}</p>
       {retry && <Pill onClick={retry}>Try again</Pill>}
     </div>
   )
 }
 
-/** A rounded grey button, the watching side's only button shape. */
+/** A rounded grey button, the watching side's only button shape: Strata's secondary `Button`, drawn round and grey by the
+ *  watching side's theme (tube.css, `.tube`). */
 export function Pill({ children, onClick }: { children: ReactNode; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex h-9 items-center gap-2 rounded-full bg-tube-chip px-4 text-tube-sm font-medium text-tube-ink transition-colors hover:bg-tube-chip-hover"
-    >
-      {children}
-    </button>
-  )
+  return <Button variant="secondary" onClick={onClick}>{children}</Button>
 }
 
 /** A centred note for an empty list: what is missing and where it comes from. */

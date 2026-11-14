@@ -7,7 +7,7 @@ import { channelVisits, playSummary } from '../../src/mocks/fixtures'
 import { openApp, screen, waitFor, within } from '../utils/render'
 import { server } from '../utils/server'
 
-const plays = () => screen.findByRole('list', { name: 'Plays, newest first' })
+const plays = () => screen.findByRole('grid', { name: 'Plays, newest first' })
 
 describe('Viewing', () => {
   let observer: ReturnType<typeof installFakeIntersectionObserver> | undefined
@@ -25,13 +25,13 @@ describe('Viewing', () => {
   it('lists every play newest first, each opening to all that was kept of it, open in the URL', async () => {
     const { user, router } = openApp('/admin/viewing')
     const list = await plays()
-    expect(within(list).getAllByRole('listitem')).toHaveLength(8)
+    expect(within(list).getAllByRole('row')).toHaveLength(8 + 1)                  // and the row after them: That is every play kept
     const first = within(list).getByRole('button', { name: /^Building a bird box/ })
     expect(first).toHaveTextContent('97%')
     expect(first).toHaveTextContent('Watched to the end')
     await user.click(first)
     expect(router.state.location.search).toBe('?open=8')
-    await user.click(within(within(list).getAllByRole('listitem')[7]).getByRole('button'))      // the oldest: from Up next
+    await user.click(within(within(list).getAllByRole('row')[7]).getByRole('button'))      // the oldest: from Up next
     expect(router.state.location.search).toBe('?open=8&open=1')
     const terms = (label: string) => screen.getAllByText(label, { selector: 'dt' }).map(t => t.nextElementSibling?.textContent)
     expect(terms('Started from')[0]).toBe('Home')
@@ -57,9 +57,9 @@ describe('Viewing', () => {
     const { user, router } = openApp('/admin/viewing')
     await plays()
     await user.selectOptions(screen.getByRole('combobox', { name: 'How it ended' }), 'Part watched')
-    await waitFor(async () => expect(within(await plays()).getAllByRole('listitem')).toHaveLength(3))
+    await waitFor(async () => expect(within(await plays()).getAllByRole('row')).toHaveLength(3 + 1))
     await user.selectOptions(screen.getByRole('combobox', { name: 'Started from' }), 'Search')
-    await waitFor(async () => expect(within(await plays()).getAllByRole('listitem')).toHaveLength(1))
+    await waitFor(async () => expect(within(await plays()).getAllByRole('row')).toHaveLength(1 + 1))
     expect(router.state.location.search).toBe('?outcome=partial&source=search')
     await user.selectOptions(screen.getByRole('combobox', { name: 'Started from' }), 'Up next')
     expect(await screen.findByText('No plays like that')).toBeInTheDocument()
@@ -73,14 +73,14 @@ describe('Viewing', () => {
     observer = installFakeIntersectionObserver()
     openApp('/admin/viewing')
     const list = await plays()
-    await waitFor(() => expect(within(list).getAllByRole('listitem').length).toBeGreaterThan(0))
-    act(() => { observer!.scrollToEnd() })
-    await waitFor(() => expect(screen.getByText('That is every play kept.')).toBeInTheDocument(), { timeout: 3000 })
+    await waitFor(() => expect(within(list).getAllByRole('row').length).toBeGreaterThan(0))
+    // Each page's next-page row is a new row to come near the screen, so it is scrolled to until the last page has come.
+    await waitFor(() => { act(() => { observer!.scrollToEnd() }); expect(screen.getByText('That is every play kept.')).toBeInTheDocument() }, { timeout: 3000 })
   })
 
   it('lists the channel pages visited and where from', async () => {
     openApp('/admin/viewing')
-    const visits = await screen.findByRole('list', { name: 'Channel pages visited, newest first' })
+    const visits = await screen.findByRole('grid', { name: 'Channel pages visited, newest first' })
     expect(within(visits).getByRole('link', { name: 'Workshop Notes' })).toHaveAttribute('href', '/channels/UCworkshop00000000000001')
     expect(within(visits).getByText(/from A video’s page: Building a bird box$/)).toBeInTheDocument()
     expect(within(visits).getByText(/from The side rail$/)).toBeInTheDocument()
@@ -131,7 +131,7 @@ describe('Viewing', () => {
     }))
     observer = installFakeIntersectionObserver()
     const { user } = openApp('/admin/viewing')
-    await screen.findByRole('list', { name: 'Channel pages visited, newest first' })
+    await screen.findByRole('grid', { name: 'Channel pages visited, newest first' })
     await user.click(await screen.findByRole('button', { name: 'Show older visits' }))
     expect(await screen.findByRole('link', { name: 'An older visit' })).toBeInTheDocument()
   })

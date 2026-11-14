@@ -15,8 +15,11 @@ describe('Watch', () => {
     expect(await screen.findByText('Saved on this server')).toBeInTheDocument()
     expect(screen.getByText('1080p VP9 + AAC')).toBeInTheDocument()
     expect(screen.getByText(/^1K views · \d+ \w+ ago$/, { selector: 'dd' })).toBeInTheDocument()
-    // jsdom has neither MediaSource nor native HLS, so the player says what it needs.
-    expect(await screen.findByRole('alert')).toHaveTextContent('This browser cannot play the stream.')
+    // jsdom has neither MediaSource nor native HLS, so the player says so, with Try again.
+    const failed = await screen.findByRole('alert')
+    expect(failed).toHaveTextContent('Could not load this video')
+    expect(failed).toHaveTextContent('This browser cannot play this kind of stream.')
+    expect(within(failed).getByRole('button', { name: 'Try again' })).toBeInTheDocument()
     expect(mock.plays).toEqual([id])
     await user.click(await screen.findByRole('link', { name: /Workshop Notes\s*6 videos/ }))
     expect(router.state.location.pathname).toBe('/channels/UCworkshop00000000000001')
@@ -44,7 +47,11 @@ describe('Watch', () => {
     openApp(`/watch/${id}`)
     expect(await screen.findByText('Fetching 1080p AV1 + AAC. It starts in a moment.')).toBeInTheDocument()
     mock.streams[id] = streams.playable
-    expect(await screen.findByText('Fetching: 0:12 of 4:00 so far', {}, { timeout: 3000 })).toBeInTheDocument()
+    expect(await screen.findByText('Fetching: 0:12 of 4:00 so far', { selector: 'dd' }, { timeout: 3000 })).toBeInTheDocument()
+    // The player says it is still being made, with the same progress.
+    const player = screen.getByRole('group', { name: 'Building a bird box' })
+    expect(within(player).getByText('Still being made')).toBeInTheDocument()
+    expect(within(player).getByText('Fetching: 0:12 of 4:00 so far')).toBeInTheDocument()
   })
 
   it('says before a fetch starts that the quality is chosen then', async () => {
@@ -146,7 +153,7 @@ describe('Watch an iPlayer episode', () => {
 })
 
 describe('Skipping parts of a video', () => {
-  const video = () => screen.getByLabelText('Building a bird box', { selector: 'video' }) as HTMLVideoElement
+  const video = () => screen.getByLabelText('Building a bird box, video', { selector: 'video' }) as HTMLVideoElement
   const playTo = (t: number) => act(() => { Object.defineProperty(video(), 'currentTime', { configurable: true, writable: true, value: t }); video().dispatchEvent(new Event('timeupdate')) })
 
   it('draws the parts on a timeline, asks for an intro and skips a sponsor read with Undo', async () => {
@@ -164,6 +171,24 @@ describe('Skipping parts of a video', () => {
     expect(video().currentTime).toBe(60)
     playTo(62)                                                                      // let play after Undo
     expect(video().currentTime).toBe(62)
+  })
+
+  it('places the parts by the library’s length while the copy is still being fetched', async () => {
+    mock.streams[id] = streams.playable
+    openApp(`/watch/${id}`)
+    const strip = await screen.findByRole('img', { name: /Sponsor 1:00–1:35/ })
+    act(() => { Object.defineProperty(video(), 'duration', { configurable: true, value: 20 }); video().dispatchEvent(new Event('durationchange')) })   // only the part fetched so far
+    expect(strip.children[1]).toHaveStyle({ left: '25%' })                          // 1:00 of the video's 4:00
+  })
+
+  it('places the parts by what the element knows when the library has no length', async () => {
+    mock.streams[id] = streams.playable
+    server.use(http.get(`*/api/videos/${id}`, () => HttpResponse.json({ ...videos[0], duration: null, plays: 0, last_played: null })))
+    openApp(`/watch/${id}`)
+    await screen.findByRole('heading', { level: 1, name: 'Building a bird box' })
+    await screen.findByRole('group', { name: 'Building a bird box' })
+    act(() => { Object.defineProperty(video(), 'duration', { configurable: true, value: 120 }); video().dispatchEvent(new Event('durationchange')) })
+    expect(screen.getByRole('img', { name: /Sponsor 1:00–1:35/ }).children[1]).toHaveStyle({ left: '50%' })
   })
 
   it('mutes a part whose action is mute, and unmutes after it', async () => {
@@ -203,7 +228,8 @@ describe('Skipping parts of a video', () => {
     expect(await screen.findByText(/^The parts to skip could not be read: .* The video plays as it is\.$/)).toBeInTheDocument()
     expect(screen.queryByRole('img', { name: /Parts that can be skipped/ })).not.toBeInTheDocument()
     server.use(http.get('*/api/videos/:id/segments', () => HttpResponse.json({ segments: sampleSegments, categories: kindsFor(mock.settings), error: null })))
-    await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    const trouble = screen.getByText(/could not be read/)
+    await userEvent.click(within(trouble).getByRole('button', { name: 'Try again' }))
     expect(await screen.findByRole('img', { name: /Parts that can be skipped/ })).toBeInTheDocument()
     expect(screen.queryByText(/could not be read/)).not.toBeInTheDocument()
   })
@@ -213,7 +239,7 @@ describe('Skipping parts of a video', () => {
     openApp(`/watch/${id}`)
     expect(await screen.findByText('The parts to skip could not be looked up: SponsorBlock could not be reached: timed out. The video plays as it is.')).toBeInTheDocument()
     expect(screen.getByRole('img', { name: /Parts that can be skipped/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
+    expect(within(screen.getByText(/could not be looked up/)).queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
   })
 
   it('skips an automatic part inside an Ask one', async () => {

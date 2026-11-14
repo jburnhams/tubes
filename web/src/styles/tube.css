@@ -76,3 +76,24 @@
   --text-tube-xl: 2.25rem;
   --text-tube-xl--line-height: 3.125rem;
 }
+
+/* Strata's roles on the watching side. The viewer shell (watch/Shell.tsx) carries `.tube`, and inside it
+   the roles Strata's components draw with are the old look's: the page and ink, grey chips that go a
+   shade darker under the pointer, round controls, rounded pictures, Roboto. So a Strata component on
+   this side (DataView, Button, Thumbnail…) takes this look without a class of its own, and the admin
+   area, outside `.tube`, keeps Strata's. Only roles: the variables Strata's utilities read. */
+.tube {
+  --background: var(--tube-page);
+  --foreground: var(--tube-ink);
+  --muted: var(--tube-chip);
+  --muted-foreground: var(--tube-quiet);
+  --neutral-4: var(--tube-chip-hover);
+  --border: var(--tube-line);
+  --input: var(--tube-field-line);
+  --ring: var(--tube-focus);
+  --radius-control: 9999px;
+  --radius-surface: var(--radius-tube);
+  --font-sans: var(--font-tube);
+  /* The pill's height (h-9); the rail and search controls keep their own sizes. */
+  --control-h: 2.25rem;
+}

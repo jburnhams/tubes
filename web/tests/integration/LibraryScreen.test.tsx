@@ -5,7 +5,7 @@ import { channels, programme, syncJobs } from '../../src/mocks/fixtures'
 import { openApp, screen, waitFor, within } from '../utils/render'
 import { mock, server } from '../utils/server'
 
-const table = () => screen.findByRole('table', { name: 'Channels in the library, by title' })
+const table = () => screen.findByRole('grid', { name: 'Channels in the library, by title' })
 const row = (name: string) => screen.getByRole('row', { name: new RegExp(name) })
 /** The filled buttons, by name (AsyncButton keeps every phase's label in its text for its width). */
 const filled = (...named: string[]) => screen.getAllByRole('button').filter(b => b.className.includes('bg-primary')).map(b => named.find(name => screen.queryByRole('button', { name }) === b) ?? b.textContent)
@@ -32,14 +32,14 @@ describe('Library', () => {
     const { user, router } = openApp('/admin/library')
     await table()
     const order = () => screen.getAllByRole('row').slice(1).map(r => within(r).getAllByRole('link')[0].textContent)
-    await user.click(screen.getByRole('button', { name: 'At source' }))
+    await user.click(screen.getByRole('columnheader', { name: 'At source' }))
     expect(order()[0]).toBe('Rivers and Coasts')
     expect(within(row('Rivers and Coasts')).getByText('–')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Here' }))
-    await user.click(screen.getByRole('button', { name: 'Last synced' }))
+    await user.click(screen.getByRole('columnheader', { name: 'Here' }))
+    await user.click(screen.getByRole('columnheader', { name: 'Last synced' }))
     expect(order()[0]).toBe('Rivers and Coasts')
-    await user.click(screen.getByRole('button', { name: 'Channel' }))
-    await user.click(screen.getByRole('button', { name: 'Channel' }))
+    await user.click(screen.getByRole('columnheader', { name: 'Channel' }))
+    await user.click(screen.getByRole('columnheader', { name: 'Channel' }))
     expect(order()[0]).toBe('Workshop Notes')
     expect(router.state.location.search).toMatch(/sort=title\./)
   })

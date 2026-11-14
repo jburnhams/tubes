@@ -3,7 +3,7 @@ import { followFails, historyError, historyNoKey, historyNone, historyOneAccount
 import { openApp, screen, waitFor, within } from '../utils/render'
 import { mock, server } from '../utils/server'
 
-const table = (name: string) => screen.findByRole('table', { name })
+const table = (name: string) => screen.findByRole('grid', { name })
 
 describe('History', () => {
   it('says what was watched in the last 12 months, with the top channels and videos', async () => {
