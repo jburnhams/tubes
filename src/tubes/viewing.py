@@ -129,7 +129,7 @@ def unfinished(limit=CONTINUE_LIMIT, now=None):
     ok, args = library.shown(now)
     ids = [p['video_id'] for p in found]
     with db.connect() as con:
-        rows = {r['id']: r for r in db.rows(con.execute(f'''SELECT {library.VIDEO_COLUMNS} FROM videos v LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = v.id
+        rows = {r['id']: library.api_row(r) for r in db.rows(con.execute(f'''SELECT {library.VIDEO_COLUMNS} FROM videos v LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = v.id
                                                              WHERE {ok} AND v.id IN ({', '.join('?' * len(ids))})''', args + ids))}
     out = []
     for p in found:

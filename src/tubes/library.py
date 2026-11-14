@@ -23,10 +23,12 @@ whatever the filters say: it cannot be played here. They only narrow the lists; 
 `now` (an ISO string, default the present) is what `expires` is compared with."""
 import datetime, json
 
-from tubes import db, youtube
+from tubes import db, metadata, youtube
 
 VIDEO_COLUMNS = """v.id, v.platform, v.channel_id, c.title AS channel, v.title, v.published, v.duration, v.thumbnail, v.views,
-                   k.state AS cache_state, k.bytes AS cache_bytes, v.gone, v.live, v.expires, v.series, v.episode"""
+                   k.state AS cache_state, k.bytes AS cache_bytes, v.gone, v.live, v.expires, v.series, v.episode,
+                   v.kind, v.year, v.season, v.network, v.content_rating, v.min_age, v.kids, v.width, v.height, v.hdr"""
+DETAIL_COLUMNS = "v.description, v.tagline, v.colours, v.language, v.captions, v.definition, v.likes, v.comments"     # what one video's page shows too (`video`)
 AVAILABLE = "((v.gone IS NULL AND v.blocked IS NULL AND (v.expires IS NULL OR v.expires > ?)) OR (v.platform = 'iplayer' AND COALESCE(k.state, '') = 'ready'))"
 # still offered (one `now` argument; needs the copies joined as k): not gone, not refused as blocked in this country, not expired from iPlayer unless cached
 STREAMING = "(v.gone IS NULL AND v.blocked IS NULL AND v.live IN ('live', 'upcoming'))"        # a stream live now or scheduled: cannot be played, so never shown
@@ -90,7 +92,7 @@ def shown(now=None, f=None):
 
 
 CHANNEL_COLUMNS = """c.id, c.platform, c.title, c.handle, c.thumbnail, c.synced, c.published, c.country, c.subscribers, c.total_videos, c.views, c.complete, c.follow,
-                     c.added, c.sync_token IS NOT NULL AS resumable"""
+                     c.added, c.sync_token IS NOT NULL AS resumable, c.kind, c.tagline, c.network, c.content_rating, c.min_age, c.kids, c.colours"""
 
 
 def _now(now=None): return now or datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')
@@ -124,12 +126,26 @@ def channels(now=None):
                                        MAX(CASE WHEN v.id IS NOT NULL AND {ok} THEN v.published END) AS latest
                                        FROM channels c LEFT JOIN videos v ON v.channel_id = c.id LEFT JOIN copies k ON k.video_id = v.id
                                        GROUP BY c.id ORDER BY LOWER(c.title), c.id""", args * 3))
-    for r in rows: r.update(complete=bool(r['complete']), follow=bool(r['follow']), resumable=bool(r['resumable']))   # SQLite answers 0 and 1
+    for r in rows: api_row(r); r.update(complete=bool(r['complete']), follow=bool(r['follow']), resumable=bool(r['resumable']))   # SQLite answers 0 and 1
     return rows
 
 
+def api_row(r):
+    """A row as the API gives it: true and false (not 1 and 0) on SQLite too, and `colours` read from its JSON."""
+    for k in ('kids', 'hdr', 'captions'):
+        if r.get(k) is not None: r[k] = bool(r[k])                     # SQLite answers 0 and 1
+    if r.get('colours'):
+        try: r['colours'] = json.loads(r['colours'])
+        except ValueError: r['colours'] = None
+    return r
+
+
 def channel(channel_id):
-    return next((c for c in channels() if c['id'] == channel_id), None)
+    """One channel as `channels` lists it, with its description and every metadata table (`meta`, metadata.get), or None."""
+    c = next((c for c in channels() if c['id'] == channel_id), None)
+    if c is None: return None
+    with db.connect() as con: c['description'] = (con.execute('SELECT description FROM channels WHERE id = ?', (channel_id,)).fetchone() or [None])[0]
+    return dict(c, meta=metadata.get('channel', channel_id))
 
 
 def cursor(v):
@@ -149,7 +165,7 @@ def videos(channel_id=None, search=None, after=None, limit=24, now=None):
         where.append('(v.published < ? OR (v.published = ? AND v.id < ?))'); args += [published, published, vid]
     sql = f"""SELECT {VIDEO_COLUMNS} FROM videos v LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = v.id
               WHERE {' AND '.join(where)} ORDER BY v.published DESC, v.id DESC LIMIT ?"""
-    with db.connect() as con: rows = db.rows(con.execute(sql, args + [limit + 1]))
+    with db.connect() as con: rows = [api_row(r) for r in db.rows(con.execute(sql, args + [limit + 1]))]
     return dict(videos=rows[:limit], has_more=len(rows) > limit)
 
 
@@ -158,10 +174,15 @@ def shuffle(count=24, channel_id=None, now=None):
     ok, args = shown(now)
     where, args = (f'WHERE {ok} AND v.channel_id = ?', args + [channel_id]) if channel_id else (f'WHERE {ok}', args)
     with db.connect() as con:
-        return db.rows(con.execute(f'SELECT {VIDEO_COLUMNS} FROM videos v LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = v.id {where} ORDER BY RANDOM() LIMIT ?', args + [count]))
+        return [api_row(r) for r in db.rows(con.execute(f'SELECT {VIDEO_COLUMNS} FROM videos v LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = v.id {where} ORDER BY RANDOM() LIMIT ?', args + [count]))]
 
 
-def video(video_id):
-    """One video with its channel's title and its copy's state, or None when the library has no such video."""
+def video(video_id, meta=False):
+    """One video with its channel's title and its copy's state, or None when the library has no such video; with `meta`, also its
+    description and the rest of its page (DETAIL_COLUMNS) and every metadata table (`meta`, metadata.get)."""
     with db.connect() as con:
-        return db.row(con.execute(f'SELECT {VIDEO_COLUMNS} FROM videos v LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = v.id WHERE v.id = ?', (video_id,)))
+        r = db.row(con.execute(f"SELECT {VIDEO_COLUMNS}{', ' + DETAIL_COLUMNS if meta else ''} FROM videos v LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = v.id WHERE v.id = ?", (video_id,)))
+    if r is None: return None
+    api_row(r)
+    if meta: r['meta'] = metadata.get('video', video_id)
+    return r

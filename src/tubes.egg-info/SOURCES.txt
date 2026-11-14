@@ -12,6 +12,7 @@ src/tubes/history.py
 src/tubes/iplayer.py
 src/tubes/iplayer_suggest.py
 src/tubes/library.py
+src/tubes/metadata.py
 src/tubes/models.py
 src/tubes/oslib.py
 src/tubes/paste.py

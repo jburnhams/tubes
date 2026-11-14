@@ -29,6 +29,8 @@ PAGE = 200
 FHD_BITRATE = 12000000
 THUMB = '1280x720'                    # an episode's or programme's wide image, as big as YouTube's best thumbnails that the cards scale down
 AVATAR = '480x480'                    # a programme's square image, for the round channel avatar
+BACKDROP = '1920x1080'                # a wide image to show large, behind a channel's header or the player
+PORTRAIT = '640x960'                  # a 2:3 image, like a poster
 PID = re.compile(r'^[b-df-hj-np-tv-z0-9]{8,15}$')     # BBC programme ids: lower-case consonants and digits
 SUBTITLE = re.compile(r'^(?P<series>[^:]+):\s*(?:(?P<n>\d+)\.\s*)?(?P<rest>.*)$')
 SKIP_KINDS = ('audio-described', 'signed')                   # versions for those who need them, never the default one
@@ -118,12 +120,39 @@ def names(episode):
     return sub or (episode.get('original_title') or '').strip() or episode.get('title') or episode['id'], None, number
 
 
+def network_name(item):
+    mb = item.get('master_brand') or {}
+    return (mb.get('titles') or {}).get('large') or mb.get('id') or None
+
+
+def tagline(syn):
+    """The short synopsis, when there is a longer one to be the description."""
+    short = (syn.get('small') or '').strip()
+    return short if short and short != (syn.get('large') or syn.get('medium') or '').strip() else None
+
+
+def tags(item):
+    """An ibl programme's or episode's categories (`childrens-cartoons`) and its label (`CBeebies`, `Crime Drama`) as `tags` rows."""
+    label = (item.get('labels') or {}).get('category')
+    return [dict(kind='category', value=c) for c in item.get('categories') or [] if isinstance(c, str)] + ([dict(kind='label', value=label)] if label else [])
+
+
+def images(im, wide):
+    """An ibl images dict as `images` rows: the wide one as `wide` (thumb for an episode, avatar for a programme), a backdrop and a portrait."""
+    std = im.get('standard') or im.get('promotional')
+    out = [dict(kind=wide, url=image(std, THUMB if wide == 'thumb' else AVATAR), **(dict(width=1280, height=720) if wide == 'thumb' else dict(width=480, height=480)))] if std else []
+    if im.get('promotional') or std: out.append(dict(kind='backdrop', url=image(im.get('promotional') or std, BACKDROP), width=1920, height=1080))
+    if im.get('portrait'): out.append(dict(kind='portrait', url=image(im['portrait'], PORTRAIT), width=640, height=960))
+    return out
+
+
 def channel_row(programme, now):
     """An ibl programme as a `channels` row."""
     im, syn = programme.get('images') or {}, programme.get('synopses') or {}
     return dict(id=programme['id'], platform='iplayer', title=programme.get('title') or programme['id'], handle=None,
                 thumbnail=image(im.get('standard') or im.get('promotional'), AVATAR), description=syn.get('large') or syn.get('medium') or syn.get('small'),
-                published=None, country='GB', language='en', subscribers=None, total_videos=programme.get('count'), views=None, uploads=None, added=now)
+                published=None, country='GB', language='en', subscribers=None, total_videos=programme.get('count'), views=None, uploads=None, added=now,
+                kind='programme', tagline=tagline(syn), network=network_name(programme), meta=dict(images=images(im, 'avatar'), tags=tags(programme)))
 
 
 def network_row(episode, now):
@@ -131,7 +160,7 @@ def network_row(episode, now):
     mb = episode.get('master_brand') or {}
     title = (mb.get('titles') or {}).get('large') or mb.get('id') or 'BBC'
     return dict(id=mb.get('id') or 'bbc', platform='iplayer', title=title, handle=None, thumbnail=None, description=None, published=None, country='GB', language='en',
-                subscribers=None, total_videos=None, views=None, uploads=None, added=now)
+                subscribers=None, total_videos=None, views=None, uploads=None, added=now, kind='network', network=title)
 
 
 def one_off(episode):
@@ -159,7 +188,7 @@ def category_row(cat, now):
     """A category (`{id, title}`) as a `channels` row, id `iplayer-<id>`."""
     return dict(id=PREFIX + cat['id'], platform='iplayer', title=cat.get('title') or cat['id'], handle=None, thumbnail=None,
                 description=f"Every one-off in iPlayer's {cat.get('title') or cat['id']}, as iPlayer offers them.", published=None, country='GB', language='en',
-                subscribers=None, total_videos=None, views=None, uploads=None, added=now)
+                subscribers=None, total_videos=None, views=None, uploads=None, added=now, kind='category')
 
 
 def category_page(cat, page=1):
@@ -182,7 +211,29 @@ def video_row(episode, now):
                 duration=seconds((v.get('duration') or {}).get('value')), thumbnail=image(im.get('standard')), views=None,
                 description=syn.get('large') or syn.get('medium') or syn.get('small') or syn.get('editorial'), likes=None, comments=None,
                 definition=('hd' if v.get('hd') else 'sd') if v else None, live=None, expires=stamp(avail.get('end')), series=series, episode=number,
-                language='en', captions=None, regions_allowed='GB', regions_blocked=None, added=now)     # iPlayer plays only in the UK; nearly every programme is subtitled, but ibl does not say
+                language='en', captions=None, regions_allowed='GB', regions_blocked=None, added=now,     # iPlayer plays only in the UK; nearly every programme is subtitled, but ibl does not say
+                kind='film' if one_off(episode) and any(c in (episode.get('categories') or []) for c in FILED_UNDER) else 'episode',
+                tagline=tagline(syn), year=int(published[:4]) if re.match(r'^\d{4}', published or '') else None, network=network_name(episode), season=season(series),
+                kids=bool(episode['childrens']) if isinstance(episode.get('childrens'), bool) else None, **picture(v),
+                meta=dict(images=images(im, 'thumb'), tags=tags(episode), tracks=versions(episode)))
+
+
+def season(series):
+    """The number of a series title (`Series 4` is 4, `Season 2` is 2), or None."""
+    m = re.match(r'^\s*(?:series|season)\s+(\d+)\s*$', series or '', re.I)
+    return int(m[1]) if m else None
+
+
+def picture(v):
+    """A version's best picture as {width, height, hdr}: UHD 2160p, HD 1080p (fhd_url), else not said."""
+    size = (3840, 2160) if v.get('uhd') else (1920, 1080) if v.get('hd') else (None, None)
+    return dict(width=size[0], height=size[1], hdr=v.get('hdr') if isinstance(v.get('hdr'), bool) else None)
+
+
+def versions(episode):
+    """An episode's other versions (audio-described, signed) as `tracks` rows of kind `version`, `ref` the version's id."""
+    names = {'audio-described': 'Audio described', 'signed': 'Signed'}
+    return [dict(kind='version', label=names[x['kind']], ref=x['id'], language='en') for x in episode.get('versions') or [] if x.get('id') and x.get('kind') in names]
 
 
 def programme(pid):

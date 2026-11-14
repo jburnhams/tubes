@@ -36,6 +36,12 @@ carry them, so they sort and compare as text on both engines.
   bbc_programmes     iPlayer's whole catalogue of programmes (its A to Z), kept a day at a time for iPlayer suggestions (iplayer_suggest.py): title,
                      synopsis, categories, label, network, how many episodes, and when Tubes first saw it.
   bbc_similar        for each iPlayer programme suggested, the followed or played programmes it is most like, and how much (`score`, 0-1).
+  images, tags,      a channel's or video's metadata beyond its own row, under `owner` ('channel' or 'video') and `owner_id` (metadata.py, which
+  credits, ratings,  holds the shape every source fills as far as it can: Plex's, the richest). `images` every picture of it by `kind` (thumb,
+  external_ids,      poster, backdrop, logo, square, banner, avatar, portrait), `tags` its genres, categories, topics, keywords and countries,
+  chapters, tracks   `credits` its cast and crew in order, `ratings` scores from elsewhere (IMDb, Rotten Tomatoes, TMDB) out of 10, `external_ids`
+                     its ids elsewhere (imdb, tmdb, tvdb, plex), `chapters` (videos only) its named parts and `tracks` (videos only) its audio
+                     and subtitle tracks and other versions (audio-described, signed). A source's sync replaces what it gave before.
   segments           parts of a video the player can skip (segments.py): from SponsorBlock for YouTube, from iPlayer's own intro and credits
                      points for an episode, under SponsorBlock's categories; `segment_checks` says when each video's source was last asked."""
 from sqlalchemy import BigInteger, Float, Index, String, Text, false, true
@@ -66,6 +72,14 @@ class Channel(Base):
     complete: Mapped[bool] = mapped_column(server_default=false(), default=False)
     follow: Mapped[bool] = mapped_column(server_default=true(), default=True)
     added: Mapped[str | None] = mapped_column(String(40), default=None)
+    # The shared metadata (metadata.py's notes): None wherever a source does not say.
+    kind: Mapped[str | None] = mapped_column(String(16), default=None)          # channel (YouTube), programme, network or category (iPlayer), show or filter (Plex)
+    tagline: Mapped[str | None] = mapped_column(Text, default=None)             # a line about it, shorter than its description
+    network: Mapped[str | None] = mapped_column(Text, default=None)             # who makes or shows it: iPlayer's network, Plex's studio
+    content_rating: Mapped[str | None] = mapped_column(String(32), default=None)    # `gb/U`, `gb/PG`, `TV-Y` (Plex's form: an optional country and its rating)
+    min_age: Mapped[int | None] = mapped_column(default=None)                  # the youngest age it is rated for
+    kids: Mapped[bool | None] = mapped_column(default=None)                     # made for children: YouTube's madeForKids, iPlayer's childrens, a Plex age up to 7
+    colours: Mapped[str | None] = mapped_column(Text, default=None)             # JSON {topLeft, topRight, bottomRight, bottomLeft} hex colours for a backdrop behind it
 
 
 class Video(Base):
@@ -95,6 +109,19 @@ class Video(Base):
     regions_allowed: Mapped[str | None] = mapped_column(Text, default=None)     # comma-separated country codes it plays in only (YouTube's regionRestriction; `GB` for iPlayer)
     regions_blocked: Mapped[str | None] = mapped_column(Text, default=None)     # comma-separated country codes it does not play in
     blocked: Mapped[str | None] = mapped_column(String(40), default=None)       # when a fetch was refused as not available in this server's country; hidden while set
+    # The shared metadata (metadata.py's notes): None wherever a source does not say.
+    kind: Mapped[str | None] = mapped_column(String(16), default=None)          # video, episode or film
+    tagline: Mapped[str | None] = mapped_column(Text, default=None)             # a line about it, shorter than its description
+    year: Mapped[int | None] = mapped_column(default=None)                      # the year it came out (a film's release, an episode's first showing)
+    network: Mapped[str | None] = mapped_column(Text, default=None)             # who makes or shows it: iPlayer's network, Plex's studio
+    season: Mapped[int | None] = mapped_column(default=None)                    # the number of its series or season (`series` keeps the series' title)
+    content_rating: Mapped[str | None] = mapped_column(String(32), default=None)    # `gb/U`, `gb/PG`, `TV-Y`; `18` for a video YouTube restricts by age
+    min_age: Mapped[int | None] = mapped_column(default=None)                  # the youngest age it is rated for
+    kids: Mapped[bool | None] = mapped_column(default=None)                     # made for children: YouTube's madeForKids, iPlayer's childrens, a Plex age up to 7
+    width: Mapped[int | None] = mapped_column(default=None)                     # the picture's size and range at its best, so the player can choose before a fetch
+    height: Mapped[int | None] = mapped_column(default=None)
+    hdr: Mapped[bool | None] = mapped_column(default=None)
+    colours: Mapped[str | None] = mapped_column(Text, default=None)             # JSON {topLeft, topRight, bottomRight, bottomLeft} hex colours for a backdrop behind it
 
 
 class Meta(Base):
@@ -233,6 +260,77 @@ class Segment(Base):
     source: Mapped[str] = mapped_column(String(16))                              # sponsorblock or iplayer
     action: Mapped[str] = mapped_column(String(16), server_default='skip', default='skip')   # skip, or mute (SponsorBlock's actionType)
     votes: Mapped[int | None] = mapped_column(default=None)
+
+
+class Image(Base):
+    __tablename__ = 'images'
+    owner: Mapped[str] = mapped_column(String(8), primary_key=True)              # channel or video
+    owner_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), primary_key=True)              # thumb, poster, backdrop, logo, square, banner, avatar, portrait (metadata.IMAGE_KINDS)
+    rank: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)    # 0 is the one to show; more sizes or choices follow
+    url: Mapped[str] = mapped_column(Text)
+    width: Mapped[int | None] = mapped_column(default=None)
+    height: Mapped[int | None] = mapped_column(default=None)
+
+
+class Tag(Base):
+    __tablename__ = 'tags'
+    __table_args__ = (Index('ix_tags_value', 'kind', 'value'),)
+    owner: Mapped[str] = mapped_column(String(8), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), primary_key=True)              # genre, category, topic, keyword, label, country (metadata.TAG_KINDS)
+    value: Mapped[str] = mapped_column(String(200), primary_key=True)
+    rank: Mapped[int] = mapped_column(server_default='0', default=0)             # the source's order
+
+
+class Credit(Base):
+    __tablename__ = 'credits'
+    owner: Mapped[str] = mapped_column(String(8), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    role: Mapped[str] = mapped_column(String(16), primary_key=True)              # actor, director, writer, producer, presenter
+    rank: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)    # billing order within the role
+    name: Mapped[str] = mapped_column(Text)
+    character: Mapped[str | None] = mapped_column(Text, default=None)            # who an actor plays
+    photo: Mapped[str | None] = mapped_column(Text, default=None)
+
+
+class Rating(Base):
+    __tablename__ = 'ratings'
+    owner: Mapped[str] = mapped_column(String(8), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source: Mapped[str] = mapped_column(String(32), primary_key=True)            # imdb, rottentomatoes_critic, rottentomatoes_audience, tmdb
+    value: Mapped[float] = mapped_column(Float)                                  # out of 10
+
+
+class ExternalId(Base):
+    __tablename__ = 'external_ids'
+    __table_args__ = (Index('ix_external_ids_value', 'source', 'value'),)
+    owner: Mapped[str] = mapped_column(String(8), primary_key=True)
+    owner_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    source: Mapped[str] = mapped_column(String(16), primary_key=True)            # imdb, tmdb, tvdb, plex
+    value: Mapped[str] = mapped_column(String(128))
+
+
+class Chapter(Base):
+    __tablename__ = 'chapters'
+    video_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    start: Mapped[float] = mapped_column(Float, primary_key=True)                # seconds
+    end: Mapped[float | None] = mapped_column(Float, default=None)
+    title: Mapped[str | None] = mapped_column(Text, default=None)
+    image: Mapped[str | None] = mapped_column(Text, default=None)
+
+
+class Track(Base):
+    __tablename__ = 'tracks'
+    video_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), primary_key=True)              # audio, subtitle, or version (another cut: audio-described, signed)
+    rank: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)    # the source's order within the kind
+    language: Mapped[str | None] = mapped_column(String(16), default=None)
+    label: Mapped[str | None] = mapped_column(Text, default=None)                # as the source names it: `English (EAC3 5.1)`, `Audio described`
+    codec: Mapped[str | None] = mapped_column(String(32), default=None)
+    ref: Mapped[str | None] = mapped_column(Text, default=None)                  # how the source finds it again: a stream index, a version id
+    is_default: Mapped[bool] = mapped_column(server_default=false(), default=False)
+    forced: Mapped[bool] = mapped_column(server_default=false(), default=False)
 
 
 class SegmentCheck(Base):

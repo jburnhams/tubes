@@ -36,13 +36,16 @@ side's reports leave iPlayer episodes alone.
 runs `tubes sync` (cli.py), which calls `sync` directly."""
 import datetime, json, math, re, threading
 
-from tubes import cache, db, iplayer, library, quota, youtube
+from tubes import cache, db, iplayer, library, metadata, quota, youtube
 
 RECHECK = 2500                                                                   # videos per recheck: 50 quota units of the 10,000 a day
 LIVE_GAP = datetime.timedelta(days=1)                                          # a past stream is asked about again after this (see the notes)
 REPORT_GAP = datetime.timedelta(minutes=10)                                      # a reported video asked about this recently is not asked again (a page of broken thumbnails, reloaded)
-CHANNEL_FIELDS = ('platform', 'title', 'handle', 'thumbnail', 'description', 'published', 'country', 'language', 'subscribers', 'total_videos', 'views', 'uploads')
-VIDEO_FIELDS = ('platform', 'channel_id', 'title', 'published', 'duration', 'thumbnail', 'views', 'description', 'likes', 'comments', 'definition', 'live', 'expires', 'series', 'episode', 'language', 'captions', 'regions_allowed', 'regions_blocked')
+CHANNEL_FIELDS = ('platform', 'title', 'handle', 'thumbnail', 'description', 'published', 'country', 'language', 'subscribers', 'total_videos', 'views', 'uploads',
+                  'kind', 'tagline', 'network', 'content_rating', 'min_age', 'kids', 'colours')
+VIDEO_FIELDS = ('platform', 'channel_id', 'title', 'published', 'duration', 'thumbnail', 'views', 'description', 'likes', 'comments', 'definition', 'live', 'expires', 'series', 'episode', 'language', 'captions', 'regions_allowed', 'regions_blocked',
+                'kind', 'tagline', 'year', 'network', 'season', 'content_rating', 'min_age', 'kids', 'width', 'height', 'hdr', 'colours')
+# the shared metadata's fields (metadata.py): a source that does not say one leaves it None
 ERRORS = (youtube.YoutubeError, iplayer.IplayerError)                          # what a sync notes against a channel and goes on from
 
 
@@ -53,17 +56,25 @@ class NotFound(LookupError):
 def _upsert(con, table, fields, rows, keep=()):
     """Insert rows, or update every field of the ones already there; a `keep` field (such as when it was added) is only filled if empty."""
     cols = ('id', *fields, *keep)
+    rows = [{c: r.get(c) for c in cols} for r in rows]                          # a field the source does not give is None (and its `meta` is not a column)
     sets = [f'{f} = excluded.{f}' for f in fields] + [f'{k} = COALESCE({table}.{k}, excluded.{k})' for k in keep]
     con.executemany(f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({', '.join(':' + c for c in cols)}) ON CONFLICT (id) DO UPDATE SET {', '.join(sets)}", rows)
 
 
 def save_channel(con, row, follow=None):
-    _upsert(con, 'channels', CHANNEL_FIELDS, [row], keep=('added',))
+    _upsert(con, 'channels', CHANNEL_FIELDS, [row], keep=('added',)); metadata.save(con, 'channel', [row])
     if follow is not None: con.execute('UPDATE channels SET follow = ? WHERE id = ?', (follow, row['id']))
 
 
+def update_channel(con, row):
+    """Refresh a channel already in the library, and its metadata; returns 0 when it is not there (it was removed meanwhile), and then writes nothing."""
+    held = con.execute(f"UPDATE channels SET {', '.join(f'{f} = :{f}' for f in CHANNEL_FIELDS)} WHERE id = :id", {k: row.get(k) for k in ('id', *CHANNEL_FIELDS)}).rowcount
+    if held: metadata.save(con, 'channel', [row])
+    return held
+
+
 def save_videos(con, rows):
-    _upsert(con, 'videos', VIDEO_FIELDS, rows, keep=('added',))
+    _upsert(con, 'videos', VIDEO_FIELDS, rows, keep=('added',)); metadata.save(con, 'video', rows)
 
 
 def _channel(kind, value):
@@ -151,7 +162,9 @@ def remove(channel_id):
     with db.connect() as con:
         if not con.execute('SELECT 1 FROM channels WHERE id = ?', (channel_id,)).fetchone(): raise NotFound(f'There is no channel {channel_id} in the library.')
         con.execute('DELETE FROM channels WHERE id = ?', (channel_id,))                 # the channel first: a sync saving videos holds its row (see _store)
+        ids = [r[0] for r in con.execute('SELECT id FROM videos WHERE channel_id = ?', (channel_id,))]
         gone = con.execute('DELETE FROM videos WHERE channel_id = ?', (channel_id,)).rowcount
+        metadata.delete(con, 'channel', [channel_id]); metadata.delete(con, 'video', ids)
     return dict(channel=channel_id, videos=gone)
 
 
@@ -194,7 +207,7 @@ def sync_channel(channel_id, now=None, progress=None):
     if c['platform'] == 'iplayer': return sync_programme(channel_id, now, progress)
     row = youtube.channel_row(_channel('channel', channel_id), now)              # fresh counts and the uploads playlist, one unit
     with db.connect() as con:                                                    # an update, never an insert: a channel removed meanwhile stays removed
-        held = con.execute(f"UPDATE channels SET {', '.join(f'{f} = :{f}' for f in CHANNEL_FIELDS)} WHERE id = :id", {k: row[k] for k in ('id', *CHANNEL_FIELDS)}).rowcount
+        held = update_channel(con, row)
     if not held: raise _gone(channel_id)
     if not row['uploads']: raise NotFound(f'YouTube gives no uploads for channel {channel_id}.')
     token, complete, added, pages = c['sync_token'], bool(c['complete']), 0, 0
@@ -233,7 +246,7 @@ def sync_programme(channel_id, now=None, progress=None):
         if prog is None: raise NotFound(f'iPlayer has no programme {channel_id} any more.')
         row, pages = iplayer.channel_row(prog, now), lambda page: (*(r := iplayer.episodes_page(channel_id, page)), len(r[0]))
     with db.connect() as con:
-        held = con.execute(f"UPDATE channels SET {', '.join(f'{f} = :{f}' for f in CHANNEL_FIELDS)} WHERE id = :id", {k: row[k] for k in ('id', *CHANNEL_FIELDS)}).rowcount
+        held = update_channel(con, row)
     if not held: raise _gone(channel_id)
     seen, added, page, more, whole = [], 0, 0, True, False
     while more:
@@ -285,7 +298,10 @@ def _recheck(limit=None, now=None, ids=None, since=None):          # undecorated
     found = {r['id']: r for r in (youtube.video_row(item, now) for item in youtube.videos(list(was)))}
     fields = [f for f in VIDEO_FIELDS if f != 'channel_id']                     # a video stays with the channel it was added under
     with db.connect() as con:                                                    # updates only: a video removed meanwhile stays removed
-        if found: con.executemany(f"UPDATE videos SET {', '.join(f'{f} = :{f}' for f in fields)}, gone = NULL, checked = :checked WHERE id = :id", [dict({f: r[f] for f in fields}, id=i, checked=now) for i, r in found.items()])
+        if found:
+            con.executemany(f"UPDATE videos SET {', '.join(f'{f} = :{f}' for f in fields)}, gone = NULL, checked = :checked WHERE id = :id", [dict({f: r.get(f) for f in fields}, id=i, checked=now) for i, r in found.items()])
+            held = {r[0] for r in con.execute(f"SELECT id FROM videos WHERE id IN ({', '.join('?' * len(found))})", tuple(found))}
+            metadata.save(con, 'video', [r for i, r in found.items() if i in held])     # this is how videos added before the metadata existed get it (`tubes recheck --all` does them all)
         missing = [i for i in was if i not in found]
         if missing: con.executemany('UPDATE videos SET gone = COALESCE(gone, :now), checked = :now WHERE id = :id', [dict(id=i, now=now) for i in missing])
     return dict(checked=len(was), gone=sum(1 for i in missing if not was[i]), back=sum(1 for i in found if was[i]))
