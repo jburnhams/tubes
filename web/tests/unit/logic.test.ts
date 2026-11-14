@@ -8,6 +8,7 @@ import { attach, problemText, type HlsClass, type HlsInstance, type Media } from
 import { describeCache, describeEvicted } from '../../src/screens/CacheScreen'
 import { describeShown, languageName, settingsProblems, shownProblems } from '../../src/screens/SettingsScreen'
 import { describeSystem, usable } from '../../src/screens/SystemScreen'
+import { describeDetail, shareSeen, sourceParts, timeSpent } from '../../src/screens/ViewingScreen'
 import { channelState, describeAdded, describeJob, describeLibrary } from '../../src/screens/LibraryScreen'
 import { ago, countFor, episodeLabel, iplayerText, leaving, videoCount, views, viewsAndAge } from '../../src/watch/format'
 import { bySeries } from '../../src/watch/ChannelScreen'
@@ -15,7 +16,9 @@ import { at, modesOf, place, segmentKey, shown, skippedText, skipText } from '..
 import { defaultSettings, defaultShown, kindsFor, sampleSegments } from '../../src/mocks/fixtures'
 import { episodes } from '../../src/mocks/fixtures'
 import { fallbackThumbnail, isPlaceholder } from '../../src/watch/missing'
-import { savedText, settled, waitingText } from '../../src/watch/WatchScreen'
+import { savedText, settled, startAt, upNext, waitingText } from '../../src/watch/WatchScreen'
+import { MAX_STEP, Seen } from '../../src/watch/progress'
+import { fromState } from '../../src/watch/from'
 import { describePasted, describeRelated, describeSuggestedBy, describeSuggestions, describeWatched, filterOf, groupChoices, placeOf } from '../../src/screens/SuggestionsScreen'
 import { historyUrl, suggestionsUrl } from '../../src/api'
 import { describeHistory, fillPeriods, periodLabel, rangeChoices, rangeOf } from '../../src/screens/HistoryScreen'
@@ -82,8 +85,10 @@ describe('missing videos', () => {
 describe('the player', () => {
   const media = (native = '') => {
     const calls: string[] = []
-    const m: Media = { src: '', canPlayType: () => native as CanPlayTypeResult, removeAttribute: n => { calls.push(`remove ${n}`) }, load: () => { calls.push('load') } }
-    return { m, calls }
+    const listeners: Record<string, () => void> = {}
+    const m: Media = { src: '', currentTime: 0, canPlayType: () => native as CanPlayTypeResult, removeAttribute: n => { calls.push(`remove ${n}`) }, load: () => { calls.push('load') },
+      addEventListener: ((type: string, l: () => void) => { listeners[type] = l }) as Media['addEventListener'] }
+    return { m, calls, listeners }
   }
 
   it('plays through hls.js from the start, and says why when it gives up', () => {
@@ -109,6 +114,8 @@ describe('the player', () => {
     expect(problems).toEqual(['The video stopped arriving from the server. Reload the page to try again.'])
     detach()
     expect(made[0].calls.at(-1)).toBe('destroy')
+    attach(media().m, '/p.m3u8', FakeHls as unknown as HlsClass, () => {}, 245)
+    expect(made[1].config).toEqual({ startPosition: 245, lowLatencyMode: false })        // picks up where the last play stopped
   })
 
   it('plays natively where the browser plays HLS, and says when it cannot', () => {
@@ -118,6 +125,11 @@ describe('the player', () => {
     expect(native.m.src).toBe('/p.m3u8')
     detach()
     expect(native.calls).toEqual(['remove src', 'load'])
+    const resumed = media('maybe')
+    attach(resumed.m, '/p.m3u8', none, () => {}, 245)
+    expect(resumed.m.currentTime).toBe(0)
+    resumed.listeners.loadedmetadata()
+    expect(resumed.m.currentTime).toBe(245)
     const problems: string[] = []
     attach(media().m, '/p.m3u8', none, p => problems.push(p))()
     expect(problems).toEqual(['This browser cannot play the stream. Open it in an up-to-date Chrome.'])
@@ -407,5 +419,84 @@ describe('skipping', () => {
     expect(place({ ...sampleSegments[2], end: 500 }, 400)).toEqual({ left: 90, width: 10 })
     expect(place(sampleSegments[0], null)).toBeUndefined()
     expect(place(sampleSegments[0], 0)).toBeUndefined()
+  })
+})
+
+describe('seconds seen', () => {
+  it('counts each second played once, and nothing for a seek', () => {
+    const seen = new Seen()
+    for (let t = 0; t <= 10; t += 0.25) seen.advance(t)
+    expect(seen.watched).toBe(10)
+    seen.jump(5)                                                   // back over a part: counted once
+    for (let t = 5; t <= 8; t += 0.25) seen.advance(t)
+    expect(seen.watched).toBe(10)
+    seen.advance(8 + MAX_STEP + 1)                                  // a step too long to be playing
+    expect(seen.watched).toBe(10)
+    seen.advance(40)                                                // so is a seek reported as a time update
+    seen.advance(41.5)
+    expect(seen.watched).toBe(11)                                   // second 40 only
+    seen.advance(30)                                                // backwards counts nothing either
+    expect(seen.watched).toBe(11)
+  })
+
+  it('counts a part skipped as seen, and the last part second at the end', () => {
+    const seen = new Seen()
+    seen.mark(-1, 3)
+    expect(seen.watched).toBe(3)                                    // 0, 1, 2: never a negative second
+    seen.jump(58.4); seen.advance(59.9)
+    seen.finish(60.2)
+    expect(seen.watched).toBe(6)                                    // 58, 59, 60
+    const far = new Seen()
+    far.jump(10); far.finish(600)                                   // the end without playing up to it
+    expect(far.watched).toBe(0)
+  })
+})
+
+describe('where a click came from', () => {
+  it('hands on the list and the place in it', () => {
+    expect(fromState(null, 3)).toBeUndefined()
+    expect(fromState({ source: 'search', detail: 'moon' }, 3)).toEqual({ from: { source: 'search', detail: 'moon', rank: 3 } })
+    expect(fromState({ source: 'rail' })).toEqual({ from: { source: 'rail' } })
+  })
+})
+
+describe('picking up and Up next', () => {
+  it('picks up where the last play stopped only once that part is on the server', () => {
+    expect(startAt(null, streams.ready)).toBe(0)
+    expect(startAt(125, streams.ready)).toBe(125)                                      // whole
+    expect(startAt(125, { ...streams.playable, seconds: 134 })).toBe(0)                // not far enough yet: from the start
+    expect(startAt(125, { ...streams.playable, seconds: 135 })).toBe(125)
+  })
+
+  it('puts the part-watched first, never this video, each once', () => {
+    const [a, b, c, d] = videos
+    expect(upNext(a.id, [b, a], [c, b, a, d]).map(v => v.id)).toEqual([b.id, c.id, d.id])
+    expect(upNext(a.id, [], [a, c]).map(v => v.id)).toEqual([c.id])
+  })
+})
+
+describe('the Viewing page', () => {
+  it('writes time watched in seconds, minutes, or hours and minutes', () => {
+    expect([40, 720, 31_420].map(timeSpent)).toEqual(['40 s', '12 min', '8 h 43 min'])
+  })
+
+  it('knows the share seen only with a running time and the seconds seen', () => {
+    expect([shareSeen({ watched: 50, length: 100 }), shareSeen({ watched: 120, length: 100 }), shareSeen({ watched: null, length: 100 }), shareSeen({ watched: 50, length: 0 })]).toEqual([0.5, 1, null, null])
+  })
+
+  it('keeps the bar to five parts, the smallest together as Elsewhere', () => {
+    const few = { home: { plays: 3, full: 1 }, search: { plays: 1, full: 0 } }
+    expect(sourceParts({ sources: few }).map(p => p.label)).toEqual(['Home', 'Search'])
+    const many = { ...few, rail: { plays: 2, full: 0 }, up_next: { plays: 5, full: 0 }, link: { plays: 1, full: 0 }, mystery: { plays: 1, full: 0 } }
+    expect(sourceParts({ sources: many })).toEqual([
+      { key: 'up_next', label: 'Up next', value: 5 }, { key: 'home', label: 'Home', value: 3 }, { key: 'rail', label: 'The side rail', value: 2 },
+      { key: 'search', label: 'Search', value: 1 }, { key: 'elsewhere', label: 'Elsewhere', value: 2 },
+    ])
+  })
+
+  it('names what a detail points at', () => {
+    expect(describeDetail({ source: 'search', detail: 'tides', detail_title: null })).toBe('“tides”')
+    expect(describeDetail({ source: 'channel', detail: 'UC1', detail_title: null })).toBe('UC1')
+    expect(describeDetail({ source: 'home', detail: null, detail_title: null })).toBeNull()
   })
 })

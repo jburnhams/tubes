@@ -5,7 +5,9 @@
 // Two settings matter for a copy that is still being fetched: the playlist is an EVENT playlist
 // without an end until the fetch finishes, which hls.js would treat as live and start near its
 // newest segment, so `startPosition: 0` starts at the beginning; and hls.js keeps reloading the
-// playlist until #EXT-X-ENDLIST appears, so the video plays on as segments arrive.
+// playlist until #EXT-X-ENDLIST appears, so the video plays on as segments arrive. A play that picks up
+// where the last one stopped (Continue watching) starts there instead: `start`, which the watch page only
+// gives when that part is already on the server.
 //
 // The hls.js class is passed in rather than imported here, so the unit tests can hand it a fake
 // (jsdom has no Media Source) without a module mock.
@@ -26,7 +28,7 @@ export interface HlsClass {
 }
 
 /** The part of a <video> this uses. */
-export type Media = Pick<HTMLMediaElement, 'canPlayType' | 'removeAttribute' | 'load'> & { src: string }
+export type Media = Pick<HTMLMediaElement, 'canPlayType' | 'removeAttribute' | 'load' | 'addEventListener'> & { src: string; currentTime: number }
 
 /** What to say when hls.js gives up: its error type and detail are for logs, so the sentence is ours. */
 export function problemText(data: { details?: string; type?: string }): string {
@@ -39,9 +41,9 @@ export function problemText(data: { details?: string; type?: string }): string {
  * Plays `src` in `video`: through hls.js where Media Source exists, natively where the browser plays
  * HLS itself, else `onProblem` says why not. Returns the function that detaches it again.
  */
-export function attach(video: Media, src: string, Hls: HlsClass, onProblem: (sentence: string) => void): () => void {
+export function attach(video: Media, src: string, Hls: HlsClass, onProblem: (sentence: string) => void, start = 0): () => void {
   if (Hls.isSupported()) {
-    const hls = new Hls({ startPosition: 0, lowLatencyMode: false })
+    const hls = new Hls({ startPosition: start, lowLatencyMode: false })
     hls.on(Hls.Events.ERROR, (_event, data) => { if (data.fatal) onProblem(problemText(data)) })
     hls.loadSource(src)
     hls.attachMedia(video as HTMLMediaElement)
@@ -49,6 +51,7 @@ export function attach(video: Media, src: string, Hls: HlsClass, onProblem: (sen
   }
   if (video.canPlayType('application/vnd.apple.mpegurl')) {
     video.src = src
+    if (start) video.addEventListener('loadedmetadata', () => { video.currentTime = start }, { once: true })
     return () => { video.removeAttribute('src'); video.load() }
   }
   onProblem('This browser cannot play the stream. Open it in an up-to-date Chrome.')

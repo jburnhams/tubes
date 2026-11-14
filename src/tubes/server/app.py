@@ -24,7 +24,14 @@ API (JSON):
   GET  /api/videos?channel=&q=&after=&limit=   a page of videos, newest first: {videos, has_more}; `after` is the last one's cursor (`published|id`)
   GET  /api/videos/shuffle?count=&channel=     videos picked at random
   GET  /api/videos/{id}                    one video, with its copy's state, plays and last play
-  POST /api/videos/{id}/play               record a play of a library video and start fetching unless it is cached; returns the stream status
+  GET  /api/videos/continue?limit=         Continue watching: videos part watched in the last 30 days, latest first, with `resume` and `progress`
+  POST /api/videos/{id}/play {source, detail, rank}   record a play of a library video (and where it was started from, all optional) and
+                                           start fetching unless it is cached; returns the stream status with `play_id` and `resume` (where it picks up)
+  POST /api/plays/{id} {position, watched, length}   how the play is going (viewing.py): returns its `outcome` (none, short, partial, full)
+  GET  /api/plays?limit=&after=&outcome=&source=   a page of plays, newest first, each with where it came from and how it went: {items, has_more}
+  GET  /api/plays/summary?days=           the last `days` of viewing in numbers: plays by outcome and by source, seconds seen, channel visits by source
+  GET  /api/channel-views?limit=&after=   a page of visits to channel pages, newest first, with where each came from: {items, has_more}
+  POST /api/channels/{id}/views {source, detail}   someone opened the channel's page, and from where
   GET  /api/videos/{id}/stream             the stream status: {state, segments, seconds, complete, playable, error, formats, plays, last_played}
   GET  /api/media/{id}/{file}              the HLS playlist, init segment and segments (only those names; the playlist is never cached while it grows)
   GET  /api/cache                          use, limit and every cached video with its score
@@ -53,7 +60,7 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from tubes import __version__, cache, catalogue, fetcher, history, iplayer, library, oslib, paste, prefetch, quota, segments, settings, youtube, ytdlp
+from tubes import __version__, cache, catalogue, fetcher, history, iplayer, library, oslib, paste, prefetch, quota, segments, settings, viewing, youtube, ytdlp
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 LANDING = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'landing.html')
@@ -98,6 +105,19 @@ class CheckIn(BaseModel):
     ids: list[str] = Field(min_length=1, max_length=50)
 
 
+class FromIn(BaseModel):
+    """Where a play or a channel visit was started from (viewing.py): all optional, so an old page or a typed address still works."""
+    source: str | None = Field(None, max_length=32)
+    detail: str | None = Field(None, max_length=500)
+    rank: int | None = Field(None, ge=0)
+
+
+class ProgressIn(BaseModel):
+    position: float | None = Field(None, ge=0)
+    watched: float | None = Field(None, ge=0)
+    length: float | None = Field(None, ge=0)
+
+
 def system_status():
     """A snapshot for the System page. Sizes are bytes; the web app formats them."""
     du = shutil.disk_usage(settings.cache_dir())
@@ -117,7 +137,7 @@ def create_app():
         try: return fn(*a, **kw)
         except history.ImportProblem as e: raise HTTPException(502 if 'could not be read' in str(e) else 400, str(e))
         except (settings.SettingError, fetcher.FetchError, ValueError) as e: raise HTTPException(400, str(e))
-        except (catalogue.NotFound, history.NotFound) as e: raise HTTPException(404, str(e))
+        except (catalogue.NotFound, history.NotFound, viewing.NotFound) as e: raise HTTPException(404, str(e))
         except catalogue.Job.Busy as e: raise HTTPException(409, str(e))
         except youtube.YoutubeError as e: raise HTTPException(503 if not youtube.configured() else 502, str(e))
         except iplayer.IplayerError as e: raise HTTPException(502, str(e))
@@ -187,6 +207,12 @@ def create_app():
         """Everything known of a channel (library, watch history, suggestion), whether or not the library has it."""
         return guard(history.overview, channel_id)
 
+    @app.post('/api/channels/{channel_id}/views')
+    def post_channel_view(channel_id: str, b: FromIn | None = None):
+        """Someone opened the channel's page: kept with where from, for what to suggest later (viewing.py)."""
+        if library.channel(channel_id) is None: raise HTTPException(404, f'There is no channel {channel_id} in the library.')
+        b = b or FromIn(); return viewing.channel_view(channel_id, source=b.source, detail=b.detail)
+
     @app.get('/api/channels/{channel_id}')
     def get_channel(channel_id: str):
         c = library.channel(channel_id)
@@ -208,6 +234,11 @@ def create_app():
         rows = library.shuffle(count, channel); gone = catalogue.recheck_past(rows)
         shown = [v for v in rows if v['id'] not in gone]; ahead.want([v['id'] for v in shown[:12]]); return shown     # Up next: prefetch their starts
 
+    @app.get('/api/videos/continue')
+    def get_continue(limit: int = Query(viewing.CONTINUE_LIMIT, ge=1, le=100)):
+        """Continue watching: videos part watched lately, most recent first, each with `resume` and `progress` (viewing.unfinished)."""
+        return viewing.unfinished(limit)
+
     @app.post('/api/videos/check')
     def post_check(b: CheckIn):
         """The watching side found these videos missing (a thumbnail or a fetch failed): ask YouTube, and hide the ones it no longer has."""
@@ -221,10 +252,30 @@ def create_app():
         return dict(v, **cache.plays(video_id))
 
     @app.post('/api/videos/{video_id}/play')
-    def post_play(video_id: str):
+    def post_play(video_id: str, b: FromIn | None = None):
         v = video_or_404(video_id)
         guard(fetcher.start, video_id, v['title'], v['channel'])
-        cache.record_play(video_id, cache.stamp()); return stream(video_id)
+        b = b or FromIn()
+        started = viewing.start(video_id, cache.stamp(), source=b.source, detail=b.detail, rank=b.rank)    # before the status, so its count has this play
+        return dict(stream(video_id), **started)
+
+    @app.post('/api/plays/{play_id}')
+    def post_progress(play_id: int, b: ProgressIn):
+        """How a play is going: the page reports it while it plays, on pause and end, and as it is left (POST, so a closing page can send it)."""
+        return guard(viewing.report, play_id, b.position, b.watched, b.length)
+
+    @app.get('/api/plays')
+    def get_plays(limit: int = Query(viewing.PAGE, ge=1, le=500), after: str | None = None, outcome: str | None = None, source: str | None = None):
+        """A page of plays, newest first, with every detail kept of each (viewing.recent); `after` is the last one's cursor (`at|id`)."""
+        return viewing.recent(limit, after, outcome, source)
+
+    @app.get('/api/plays/summary')
+    def get_plays_summary(days: int = Query(30, ge=1, le=3650)): return viewing.summary(days)
+
+    @app.get('/api/channel-views')
+    def get_channel_views(limit: int = Query(viewing.PAGE, ge=1, le=500), after: str | None = None):
+        """A page of visits to channel pages, newest first, with where each came from."""
+        return viewing.channel_visits(limit, after)
 
     @app.get('/api/skipping')
     def get_skipping():

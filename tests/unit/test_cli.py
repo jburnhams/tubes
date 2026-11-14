@@ -187,3 +187,19 @@ def test_quota_counts_a_command_under_its_name(capsys, fake_youtube):
     out = capsys.readouterr().out
     assert 'units used on' in out and 'YouTube refused a call for want of quota' in out and 'add' in out and 'history' in out
     assert cli.main(['quota', '--json']) == 0 and json.loads(capsys.readouterr().out)['remaining'] == 0
+
+
+def test_plays_lists_the_latest_and_sums_up_the_month(capsys):
+    from tubes import viewing
+    seed()
+    now = cache.stamp()
+    p = viewing.start('aaaaaaaaaaa', now, source='home', rank=0); viewing.report(p['play_id'], position=550, watched=550, length=600)
+    viewing.start('bbbbbbbbbbb', now); viewing.channel_view('UCaaaaaaaaaaaaaaaaaaaaaa', now, source='rail')
+    assert cli.main(['plays']) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert 'none' in lines[0] and 'link' in lines[0] and 'Sanding the shelf' in lines[0]
+    assert 'full' in lines[1] and ' 92%' in lines[1] and 'home' in lines[1] and 'Building a 50% shelf' in lines[1]
+    assert lines[2] == '  last 30 days: 2 play(s), 1 none, 0 short, 0 partial, 1 full'
+    assert lines[3:] == ['    from home          1 play(s), 1 watched to the end', '    from link          1 play(s), 0 watched to the end', '  channel pages opened from rail 1']
+    assert cli.main(['plays', '--json', '--limit', '1']) == 0
+    assert len(json.loads(capsys.readouterr().out)['items']) == 1

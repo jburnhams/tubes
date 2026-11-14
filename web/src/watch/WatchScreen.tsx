@@ -11,15 +11,23 @@
 // coming back records a new one. The stream status is polled each second until the copy is whole or failed.
 // A failed fetch reports the video as missing (missing.ts); when YouTube no longer has it, the frame
 // and the details say so rather than leaving the reason to yt-dlp's wording.
+//
+// The play is kept with where it was started from (the list the link was in, from.tsx), and the player
+// reports how much of it is seen as it goes (progress.ts), which is what Continue watching and later
+// suggestions are made from. A video part watched lately picks up where it stopped, if that part is
+// already on the server, with Start over beside the picture for a few seconds. Up next offers the part
+// watched videos first, then a shuffle of the library.
 import { useQueryClient } from '@tanstack/react-query'
 import Hls from 'hls.js'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
 import { HttpError, describeHttpError, useAsyncAction, useLoad, type Load } from 'strata-react'
-import { api, describeError, keys, paths, withBase, type Segment, type SegmentKind, type Segments, type Stream, type VideoDetail } from '../api'
+import { api, describeError, keys, paths, withBase, type Segment, type SegmentKind, type Segments, type Stream, type Video, type VideoDetail } from '../api'
 import { attach, type HlsClass } from '../player'
 import { Avatar, RowsSkeleton, VideoRow, useChannelsById } from './cards'
 import { countFor, iplayerText, runningTime, viewsAndAge } from './format'
+import { FromHere, fromState, useArrivedFrom } from './from'
+import { useWatchReport } from './progress'
 import { reportMissing, useHidden } from './missing'
 import { at, modesOf, place, segmentKey, shown, skippedText, skipText } from './skip'
 import { Pill, Shown } from './Shown'
@@ -45,17 +53,36 @@ export function savedText(s: Stream, duration: number | null): string {
   return duration ? `Fetching: ${runningTime(s.seconds)} of ${runningTime(duration)} so far` : `Fetching: ${runningTime(s.seconds)} so far`
 }
 
+/** Where a play picks up: where the last one stopped, when the server says there is such a place and that part of the copy is here already
+ *  (a copy being fetched again would make the player wait for it). 0 is the beginning. */
+export function startAt(resume: number | null, s: Stream): number {
+  if (!resume) return 0
+  return s.complete || s.seconds >= resume + RESUME_MARGIN ? resume : 0
+}
+
+/** Seconds of the copy wanted past the place a play picks up, so it does not start on the last segment there is. */
+export const RESUME_MARGIN = 10
+
 /** The player, with the parts that can be skipped (skip.ts): an "ask" part shows a Skip button over the picture while it plays, an "auto"
- *  part is skipped (or muted) as it starts with an Undo for a few seconds, and every part not off is drawn on a strip under the picture. */
-export function Player({ src, title, segments, kinds, length }: { src: string; title: string; segments: Segment[]; kinds: SegmentKind[]; length: number | null }) {
+ *  part is skipped (or muted) as it starts with an Undo for a few seconds, and every part not off is drawn on a strip under the picture.
+ *  It reports how much is seen against `playId` (progress.ts); a part skipped counts as seen. `start` is where it picks up. */
+export function Player({ src, title, segments, kinds, length, playId, start }: { src: string; title: string; segments: Segment[]; kinds: SegmentKind[]; length: number | null; playId: number; start: number }) {
   const ref = useRef<HTMLVideoElement>(null)
+  const seen = useWatchReport(ref, playId)
+  const [from] = useState(start)                              // the first answer's: a later stream status does not move the picture
+  const [picked, setPicked] = useState(from > 0)
   const [problem, setProblem] = useState<string>()
-  const [t, setT] = useState(0)
+  const [t, setT] = useState(from)
   const [duration, setDuration] = useState<number | null>(length)
   const [notice, setNotice] = useState<Segment>()
   const done = useRef(new Set<string>())                    // parts skipped, or let play, once: never acted on again
   const muted = useRef<Segment | undefined>(undefined)
-  useEffect(() => attach(ref.current!, src, Hls as unknown as HlsClass, setProblem), [src])
+  useEffect(() => attach(ref.current!, src, Hls as unknown as HlsClass, setProblem, from), [src, from])
+  useEffect(() => {
+    if (!picked) return
+    const timer = setTimeout(() => setPicked(false), PICKED_MS)
+    return () => clearTimeout(timer)
+  }, [picked])
   const parts = shown(segments, modesOf(kinds))
   const modes = modesOf(kinds)
   // An automatic part is acted on whatever else plays at the time (an Ask intro around an automatic sponsor read does not hold it back).
@@ -66,16 +93,17 @@ export function Player({ src, title, segments, kinds, length }: { src: string; t
     if (leftMute) { video.muted = false; muted.current = undefined }
     if (!auto) return
     done.current.add(segmentKey(auto))
-    if (auto.action === 'mute') { video.muted = true; muted.current = auto } else video.currentTime = auto.end
+    if (auto.action === 'mute') { video.muted = true; muted.current = auto } else { seen.mark(auto.start, auto.end); video.currentTime = auto.end }
     setNotice(auto)
-  }, [auto, leftMute])
+  }, [auto, leftMute, seen])
   useEffect(() => {
     if (!notice) return
     const timer = setTimeout(() => setNotice(undefined), NOTICE_MS)
     return () => clearTimeout(timer)
   }, [notice])
   const asking = at(parts.filter(s => modes[s.category] === 'ask' && !done.current.has(segmentKey(s))), t)
-  const skip = (s: Segment) => { done.current.add(segmentKey(s)); ref.current!.currentTime = s.end; setT(s.end) }
+  const skip = (s: Segment) => { done.current.add(segmentKey(s)); seen.mark(s.start, s.end); ref.current!.currentTime = s.end; setT(s.end) }
+  const startOver = () => { setPicked(false); ref.current!.currentTime = 0; setT(0) }
   const undo = (s: Segment) => { setNotice(undefined); if (s.action === 'mute') { ref.current!.muted = false; muted.current = undefined } else { ref.current!.currentTime = s.start; setT(s.start) } }
   const overlay = 'absolute right-3 bottom-16 rounded-tube-sm bg-tube-badge px-4 py-2 text-tube-sm font-medium text-tube-on-screen'
   return (
@@ -85,6 +113,12 @@ export function Player({ src, title, segments, kinds, length }: { src: string; t
           onTimeUpdate={e => setT(e.currentTarget.currentTime)} onDurationChange={e => Number.isFinite(e.currentTarget.duration) && setDuration(e.currentTarget.duration)} />
         {problem && <p role="alert" className="absolute inset-x-0 bottom-14 mx-auto w-fit max-w-11/12 rounded-tube-sm bg-tube-badge px-3 py-2 text-center text-tube-sm text-tube-on-screen">{problem}</p>}
         {asking && <button type="button" onClick={() => skip(asking)} className={`${overlay} hover:opacity-85`}>{skipText(asking, kinds)} ›</button>}
+        {picked && !asking && !notice && (
+          <p role="status" className={`${overlay} flex items-center gap-3`}>
+            Picked up at {runningTime(from)}
+            <button type="button" onClick={startOver} className="font-bold underline underline-offset-2">Start over</button>
+          </p>
+        )}
         {notice && !asking && (
           <p role="status" className={`${overlay} flex items-center gap-3`}>
             {skippedText(notice, kinds)}
@@ -98,6 +132,8 @@ export function Player({ src, title, segments, kinds, length }: { src: string; t
 }
 
 const NOTICE_MS = 5000
+/** How long "Picked up at" stays, with its Start over. */
+export const PICKED_MS = 8000
 
 /** Why the skippable parts are not known, or '' when they are (or are still being asked for): the read failed, or the server could not ask
  *  their source just now (it still sends what it had). */
@@ -129,7 +165,8 @@ function Stage({ v }: { v: VideoDetail }) {
   const queryClient = useQueryClient()
   const byId = useChannelsById()
   const channel = byId.get(v.channel_id)
-  const play = useLoad({ queryKey: keys.play(v.id), queryFn: () => api.play(v.id), staleTime: Infinity, gcTime: 0, describeError })
+  const from = useArrivedFrom()
+  const play = useLoad({ queryKey: keys.play(v.id), queryFn: () => api.play(v.id, from), staleTime: Infinity, gcTime: 0, describeError })
   const stream = useLoad({
     queryKey: keys.stream(v.id), queryFn: () => api.stream(v.id), enabled: play.status === 'ready',
     refetchInterval: q => (settled(q.state.data) ? false : POLL_MS),
@@ -139,7 +176,8 @@ function Stage({ v }: { v: VideoDetail }) {
     await queryClient.invalidateQueries({ queryKey: keys.stream(v.id) })
   }, { describeError })
   const skips = useLoad({ queryKey: keys.segments(v.id), queryFn: () => api.segments(v.id), staleTime: Infinity })   // what can be skipped: nothing (not an error) until it answers
-  const s = play.status !== 'ready' ? undefined : stream.status === 'ready' ? stream.data : play.data
+  const started = play.status === 'ready' ? play.data : undefined
+  const s = !started ? undefined : stream.status === 'ready' ? stream.data : started
   const failed = s?.state === 'failed'
   useEffect(() => { if (failed) reportMissing(v.id) }, [failed, v.id])
   // A fetch that worked tells the server the video is there after all (it clears `gone`): read the video again so this page agrees.
@@ -164,7 +202,8 @@ function Stage({ v }: { v: VideoDetail }) {
           </div>
         </Frame>
       ) : s.playable ? (
-        <Player src={withBase(paths.playlist(v.id))} title={v.title} segments={skips.status === 'ready' ? skips.data.segments : []} kinds={skips.status === 'ready' ? skips.data.categories : []} length={v.duration} />
+        <Player src={withBase(paths.playlist(v.id))} title={v.title} segments={skips.status === 'ready' ? skips.data.segments : []} kinds={skips.status === 'ready' ? skips.data.categories : []} length={v.duration}
+          playId={started!.play_id} start={startAt(started!.resume, s)} />
       ) : (
         <Frame><p role="status" className="text-tube-base opacity-80">{waitingText(s)}</p></Frame>
       )}
@@ -176,7 +215,7 @@ function Stage({ v }: { v: VideoDetail }) {
       )}
 
       <h1 className="text-tube-lg font-bold">{v.title}</h1>
-      <Link to={`/channels/${encodeURIComponent(v.channel_id)}`} className="flex w-fit items-center gap-3">
+      <Link to={`/channels/${encodeURIComponent(v.channel_id)}`} state={fromState({ source: 'watch', detail: v.id })} className="flex w-fit items-center gap-3">
         <Avatar channel={channel} name={v.channel} size="size-10" />
         <span className="grid">
           <span className="text-tube-base font-medium">{v.channel ?? channel?.title ?? 'Channel'}</span>
@@ -200,15 +239,25 @@ function Stage({ v }: { v: VideoDetail }) {
   )
 }
 
+/** Up next: the part-watched videos first (not this one), then the shuffle, each video once. */
+export function upNext(current: string, unfinished: Video[], shuffled: Video[]): Video[] {
+  const seen = new Set([current])
+  return [...unfinished, ...shuffled].filter(v => !seen.has(v.id) && (seen.add(v.id), true))
+}
+
 function UpNext({ current }: { current: string }) {
   const load = useLoad({ queryKey: keys.shuffle, queryFn: () => api.shuffle(UP_NEXT) })
+  const unfinished = useLoad({ queryKey: keys.continueWatching, queryFn: () => api.continueWatching() })
   const byId = useChannelsById()
+  const first = unfinished.status === 'ready' ? unfinished.data : []          // a failed read of these only leaves them out
   return (
     <section aria-labelledby="up-next" className="grid content-start gap-3">
       <h2 id="up-next" className="text-tube-base font-medium">Up next</h2>
-      <Shown state={load} skeleton={<RowsSkeleton rows={6} size="small" />}>
-        {vs => <ul aria-label="Up next" className="grid gap-3">{vs.filter(o => o.id !== current).map(o => <VideoRow key={o.id} v={o} channel={byId.get(o.channel_id)} size="small" />)}</ul>}
-      </Shown>
+      <FromHere source="up_next" detail={current}>
+        <Shown state={load} skeleton={<RowsSkeleton rows={6} size="small" />}>
+          {vs => <ul aria-label="Up next" className="grid gap-3">{upNext(current, first, vs).map((o, i) => <VideoRow key={o.id} v={o} channel={byId.get(o.channel_id)} size="small" rank={i} />)}</ul>}
+        </Shown>
+      </FromHere>
     </section>
   )
 }

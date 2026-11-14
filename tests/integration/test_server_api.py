@@ -60,6 +60,14 @@ def test_play_streams_while_it_fetches_then_plays_from_the_cache(client, fake_yt
     c = client.get('/api/cache').json()
     assert c['items'][0]['plays'] == 2 and c['items'][0]['protected'] == 'played in the last day' and c['items'][0]['title'] == 'Upload 0 of Workshop'
     assert client.get(f'/api/videos/{V}').json()['cache_state'] == 'ready'
+    # The page reports how the play went: eight seconds of it to 0:12, then left; the next play picks up there, and Continue watching offers it.
+    assert client.post(f"/api/plays/{first['play_id']}", json=dict(position=12, watched=8, length=20)).json()['outcome'] == 'partial'
+    assert client.get('/api/videos/continue').json()[0]['resume'] == 12
+    third = client.post(f'/api/videos/{V}/play', json=dict(source='continue', rank=0)).json()
+    assert third['resume'] == 12
+    assert client.post(f"/api/plays/{third['play_id']}", json=dict(position=19, watched=19, length=20)).json()['outcome'] == 'full'
+    assert client.get('/api/videos/continue').json() == []
+    assert [p['outcome'] for p in client.get('/api/plays').json()['items']] == ['full', 'none', 'partial']
 
 
 @needs_ffmpeg
