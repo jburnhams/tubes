@@ -2,7 +2,7 @@
 // tests, every Storybook story and the visual suite's screenshots, so a screen looks the same in
 // each. Dates are fixed, so screenshots do not change from day to day. Pictures are flat SVG
 // tiles as data URLs, so nothing is fetched from outside.
-import type { CacheItem, CacheReport, Channel, Segment, SegmentKind, ChannelOverview, HistorySource, HistoryStats, LibraryStatus, QuotaTotals, QuotaUsage, RelatedStatus, Settings, ShownFilters, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video } from '../api'
+import type { CacheItem, CacheReport, Channel, ChannelVisit, Outcome, Play, PlaySource, PlaySummary, Segment, SegmentKind, ChannelOverview, HistorySource, HistoryStats, LibraryStatus, QuotaTotals, QuotaUsage, RelatedStatus, Settings, ShownFilters, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video } from '../api'
 
 export const GB = 1e9
 
@@ -88,6 +88,13 @@ export const videos: Video[] = makeVideos().map(v =>
     : v.id === 'ni000000000' ? { ...v, cache_state: 'fetching', cache_bytes: 0.05 * GB }
       : v.id === 'ki000000001' ? { ...v, cache_state: 'failed', cache_bytes: 0 } : v)
 
+/** Continue watching: three videos part watched lately, the last played first, each with where it stopped. */
+export const unfinished: Video[] = (['ri000000002', 'wo000000003', 'ni000000001'] as const).map((id, i) => {
+  const v = videos.find(x => x.id === id)!
+  const resume = Math.round(v.duration! * [0.62, 0.25, 0.4][i])
+  return { ...v, resume, progress: Math.round((resume / v.duration!) * 1e4) / 1e4 }
+})
+
 /** A long channel, for paging: 60 videos, so its list needs three pages of 24. */
 export const longChannel: Video[] = Array.from({ length: 60 }, (_, i) => ({
   ...videos[0], id: `lo${String(i).padStart(9, '0')}`, title: `Episode ${60 - i}`, published: day(i), thumbnail: tile(28, String(60 - i)), cache_state: null, cache_bytes: null,
@@ -148,13 +155,19 @@ export const cacheItems: CacheItem[] = [
   item(videos[5], { plays: 2, score: 0.9 }),
   item(videos[1], { state: 'fetching', bytes: 0.05 * GB, finished: null, plays: 1, score: 1, last_played: '2026-11-09T09:00:00+00:00', protected: 'fetching' }),
   item(videos[8], { plays: 0, score: 0, last_played: null, protected: 'not played yet', bytes: 0.33 * GB }),
+  item(videos[6], { state: 'partial', bytes: 0.002 * GB, plays: 0, score: 0, last_played: null, protected: 'not played yet' }),
   item(videos[2], { state: 'failed', bytes: 0, error: 'Video unavailable. This video is private.', formats: null, plays: 1, score: 0.1, finished: '2026-11-03T10:00:00+00:00' }),
 ]
 
 /** Builds a report from items: what the server works out (sizes in bytes, thresholds at 95% and 90%). */
 export function report(items: CacheItem[], limit = 1000 * GB): CacheReport {
   const by = (s: CacheItem['state']) => items.filter(i => i.state === s).length
-  return { used: items.reduce((n, i) => n + i.bytes, 0), limit, high: 0.95 * limit, low: 0.9 * limit, count: items.length, by_state: { fetching: by('fetching'), ready: by('ready'), failed: by('failed') }, items }
+  const size = (s: CacheItem['state']) => items.filter(i => i.state === s).reduce((n, i) => n + i.bytes, 0)
+  const states = ['fetching', 'partial', 'ready', 'failed'] as const
+  return {
+    used: items.reduce((n, i) => n + i.bytes, 0), limit, high: 0.95 * limit, low: 0.9 * limit, count: items.length,
+    by_state: Object.fromEntries(states.map(s => [s, by(s)])) as CacheReport['by_state'], bytes_by_state: Object.fromEntries(states.map(s => [s, size(s)])) as CacheReport['bytes_by_state'], items,
+  }
 }
 
 export const systemStatus: SystemStatus = {
@@ -316,3 +329,52 @@ export const episodes: Video[] = [2, 1].flatMap(series => [3, 2, 1].map(n => ({
   published: day((2 - series) * 30 + (3 - n) * 7), duration: 3540, thumbnail: tile(205, `${series}${n}`), views: null,
   cache_state: null, cache_bytes: null, gone: null, expires: '2099-01-01T00:00:00Z', series: `Series ${series}`, episode: n,
 })))
+
+
+/** Viewing: plays over the two days before the visual suite's clock (9 Nov 2026 12:00), newest first, one of every source and outcome. */
+const playSpecs: [string, PlaySource, string | null, number | null, number, Outcome][] = [
+  // video, source, detail, rank, share seen, outcome
+  ['wo000000000', 'home', null, 0, 0.97, 'full'],
+  ['ni000000001', 'continue', null, 1, 0.4, 'partial'],
+  ['ki000000002', 'up_next', 'wo000000000', 3, 0.04, 'short'],
+  ['ri000000002', 'search', 'rock pools', 0, 0.62, 'partial'],
+  ['wo000000003', 'channel', 'UCworkshop00000000000001', 2, 0.25, 'partial'],
+  ['ni000000000', 'link', null, null, 0, 'none'],
+  ['ki000000000', 'home', null, 5, 1, 'full'],
+  ['ri000000000', 'up_next', 'ki000000000', 0, 0.91, 'full'],
+]
+
+/** One play as the server sends it, from a video in the sample library. */
+export function makePlay(n: number, [id, source, detail, rank, share, outcome]: (typeof playSpecs)[number], at: string): Play {
+  const v = videos.find(x => x.id === id)!
+  const watched = Math.round(v.duration! * share)
+  const named = source === 'up_next' ? videos.find(x => x.id === detail)?.title : source === 'channel' ? channels.find(c => c.id === detail)?.title : null
+  return {
+    id: n, video_id: v.id, title: v.title, channel_id: v.channel_id, channel: v.channel, thumbnail: v.thumbnail, at,
+    updated: outcome === 'none' ? null : new Date(Date.parse(at) + watched * 1000).toISOString().replace('.000Z', '+00:00'),
+    source, detail, detail_title: named ?? null, rank, length: v.duration, watched: outcome === 'none' ? 0 : watched, position: outcome === 'none' ? null : watched, outcome,
+  }
+}
+
+const hoursBefore = (h: number) => new Date(Date.UTC(2026, 10, 9, 11) - h * 3_600_000).toISOString().replace('.000Z', '+00:00')
+
+export const plays: Play[] = playSpecs.map((spec, i) => makePlay(playSpecs.length - i, spec, hoursBefore(i * 5)))
+
+/** Enough plays for several pages: the eight above, again and again, an hour apart. */
+export const manyPlays: Play[] = Array.from({ length: 130 }, (_, i) => makePlay(130 - i, playSpecs[i % playSpecs.length], hoursBefore(i)))
+
+export const playSummary: PlaySummary = {
+  since: '2026-10-10T12:00:00+00:00', days: 30, plays: 46, seconds: 31_420, videos: 29,
+  outcomes: { none: 3, short: 9, partial: 14, full: 20 },
+  sources: { home: { plays: 18, full: 10 }, continue: { plays: 9, full: 6 }, up_next: { plays: 11, full: 3 }, search: { plays: 4, full: 1 }, channel: { plays: 3, full: 0 }, link: { plays: 1, full: 0 } },
+  channel_views: { rail: 7, channels: 3, watch: 4, home: 2 },
+}
+
+export const playSummaryEmpty: PlaySummary = { ...playSummary, plays: 0, seconds: 0, videos: 0, outcomes: { none: 0, short: 0, partial: 0, full: 0 }, sources: {}, channel_views: {} }
+
+export const channelVisits: ChannelVisit[] = [
+  { id: 4, channel_id: 'UCworkshop00000000000001', title: 'Workshop Notes', thumbnail: null, at: hoursBefore(1), source: 'watch', detail: 'wo000000000', detail_title: 'Building a bird box' },
+  { id: 3, channel_id: 'UCnightsky00000000000002', title: 'Night Sky', thumbnail: null, at: hoursBefore(8), source: 'rail', detail: null, detail_title: null },
+  { id: 2, channel_id: 'UCcoasts0000000000000004', title: 'Rivers and Coasts', thumbnail: null, at: hoursBefore(20), source: 'channels', detail: null, detail_title: null },
+  { id: 1, channel_id: 'UCgone000000000000000009', title: null, thumbnail: null, at: hoursBefore(30), source: 'link', detail: null, detail_title: null },
+]

@@ -7,8 +7,8 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { Link } from 'react-router'
-import { AsyncButton, DataTable, DataView, EmptyState, Meter, Metric, MetricStrip, PageHeader, RowAction, Status, TableSkeleton, UndoBar, format, useAsyncAction, useLoad, useUndoable, type Column, type MeterThreshold } from 'strata-react'
-import { api, describeError, keys, type CacheItem, type CacheReport, type Evicted } from '../api'
+import { AsyncButton, DataTable, DataView, EmptyState, Meter, Metric, MetricStrip, PageHeader, RowAction, Status, TableSkeleton, Tabs, UndoBar, format, useAsyncAction, useLoad, useUndoable, type Column, type MeterThreshold } from 'strata-react'
+import { api, describeError, keys, type CacheItem, type CacheReport, type CacheState, type Evicted } from '../api'
 
 /** One threshold, the server's own: above 95% of the limit, eviction runs. */
 export const cacheThresholds: MeterThreshold[] = [{ at: 0.95, tone: 'warning', label: 'Trimming' }]
@@ -29,10 +29,16 @@ export function describeEvicted(e: Evicted): string {
 function StateWord({ i }: { i: CacheItem }) {
   if (i.state === 'ready') return <Status tone="success">Saved</Status>
   if (i.state === 'fetching') return <Status tone="info">Fetching</Status>
+  if (i.state === 'partial') return <Status tone="neutral">Start saved</Status>
   return <Status tone="danger">Failed</Status>
 }
 
 const key = (i: CacheItem) => i.video_id
+
+/** The kinds of copy the table can show one at a time (`?show=`): whole videos, starts saved ahead of a play, fetching, failed. */
+const kinds: { value: CacheState | 'all'; label: string }[] = [
+  { value: 'all', label: 'All' }, { value: 'ready', label: 'Whole' }, { value: 'partial', label: 'Starts' }, { value: 'fetching', label: 'Fetching' }, { value: 'failed', label: 'Failed' },
+]
 
 export function CacheScreen() {
   const load = useLoad({ queryKey: keys.cache, queryFn: api.cache })
@@ -92,12 +98,20 @@ export function CacheScreen() {
                 <Meter label="Cache used" value={r.used} max={r.limit} thresholds={cacheThresholds} detail={`${format.bytes(r.used)} of ${format.bytes(r.limit)}`} />
               </div>
               <MetricStrip label="Copies">
-                <Metric label="Saved" value={format.integer(r.by_state.ready)} note="Play at once" />
-                <Metric label="Being fetched" value={format.integer(r.by_state.fetching)} note="Playing while they arrive" />
+                <Metric label="Whole videos" value={format.integer(r.by_state.ready)} note={`${format.bytes(r.bytes_by_state.ready)} · Play at once`} />
+                <Metric label="Starts saved" value={format.integer(r.by_state.partial)} note={`${format.bytes(r.bytes_by_state.partial)} · Start at once, rest on Play`} />
+                <Metric label="Being fetched" value={format.integer(r.by_state.fetching)} note={`${format.bytes(r.bytes_by_state.fetching)} · Playing while they arrive`} />
                 <Metric label="Failed" value={format.integer(r.by_state.failed)} note="Fetched again when played" />
               </MetricStrip>
               {rows.length ? (
-                <DataTable caption="Copies, highest score first" columns={columns} rows={rows} rowKey={key} sortParam="sort" />
+                <Tabs param="show" label="Which copies" className="min-w-0 grid-cols-1" items={kinds.map(k => ({ value: k.value, label: `${k.label} (${format.integer(k.value === 'all' ? rows.length : rows.filter(i => i.state === k.value).length)})` }))}>
+                  {show => {
+                    const shown = show === 'all' ? rows : rows.filter(i => i.state === show)
+                    return shown.length
+                      ? <DataTable caption="Copies, highest score first" columns={columns} rows={shown} rowKey={key} sortParam="sort" />
+                      : <EmptyState title="None of this kind">Copies of this kind appear here when there are some.</EmptyState>
+                  }}
+                </Tabs>
               ) : (
                 <EmptyState title="Nothing in the cache">A video is fetched into the cache the first time it is played, and stays while it scores well.</EmptyState>
               )}
