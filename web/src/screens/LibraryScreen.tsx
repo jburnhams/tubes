@@ -58,7 +58,7 @@ export function channelState(c: Channel): { tone: 'success' | 'info' | 'warning'
 }
 
 /** The line under a channel's title: its @handle, else where it comes from when that is not YouTube. */
-export const sourceLine = (c: Channel) => c.handle ?? ({ iplayer: 'BBC iPlayer', plex: 'Plex' } as Record<string, string>)[c.platform ?? ''] ?? null
+export const sourceLine = (c: Channel) => c.handle ?? ({ iplayer: 'BBC iPlayer', plex: 'Plex' } as Record<string, string>)[c.platform] ?? null
 
 /** What was added, in a sentence. */
 export function describeAdded(a: Added): string {

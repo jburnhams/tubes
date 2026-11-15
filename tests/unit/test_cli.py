@@ -1,4 +1,5 @@
 import importlib, json
+from pathlib import Path
 import pytest
 from tubes import cache, catalogue, cli, fetcher, oslib, quota, settings, youtube, ytdlp
 from library import seed
@@ -211,3 +212,14 @@ def test_plays_lists_the_latest_and_sums_up_the_month(capsys):
     assert lines[3:] == ['    from home          1 play(s), 1 watched to the end', '    from link          1 play(s), 0 watched to the end', '  channel pages opened from rail 1']
     assert cli.main(['plays', '--json', '--limit', '1']) == 0
     assert len(json.loads(capsys.readouterr().out)['items']) == 1
+
+
+def test_openapi_matches_the_committed_schema(capsys, tmp_path):
+    # The web app's request types are generated from web/openapi.json (npm run api-types; CI checks the TypeScript against it), so the
+    # committed file must be what the server declares: regenerate it with `./tubes openapi -o web/openapi.json` after changing a route.
+    committed = (Path(__file__).parents[2] / 'web' / 'openapi.json').read_text(encoding='utf-8')
+    assert cli.schema() == committed, 'web/openapi.json is stale: run ./tubes openapi -o web/openapi.json, then npm run api-types in web/'
+    assert cli.main(['openapi']) == 0 and capsys.readouterr().out == committed
+    out = tmp_path / 'openapi.json'
+    assert cli.main(['openapi', '-o', str(out)]) == 0 and out.read_text(encoding='utf-8') == committed and 'Wrote' in capsys.readouterr().out
+    assert json.loads(committed)['components']['schemas']['ProgressIn']['properties'].keys() == {'position', 'watched', 'length'}

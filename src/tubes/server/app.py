@@ -68,6 +68,9 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from . import answers as A
+from .answers import answer
+
 from tubes import __version__, cache, catalogue, db, fetcher, history, iplayer, library, oslib, paste, plex, prefetch, quota, segments, settings, viewing, youtube, ytdlp
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
@@ -144,9 +147,11 @@ def system_status():
                 disk=dict(total=du.total, used=du.used, free=du.free), library=library.status())
 
 
-def create_app():
+def create_app(recover=True):
+    """The app. `recover=False` builds it without touching the database or the cache (what `tubes openapi` needs to write the schema)."""
     app = FastAPI(title='tubes', docs_url='/api/docs', openapi_url='/api/openapi.json')
-    cache.recover(cache.stamp())
+    app.router.route_class = A.CheckedRoute                       # every answer checked against its declared model while the tests run (answers.py)
+    if recover: cache.recover(cache.stamp())
     job = app.state.sync = catalogue.Job()
     ahead = app.state.prefetch = prefetch.Prefetcher()             # its thread is started by main(), so tests and other hosts of the app start none
 
@@ -163,10 +168,10 @@ def create_app():
 
     def stream(video_id): return dict(cache.status(video_id), **cache.plays(video_id))
 
-    @app.get('/api/health')
+    @app.get('/api/health', responses=answer(A.Health))
     def get_health(): return dict(ok=True, version=__version__)
 
-    @app.get('/api/system')
+    @app.get('/api/system', responses=answer(A.SystemStatus))
     def get_system(): return dict(system_status(), prefetch=ahead.state())
 
     @app.get('/api/settings')
@@ -181,63 +186,63 @@ def create_app():
         if v is None: raise HTTPException(404, f'There is no video {video_id} in the library.')
         return v
 
-    @app.get('/api/library')
+    @app.get('/api/library', responses=answer(A.LibraryStatus))
     def get_library(): return library.status()
 
-    @app.post('/api/library')
+    @app.post('/api/library', responses=answer(A.Added))
     def post_library(b: AddIn):
         r = guard(catalogue.add, b.input)
         if r['kind'] == 'channel':                                   # a new channel's videos arrive at once, as when storage's Sync was pressed after adding it
             r['sync'] = job.follow_up([r['channel']['id']])          # after the running sync's own channels, if one runs
         return r
 
-    @app.get('/api/library/shown')
+    @app.get('/api/library/shown', responses=answer(A.ShownFilters))
     def get_shown(): return dict(library.filters(), filtered=library.status()['filtered'], language_counts=library.languages())
 
-    @app.put('/api/library/shown')
+    @app.put('/api/library/shown', responses=answer(A.ShownFilters))
     def put_shown(changes: dict): guard(catalogue.save_filters, changes); return get_shown()
 
-    @app.get('/api/library/sync')
+    @app.get('/api/library/sync', responses=answer(A.SyncJob))
     def get_sync(): return job.state()
 
-    @app.post('/api/library/sync')
+    @app.post('/api/library/sync', responses=answer(A.SyncJob))
     def post_sync(b: SyncIn | None = None):
         if not youtube.configured() and catalogue.needs_youtube(b.channels if b else None): raise HTTPException(503, 'YouTube cannot be asked without YOUTUBE_API_KEY in the server’s environment.')
         return guard(job.start, b.channels if b else None)
 
-    @app.get('/api/quota')
+    @app.get('/api/quota', responses=answer(A.QuotaUsage))
     def get_quota(): return quota.usage()
 
-    @app.delete('/api/channels/{channel_id}')
+    @app.delete('/api/channels/{channel_id}', responses=answer(A.Removed))
     def delete_channel(channel_id: str): return guard(catalogue.remove, channel_id)
 
-    @app.post('/api/channels/{channel_id}/restart')
+    @app.post('/api/channels/{channel_id}/restart', responses=answer(A.Restarted))
     def post_restart(channel_id: str):
         r = guard(catalogue.restart, channel_id)
         if not youtube.configured() and catalogue.needs_youtube([channel_id]): return dict(r, sync=job.state())
         r['sync'] = job.follow_up([channel_id]); return r
 
-    @app.get('/api/channels')
+    @app.get('/api/channels', responses=answer(list[A.Channel]))
     def get_channels(): return library.channels()
 
-    @app.get('/api/channels/{channel_id}/overview')
+    @app.get('/api/channels/{channel_id}/overview', responses=answer(A.ChannelOverview))
     def get_channel_overview(channel_id: str):
         """Everything known of a channel (library, watch history, suggestion), whether or not the library has it."""
         return guard(history.overview, channel_id)
 
-    @app.post('/api/channels/{channel_id}/views')
+    @app.post('/api/channels/{channel_id}/views', responses=answer(A.Visited))
     def post_channel_view(channel_id: str, b: FromIn | None = None):
         """Someone opened the channel's page: kept with where from, for what to suggest later (viewing.py)."""
         if library.channel(channel_id) is None: raise HTTPException(404, f'There is no channel {channel_id} in the library.')
         b = b or FromIn(); return viewing.channel_view(channel_id, source=b.source, detail=b.detail)
 
-    @app.get('/api/channels/{channel_id}')
+    @app.get('/api/channels/{channel_id}', responses=answer(A.Channel))
     def get_channel(channel_id: str):
         c = library.channel(channel_id)
         if c is None: raise HTTPException(404, f'There is no channel {channel_id} in the library.')
         return c
 
-    @app.get('/api/videos')
+    @app.get('/api/videos', responses=answer(A.VideoPage))
     def get_videos(channel: str | None = None, q: str | None = None, after: str | None = None, limit: int = Query(24, ge=1, le=200)):
         while True:                                                               # a past stream whose recording went is left out at once
             r = library.videos(channel, q, after, limit); gone = catalogue.recheck_past(r['videos'])
@@ -247,29 +252,29 @@ def create_app():
             if shown or not r['has_more']: return dict(r, videos=shown)
             after = library.cursor(r['videos'][-1])                               # every one went: the page reads on from the cursor, so read the next
 
-    @app.get('/api/videos/shuffle')
+    @app.get('/api/videos/shuffle', responses=answer(list[A.Video]))
     def get_shuffle(count: int = Query(24, ge=1, le=200), channel: str | None = None):
         rows = library.shuffle(count, channel); gone = catalogue.recheck_past(rows)
         shown = [v for v in rows if v['id'] not in gone]; ahead.want([v['id'] for v in shown[:12]]); return shown     # Up next: prefetch their starts
 
-    @app.get('/api/videos/continue')
+    @app.get('/api/videos/continue', responses=answer(list[A.ContinueVideo]))
     def get_continue(limit: int = Query(viewing.CONTINUE_LIMIT, ge=1, le=100)):
         """Continue watching: videos part watched lately, most recent first, each with `resume` and `progress` (viewing.unfinished)."""
         return viewing.unfinished(limit)
 
-    @app.post('/api/videos/check')
+    @app.post('/api/videos/check', responses=answer(A.Checked))
     def post_check(b: CheckIn):
         """The watching side found these videos missing (a thumbnail or a fetch failed): ask YouTube, and hide the ones it no longer has."""
         if not youtube.configured(): raise HTTPException(503, 'YouTube cannot be asked without YOUTUBE_API_KEY in the server’s environment.')
         return guard(catalogue.report, b.ids)
 
-    @app.get('/api/videos/{video_id}')
+    @app.get('/api/videos/{video_id}', responses=answer(A.VideoDetail))
     def get_video(video_id: str):
         v = video_or_404(video_id, meta=True)                                        # the Watch page: its description and every metadata table too
         if catalogue.recheck_past([v]): v = video_or_404(video_id, meta=True)          # it went: the page says so
         return dict(v, **cache.plays(video_id))
 
-    @app.post('/api/videos/{video_id}/play')
+    @app.post('/api/videos/{video_id}/play', responses=answer(A.Started))
     def post_play(video_id: str, b: FromIn | None = None):
         v = video_or_404(video_id)
         b = b or FromIn()
@@ -278,16 +283,16 @@ def create_app():
         started = viewing.start(video_id, cache.stamp(), source=b.source, detail=b.detail, rank=b.rank)    # before the status, so its count has this play
         return dict(stream(copy), copy=copy, **started)
 
-    @app.get('/api/plex')
+    @app.get('/api/plex', responses=answer(A.PlexStatus))
     def get_plex():
         if not plex.configured(): return dict(configured=False, reachable=False, version=None, sections=[])
         ok, said = plex.reachable()
         return dict(configured=True, reachable=ok, version=said if ok else None, error=None if ok else said, sections=guard(plex.sections) if ok else [])
 
-    @app.get('/api/plex/sections/{section}/filters')
+    @app.get('/api/plex/sections/{section}/filters', responses=answer(list[A.PlexFilterKind]))
     def get_plex_filters(section: str): return guard(plex.filters, section)
 
-    @app.get('/api/plex/sections/{section}/filters/{name}')
+    @app.get('/api/plex/sections/{section}/filters/{name}', responses=answer(list[A.PlexChoice]))
     def get_plex_choices(section: str, name: str): return guard(plex.choices, section, name)
 
     def followed(items):
@@ -298,16 +303,16 @@ def create_app():
             have |= {r[0] for r in con.execute(f"SELECT id FROM videos WHERE id IN ({', '.join('?' * len(ids))})", tuple(ids))}
         return [dict(i, followed=plex.video_id(i['key']) in have) for i in items]
 
-    @app.get('/api/plex/browse')
+    @app.get('/api/plex/browse', responses=answer(A.PlexPage))
     def get_plex_browse(request: Request, section: str, start: int = Query(0, ge=0), size: int = Query(50, ge=1, le=200)):
         params = {k: v for k, v in request.query_params.items() if k not in ('section', 'start', 'size')}
         r = guard(plex.browse, section, params, start, size)
         return dict(r, items=followed(r['items']), params=plex.clean(params))
 
-    @app.get('/api/plex/search')
+    @app.get('/api/plex/search', responses=answer(list[A.PlexItem]))
     def get_plex_search(q: str = Query(..., min_length=1, max_length=200)): return followed(guard(plex.search, q))
 
-    @app.post('/api/plex/follow')
+    @app.post('/api/plex/follow', responses=answer(A.Added))
     def post_plex_follow(b: FollowIn):
         if b.key: r = guard(catalogue.add_plex, b.key)
         elif b.section: r = guard(catalogue.add_plex_filter, b.section, b.params or {}, b.title)
@@ -321,35 +326,35 @@ def create_app():
         f = guard(plex.cached_image, path, w)
         return FileResponse(f, media_type='image/jpeg', headers={'Cache-Control': 'public, max-age=604800'})
 
-    @app.post('/api/plays/{play_id}')
+    @app.post('/api/plays/{play_id}', responses=answer(A.Reported))
     def post_progress(play_id: int, b: ProgressIn):
         """How a play is going: the page reports it while it plays, on pause and end, and as it is left (POST, so a closing page can send it)."""
         return guard(viewing.report, play_id, b.position, b.watched, b.length)
 
-    @app.get('/api/plays')
+    @app.get('/api/plays', responses=answer(A.PlayPage))
     def get_plays(limit: int = Query(viewing.PAGE, ge=1, le=500), after: str | None = None, outcome: str | None = None, source: str | None = None):
         """A page of plays, newest first, with every detail kept of each (viewing.recent); `after` is the last one's cursor (`at|id`)."""
         return viewing.recent(limit, after, outcome, source)
 
-    @app.get('/api/plays/summary')
+    @app.get('/api/plays/summary', responses=answer(A.PlaySummary))
     def get_plays_summary(days: int = Query(30, ge=1, le=3650)): return viewing.summary(days)
 
-    @app.get('/api/channel-views')
+    @app.get('/api/channel-views', responses=answer(A.ChannelVisitPage))
     def get_channel_views(limit: int = Query(viewing.PAGE, ge=1, le=500), after: str | None = None):
         """A page of visits to channel pages, newest first, with where each came from."""
         return viewing.channel_visits(limit, after)
 
-    @app.get('/api/skipping')
+    @app.get('/api/skipping', responses=answer(list[A.SegmentKind]))
     def get_skipping():
         """Every kind of segment the player can skip, with its setting (`skip_<id>`, saved through PUT /api/settings)."""
         return segments.categories()
 
-    @app.get('/api/videos/{video_id}/segments')
+    @app.get('/api/videos/{video_id}/segments', responses=answer(A.Segments))
     def get_segments(video_id: str):
         """The parts of the video the player can skip, and what it does in each kind (segments.py)."""
         video_or_404(video_id); return segments.for_video(video_id)
 
-    @app.get('/api/videos/{video_id}/stream')
+    @app.get('/api/videos/{video_id}/stream', responses=answer(A.Stream))
     def get_stream(video_id: str): return stream(video_id)
 
     @app.get('/api/media/{video_id}/{name}')
@@ -365,7 +370,7 @@ def create_app():
         headers = {'Cache-Control': 'no-store' if growing else 'private, max-age=86400'}
         return FileResponse(p, media_type=MEDIA_TYPES[os.path.splitext(name)[1]], headers=headers)
 
-    @app.get('/api/cache')
+    @app.get('/api/cache', responses=answer(A.CacheReport))
     def get_cache():
         now = cache.utcnow()
         return dict(**cache.usage(now), items=[dict(e, protected=cache.protected(e, now, settings.get('protect_days'))) for e in cache.entries(now)])
@@ -375,47 +380,47 @@ def create_app():
         if not cache.pin(video_id, b.pinned): raise HTTPException(404, f'{video_id} is not in the cache')
         return cache.entry(video_id)
 
-    @app.delete('/api/cache/{video_id}')
+    @app.delete('/api/cache/{video_id}', responses=answer(A.Dropped))
     def delete_cache(video_id: str):
         e = cache.entry(video_id)
         if e is None: raise HTTPException(404, f'{video_id} is not in the cache')
         fetcher.cancel([video_id]); return dict(video_id=video_id, freed=cache.forget([video_id]))
 
-    @app.post('/api/cache/evict')
+    @app.post('/api/cache/evict', responses=answer(A.Evicted))
     def post_evict(b: EvictIn): return cache.evict(cache.utcnow(), dry_run=b.dry_run)
 
-    @app.get('/api/suggestions')
+    @app.get('/api/suggestions', responses=answer(A.SuggestionPage))
     def get_suggestions(group: str | None = None, topic: str | None = None, kids: bool | None = None, q: str | None = None, dismissed: bool = False, limit: int = Query(history.LIST_LIMIT, ge=1, le=1000), order: str = 'watched', pasted: bool = False):
         return guard(history.suggestions, group, topic, kids, q, dismissed, limit, order, pasted)
 
-    @app.get('/api/suggestions/summary')
+    @app.get('/api/suggestions/summary', responses=answer(A.SuggestionSummary))
     def get_suggestions_summary(): return history.summary()
 
-    @app.post('/api/suggestions/refresh')
+    @app.post('/api/suggestions/refresh', responses=answer(A.RefreshedWithSummary))
     def post_suggestions_refresh():
         r = guard(history.sync_database)['refresh'] if history.database_configured() else history.refresh()
         return dict(r, summary=history.summary())
 
-    @app.get('/api/history')
+    @app.get('/api/history', responses=answer(A.HistoryStats))
     def get_history(start: str | None = None, end: str | None = None, source: str | None = None, top: int = Query(history.TOP, ge=1, le=200)):
         return dict(history.stats(start, end, source, top), sources=history.sources(), configured=youtube.configured())
 
-    @app.post('/api/suggestions/paste')
+    @app.post('/api/suggestions/paste', responses=answer(A.Pasted))
     def post_suggestions_paste(b: PasteIn): return guard(paste.paste, b.text)
 
-    @app.post('/api/suggestions/import')
+    @app.post('/api/suggestions/import', responses=answer(A.Imported))
     def post_suggestions_import(b: ImportIn): return guard(history.import_text, b.text, b.source)
 
-    @app.delete('/api/suggestions/sources/{source}')
+    @app.delete('/api/suggestions/sources/{source}', responses=answer(A.SourceRemoved))
     def delete_source(source: str): return guard(history.remove_source, source)
 
-    @app.put('/api/suggestions/groups/{group_id}')
+    @app.put('/api/suggestions/groups/{group_id}', responses=answer(A.OverviewGroup))
     def put_group(group_id: int, b: NameIn): return guard(history.rename_group, group_id, b.name)
 
-    @app.put('/api/suggestions/{channel_id}')
+    @app.put('/api/suggestions/{channel_id}', responses=answer(A.Suggestion))
     def put_suggestion(channel_id: str, b: DismissIn): return guard(history.dismiss, channel_id, b.dismissed)
 
-    @app.post('/api/suggestions/{channel_id}/videos')
+    @app.post('/api/suggestions/{channel_id}/videos', responses=answer(A.AddedWatched))
     def post_suggestion_videos(channel_id: str):
         if not youtube.configured(): raise HTTPException(503, 'YouTube cannot be asked without YOUTUBE_API_KEY in the server’s environment.')
         guard(history.suggestion, channel_id)

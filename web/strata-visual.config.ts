@@ -103,8 +103,8 @@ export default defineVisualConfig({
           playing: { setup: firstFrame },
           // Still being fetched: the player says so with the copy's progress.
           growing: { handlers: streamIn('playable'), setup: firstFrame },
-          // An automatic part reached: skipped, with Undo over the picture.
-          skipped: { handlers: [partsAt([{ category: 'sponsor', start: 0.5, end: 1.5, action: 'skip' }])], setup: async page => { await firstFrame(page); await seekTo(page, 0.6); await page.getByText('Skipped sponsor').waitFor(); await seekTo(page, 1.5) } },
+          // An automatic part reached while playing (the player acts only then): skipped, with Undo over the picture.
+          skipped: { handlers: [partsAt([{ category: 'sponsor', start: 0.5, end: 1.5, action: 'skip' }])], setup: async page => { await firstFrame(page); await seekTo(page, 0.3); await page.getByRole('button', { name: 'Play', exact: true }).click(); await page.getByText('Skipped sponsor').waitFor(); await page.getByRole('button', { name: 'Pause', exact: true }).click(); await seekTo(page, 1.5) } },
           // The parts to skip could not be read: the video plays as it is, with Try again.
           'parts-unread': { handlers: [http.get('*/api/videos/:id/segments', () => new HttpResponse(null, { status: 503 }))], setup: async page => { await firstFrame(page); await page.getByText(/could not be read/).waitFor() } },
           fetching: streamIn('fetching'),

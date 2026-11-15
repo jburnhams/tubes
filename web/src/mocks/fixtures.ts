@@ -2,7 +2,7 @@
 // tests, every Storybook story and the visual suite's screenshots, so a screen looks the same in
 // each. Dates are fixed, so screenshots do not change from day to day. Pictures are flat SVG
 // tiles as data URLs, so nothing is fetched from outside.
-import type { PlexChoice, PlexSection, PlexStatus, CacheItem, CacheReport, Channel, ChannelVisit, Outcome, Play, PlaySource, PlaySummary, Segment, SegmentKind, ChannelOverview, HistorySource, HistoryStats, LibraryStatus, QuotaTotals, QuotaUsage, RelatedStatus, Settings, ShownFilters, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video } from '../api'
+import type { PlexChoice, PlexSection, PlexStatus, CacheItem, CacheReport, Channel, ChannelVisit, Outcome, Play, PlaySource, PlaySummary, Segment, SegmentKind, ChannelOverview, HistorySource, HistoryStats, LibraryStatus, QuotaTotals, QuotaUsage, RelatedStatus, Settings, ShownFilters, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video, ContinueVideo } from '../api'
 
 export const GB = 1e9
 
@@ -73,7 +73,7 @@ export function makeVideos(perChannel = 6): Video[] {
     for (let i = 0; i < perChannel; i++) {
       const id = `${c.title.slice(0, 2).toLowerCase()}${String(i).padStart(9, '0')}`.slice(0, 11)
       out.push({
-        id, channel_id: c.id, channel: c.title,
+        id, platform: 'youtube', channel_id: c.id, channel: c.title, series: null, episode: null, expires: null,
         title: topics[c.title][i % topics[c.title].length] + (i >= topics[c.title].length ? ` (part ${Math.floor(i / topics[c.title].length) + 1})` : ''),
         published: day(i * 4 + ci), duration: 240 + ((i * 97 + ci * 31) % 1500), thumbnail: tile(c.hue, String(i + 1)), views: 1000 + i * 37,
         cache_state: null, cache_bytes: null, gone: null,
@@ -89,7 +89,7 @@ export const videos: Video[] = makeVideos().map(v =>
       : v.id === 'ki000000001' ? { ...v, cache_state: 'failed', cache_bytes: 0 } : v)
 
 /** Continue watching: three videos part watched lately, the last played first, each with where it stopped. */
-export const unfinished: Video[] = (['ri000000002', 'wo000000003', 'ni000000001'] as const).map((id, i) => {
+export const unfinished: ContinueVideo[] = (['ri000000002', 'wo000000003', 'ni000000001'] as const).map((id, i) => {
   const v = videos.find(x => x.id === id)!
   const resume = Math.round(v.duration! * [0.62, 0.25, 0.4][i])
   return { ...v, resume, progress: Math.round((resume / v.duration!) * 1e4) / 1e4 }
@@ -110,7 +110,7 @@ const syncState: Record<string, Partial<Channel>> = {
 
 export const channels: Channel[] = names.map(c => {
   const own = videos.filter(v => v.channel_id === c.id)
-  return { id: c.id, title: c.title, handle: c.handle, thumbnail: c.handle ? tile(c.hue, c.title.slice(0, 1)) : null, synced: '2026-11-09T06:00:00Z', videos: own.length, latest: own[0]?.published ?? null, added: '2026-01-10T12:00:00Z', ...syncState[c.title] }
+  return { id: c.id, platform: 'youtube' as const, kind: 'channel', hidden: 0, follow: true, complete: true, resumable: false, total_videos: null, subscribers: null, title: c.title, handle: c.handle, thumbnail: c.handle ? tile(c.hue, c.title.slice(0, 1)) : null, synced: '2026-11-09T06:00:00Z', videos: own.length, latest: own[0]?.published ?? null, added: '2026-01-10T12:00:00Z', ...syncState[c.title] }
 }).sort((a, b) => a.title.localeCompare(b.title))
 
 /** The background sync in each sample state. `idle` is a server that has not synced since it started. */
@@ -128,8 +128,8 @@ export const defaultShown: ShownFilters = {
   language_counts: [{ code: 'en', videos: 41_200 }, { code: null, videos: 5_400 }, { code: 'fr', videos: 380 }, { code: 'de', videos: 95 }],
 }
 
-export const library: LibraryStatus = { synced: '2026-11-09T06:00:00+00:00', channels: channels.length, videos: videos.length, hidden: 3, configured: true }
-export const libraryEmpty: LibraryStatus = { synced: null, channels: 0, videos: 0, hidden: 0, configured: false }
+export const library: LibraryStatus = { synced: '2026-11-09T06:00:00+00:00', channels: channels.length, videos: videos.length, hidden: 3, live: 0, filtered: 0, configured: true }
+export const libraryEmpty: LibraryStatus = { synced: null, channels: 0, videos: 0, hidden: 0, live: 0, filtered: 0, configured: false }
 /** A key, but no channels yet. */
 export const libraryNew: LibraryStatus = { ...libraryEmpty, configured: true }
 
@@ -236,7 +236,7 @@ export const suggestionGroups: SuggestionGroup[] = [
 
 /** What was watched, by month over a year (with one quiet month), the top channels (one followed) and videos. */
 export const historyStats: Omit<HistoryStats, 'sources'> = {
-  watches: 2_140, videos: 1_610, channels: 212, first: '2025-11-12T08:00:00+00:00', last: '2026-10-30T19:12:00+00:00', by: 'month',
+  configured: true, watches: 2_140, videos: 1_610, channels: 212, first: '2025-11-12T08:00:00+00:00', last: '2026-10-30T19:12:00+00:00', by: 'month',
   periods: [['2025-11', 120], ['2025-12', 210], ['2026-01', 340], ['2026-02', 180], ['2026-04', 90], ['2026-05', 260], ['2026-06', 310], ['2026-07', 150], ['2026-08', 140], ['2026-09', 190], ['2026-10', 150]].map(([period, watches]) => ({ period: String(period), watches: Number(watches) })),
   channels_top: [
     { channel_id: 'UCsuggest000000000000002', title: 'Puppet Theatre', watches: 248, videos: 89, last: '2026-10-30T07:00:00+00:00', followed: false },
@@ -320,7 +320,7 @@ export function channelHistory(title: string): ChannelOverview['history'] {
 /** An iPlayer programme kept as a channel: two series of three episodes, newest first. They expire far in the future, so screenshots
  *  (taken on whatever day) never show "Leaves iPlayer"; the wording is tested in the unit suite with a fixed clock. */
 export const programme: Channel = {
-  id: 'b0harbour1', platform: 'iplayer', title: 'Harbour Lights', handle: null, thumbnail: tile(205, 'H'), synced: '2026-11-09T06:00:00Z', videos: 6,
+  id: 'b0harbour1', platform: 'iplayer', kind: 'programme', hidden: 0, resumable: false, subscribers: null, title: 'Harbour Lights', handle: null, thumbnail: tile(205, 'H'), synced: '2026-11-09T06:00:00Z', videos: 6,
   latest: day(0), total_videos: 6, follow: true, complete: true, added: '2026-01-10T12:00:00Z',
 }
 

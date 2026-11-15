@@ -2,13 +2,13 @@
 // running time in its corner, then the channel's round picture beside a bold two-line title, the
 // channel's name and "views · age". A video is one link to its watch page, named by its title: the picture
 // and avatar are links too, for the mouse, but hidden from the keyboard and screen readers so each video is said once.
-// A thumbnail that fails tries YouTube's hqdefault size first, then reports its video as missing (missing.ts); a video the server then hides
+// A thumbnail that fails (or is YouTube's grey placeholder) tries YouTube's hqdefault size first, then reports its video as missing (missing.ts); a video the server then hides
 // leaves every list at once, as the server leaves it out of the next page it serves.
 // Every link hands on the list it is in and its place there (from.tsx), so the play or the visit it starts is kept with where it came from.
 // A video part watched (Continue watching) has a red bar along the foot of its picture, as far as it got.
-import { useEffect, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Link } from 'react-router'
-import { Thumbnail, useInView, useLoad, type InfiniteLoad } from 'strata-react'
+import { LoadMore, Thumbnail, useLoad, type InfiniteLoad } from 'strata-react'
 import { api, keys, type Channel, type Video } from '../api'
 import { runningTime, viewsAndAge } from './format'
 import { fallbackThumbnail, isPlaceholder, reportMissing, useHidden } from './missing'
@@ -33,19 +33,20 @@ export function Avatar({ channel, name, size = 'size-9' }: { channel?: Channel; 
 
 const SAVED: Record<string, string> = { ready: 'Saved', fetching: 'Fetching' }
 
-/** The thumbnail with its running time, and a corner label when a copy is on this server. */
+/** The thumbnail with its running time, and a corner label when a copy is on this server: Strata's `Thumbnail` (a grey box until it loads),
+ *  asked for at once (`eager`) as the <img> before it was: a lazy one is drawn grey below the fold in a whole-page screenshot (strata-react
+ *  #273), and lazy loading waits for that. It tries YouTube's hqdefault size after the stored one, refusing YouTube's grey placeholder, and
+ *  reporting the video as missing when none gives a picture. */
 export function Picture({ v, className = '' }: { v: Video; className?: string }) {
   const saved = v.cache_state ? SAVED[v.cache_state] : undefined
-  const [fallback, setFallback] = useState<string | null>(null)
-  const src = fallback ?? v.thumbnail
-  const failed = () => { const next = src && !fallback ? fallbackThumbnail(src) : null; if (next) setFallback(next); else reportMissing(v.id) }
+  const src = v.thumbnail ? [v.thumbnail, fallbackThumbnail(v.thumbnail)].filter((s): s is string => !!s) : null
   return (
-    <span className={`relative block aspect-video overflow-hidden rounded-tube bg-tube-chip ${className}`}>
-      {src && <img src={src} alt="" className="size-full object-cover" onError={failed} onLoad={e => isPlaceholder(e.currentTarget) && reportMissing(v.id)} />}
+    <Thumbnail src={src} alt="" aspect="16/9" eager className={`block rounded-tube ${className}`} fallback={<span className="block size-full bg-tube-chip" />}
+      onLoad={img => !isPlaceholder(img)} onMissing={() => reportMissing(v.id)}>
       {saved && <span className="absolute top-2 left-2 rounded-tube-sm bg-tube-badge px-1.5 py-0.5 text-tube-xs font-medium text-tube-on-screen">{saved}</span>}
       {v.duration ? <span className={`absolute right-2 ${v.progress ? 'bottom-3' : 'bottom-2'} rounded-tube-sm bg-tube-badge px-1 text-tube-xs font-medium text-tube-on-screen tabular-nums`}>{runningTime(v.duration)}</span> : null}
       {v.progress ? <span aria-hidden className="absolute inset-x-0 bottom-0 h-1 bg-tube-badge"><span className="block h-full bg-tube-red" style={{ width: `${Math.max(v.progress * 100, 2)}%` }} /></span> : null}
-    </span>
+    </Thumbnail>
   )
 }
 
@@ -66,7 +67,7 @@ export function VideoCard({ v, channel, showChannel = true, rank, className = ''
   if (useGone(v)) return null
   const to = fromState(here, rank), toChannel = fromState(here)
   return (
-    <li className={`grid content-start gap-3 ${className}`}>
+    <li data-index={rank} className={`grid content-start gap-3 ${className}`}>
       <Link to={watchPath(v)} state={to} tabIndex={-1} aria-hidden><Picture v={v} /></Link>
       <div className="flex gap-3">
         {showChannel && <Link to={`/channels/${encodeURIComponent(v.channel_id)}`} state={toChannel} tabIndex={-1} aria-hidden><Avatar channel={channel} name={v.channel} /></Link>}
@@ -107,7 +108,7 @@ export function VideoRow({ v, channel, size = 'large', rank }: { v: Video; chann
   const here = useHere()
   if (useGone(v)) return null
   return (
-    <li>
+    <li data-index={rank}>
       {/* A large row stacks on a phone, where a picture beside the title leaves the title no room. */}
       <Link to={watchPath(v)} state={fromState(here, rank)} className={`flex items-start ${large ? 'flex-col gap-3 sm:flex-row sm:gap-4' : 'gap-2'}`}>
         <Picture v={v} className={large ? 'w-full shrink-0 sm:w-80 lg:w-96' : 'w-40 shrink-0'} />
@@ -135,21 +136,14 @@ export function RowsSkeleton({ rows = 4, size = 'large' }: { rows?: number; size
   )
 }
 
-/** After a paged list: asks for the next page as it scrolls into view (as video sites do), says why a page failed with Try again, and
- *  keeps a Show more button for whoever cannot scroll. Nothing after the last page. */
+/** After a paged list: Strata's `LoadMore` in this side's look. It asks for the next page as it scrolls into view (as video sites do),
+ *  says why a page failed with Try again, keeps a Show more button for whoever cannot scroll (focus moves to the first new video, found by
+ *  its `data-index`), and draws nothing after the last page. No rule between pages. */
 export function More({ list, skeleton }: { list: InfiniteLoad<Video>; skeleton: ReactNode }) {
-  const { hasMore, loadingMore, error, loadMore } = list.more
-  // Strata's watcher (the one its LoadMore uses): near the end, unless a page failed and waits for Try again.
-  const near = useInView({ active: hasMore && !error, rootMargin: '600px' })
-  useEffect(() => { if (near.inView && hasMore && !error && !loadingMore) loadMore() }, [near.inView, hasMore, error, loadingMore, loadMore])
-  if (!hasMore) return null
   return (
-    <div ref={near.ref} className="mt-10 grid gap-6">
-      {loadingMore ? skeleton : error ? (
-        <div role="alert" className="flex flex-wrap items-center justify-center gap-4 text-tube-sm text-tube-ink">{error}<Pill onClick={loadMore}>Try again</Pill></div>
-      ) : (
-        <div className="flex justify-center"><Pill onClick={loadMore}>Show more</Pill></div>
-      )}
-    </div>
+    <LoadMore state={list} moreLabel="Show more" moreSkeleton={skeleton} rootMargin="600px" ruled={false}
+      loading={s => <div className="mt-10 grid gap-6">{s}</div>}
+      more={({ label, load }) => <div className="mt-10 flex justify-center"><Pill onClick={load}>{label}</Pill></div>}
+      error={({ message, retry }) => <div className="mt-10 flex flex-wrap items-center justify-center gap-4 text-tube-sm text-tube-ink">{message}<Pill onClick={retry}>Try again</Pill></div>} />
   )
 }

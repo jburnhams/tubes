@@ -179,6 +179,22 @@ def cmd_set(args):
     print(f'{args.key} = {settings.all_settings()[args.key]}'); return 0
 
 
+def schema():
+    """The server's OpenAPI schema as the committed file holds it: sorted keys, two-space indents, a newline at the end, nothing of the machine."""
+    from .server.app import create_app
+    return json.dumps(create_app(recover=False).openapi(), indent=2, sort_keys=True, ensure_ascii=False) + '\n'
+
+
+def cmd_openapi(args):
+    # The web app's API types are generated from this file (web/openapi.json -> web/src/api.generated.ts, `npm run api-types`).
+    text = schema()
+    if args.output == '-': sys.stdout.write(text)
+    else:
+        with open(args.output, 'w', encoding='utf-8', newline='\n') as f: f.write(text)
+        print(f'Wrote {args.output}.')
+    return 0
+
+
 def cmd_serve(args):
     from tubes.server import app as server_app
     server_app.main(['--host', args.host, '--port', str(args.port)]); return 0
@@ -204,6 +220,7 @@ def main(argv=None):
     q = sub.add_parser('quota', help="show how much of the YouTube Data API's daily quota has been used today, and on what"); q.add_argument('--json', action='store_true'); q.set_defaults(fn=cmd_quota)
     g = sub.add_parser('plays', help='show the latest plays here, where each was started from and how much was watched'); g.add_argument('--limit', type=int, default=20); g.add_argument('--days', type=int, default=30, help='the summary covers this many days'); g.add_argument('--json', action='store_true'); g.set_defaults(fn=cmd_plays)
     t = sub.add_parser('set', help='show or change a setting; value "default" resets it'); t.add_argument('key'); t.add_argument('value', nargs='?'); t.set_defaults(fn=cmd_set)
+    o = sub.add_parser('openapi', help="write the server's OpenAPI schema (the web app's API types are generated from it)"); o.add_argument('-o', '--output', default='-', help='a file, or - for standard output (default)'); o.set_defaults(fn=cmd_openapi)
     v = sub.add_parser('serve', help='start the web server'); v.add_argument('--host', default='127.0.0.1'); v.add_argument('--port', type=int, default=8367); v.set_defaults(fn=cmd_serve)
     args = p.parse_args(argv)
     if args.cmd == 'serve': return args.fn(args)                 # the server's requests name their own purposes, or count as `other`

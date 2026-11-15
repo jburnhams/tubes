@@ -123,6 +123,7 @@ export function suggestionSummary(): SuggestionSummary {
     followed: mock.followed.length,
     refreshed: '2026-11-08T09:00:00+00:00',
     configured: true,
+    database: false,
     suggested: open.filter(x => x.suggested_by).length,
     unwatched: open.filter(x => !x.watches).length,
     pasted: open.filter(x => x.pasted).length,
@@ -181,11 +182,11 @@ export const handlers = [
       if (!t) return refused(`Plex has no item ${body.key}.`, 404)
       mock.plexFollowed.push(t.key)
       if (t.type === 'movie') return HttpResponse.json({ kind: 'video', video: { ...plexFilm, id: `plex-${t.key}`, title: t.title } })
-      const channel: Channel = { id: `plex-${t.key}`, platform: 'plex', kind: 'show', title: t.title, handle: null, thumbnail: t.thumb, synced: null, videos: 0, latest: null, total_videos: t.episodes, follow: true, complete: false, added: '2026-11-14T12:00:00Z' }
+      const channel: Channel = { id: `plex-${t.key}`, platform: 'plex', kind: 'show', title: t.title, handle: null, thumbnail: t.thumb, synced: null, videos: 0, latest: null, total_videos: t.episodes, follow: true, complete: false, hidden: 0, resumable: false, subscribers: null, added: '2026-11-14T12:00:00Z' }
       return HttpResponse.json({ kind: 'channel', channel, sync: mock.job })
     }
     mock.plexListings.push({ section: body.section ?? '', params: body.params ?? {}, title: body.title ?? '' })
-    const channel: Channel = { id: `plex-filter-${mock.plexListings.length}`, platform: 'plex', kind: 'filter', title: body.title ?? 'Films', handle: null, thumbnail: null, synced: null, videos: 0, latest: null, total_videos: null, follow: true, complete: false, added: '2026-11-14T12:00:00Z' }
+    const channel: Channel = { id: `plex-filter-${mock.plexListings.length}`, platform: 'plex', kind: 'filter', title: body.title ?? 'Films', handle: null, thumbnail: null, synced: null, videos: 0, latest: null, total_videos: null, follow: true, complete: false, hidden: 0, resumable: false, subscribers: null, added: '2026-11-14T12:00:00Z' }
     return HttpResponse.json({ kind: 'channel', channel, sync: mock.job })
   }),
   http.get(at(paths.health), () => HttpResponse.json({ ok: true, version: systemStatus.version })),
@@ -219,7 +220,7 @@ export const handlers = [
     const suggested = mock.suggestions.find(x => x.channel_id === input || x.link === input)
     if (suggested) mock.followed.push(suggested.channel_id)
     const known = mock.channels.find(c => c.id === input || c.handle === input)
-    const channel: Channel = known ? { ...known, follow: true } : { id: 'UCnew0000000000000000005', title: 'Paper Planes', handle: input.startsWith('@') ? input : null, thumbnail: tile(320, 'P'), synced: null, videos: 0, latest: null, follow: true, complete: false, resumable: false, total_videos: 48, subscribers: 900, added: '2026-11-09T12:00:00Z' }
+    const channel: Channel = known ? { ...known, follow: true } : { id: 'UCnew0000000000000000005', platform: 'youtube', kind: 'channel', hidden: 0, title: 'Paper Planes', handle: input.startsWith('@') ? input : null, thumbnail: tile(320, 'P'), synced: null, videos: 0, latest: null, follow: true, complete: false, resumable: false, total_videos: 48, subscribers: 900, added: '2026-11-09T12:00:00Z' }
     mock.channels = known ? mock.channels.map(c => (c === known ? channel : c)) : [...mock.channels, channel].sort((a, b) => a.title.localeCompare(b.title))
     return HttpResponse.json({ kind: 'channel', channel, sync: startSync([channel.id]) })
   }),

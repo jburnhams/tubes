@@ -18,9 +18,9 @@
 // already on the server, with Start over beside the picture for a few seconds. Up next offers the part
 // watched videos first, then a shuffle of the library.
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
-import { DataView, describeHttpError, HttpError, type Load, useAsyncAction, MediaPlayer, useLoad } from 'strata-react'
+import { Button, DataView, describeHttpError, HttpError, type Load, type MediaSpanData, MediaPlayer, type SpanOutcome, useAsyncAction, useLoad } from 'strata-react'
 import { api, describeError, keys, paths, withBase, type Segment, type SegmentKind, type Segments, type Stream, type Video, type VideoDetail } from '../api'
 import { attachStream, startingAt } from '../player'
 import { decodes } from '../decodes'
@@ -29,7 +29,7 @@ import { countFor, iplayerText, runningTime, viewsAndAge } from './format'
 import { FromHere, fromState, useArrivedFrom } from './from'
 import { useWatchReport } from './progress'
 import { reportMissing, useHidden } from './missing'
-import { at, modesOf, place, segmentKey, shown, skippedText, skipText } from './skip'
+import { spanKindsOf, spansOf } from './skip'
 import { Pill, trouble } from './Shown'
 
 /** How often the copy's progress is read while it is still arriving. */
@@ -63,91 +63,45 @@ export function startAt(resume: number | null, s: Stream): number {
 /** Seconds of the copy wanted past the place a play picks up, so it does not start on the last segment there is. */
 export const RESUME_MARGIN = 10
 
-/** The player, with the parts that can be skipped (skip.ts): an "ask" part shows a Skip button over the picture while it plays, an "auto"
- *  part is skipped (or muted) as it starts with an Undo for a few seconds, and every part not off is drawn on a strip under the player.
- *  The player is strata-react's `MediaPlayer` (its own controls on a desktop, the browser's on a touch screen), playing the stream through
+/** The player: strata-react's `MediaPlayer` (its own controls on a desktop, the browser's on a touch screen), playing the stream through
  *  the HLS engine (player.ts), `growing` while the copy is still being fetched so playback that catches up waits and carries on, and
- *  saying a failure with Try again. MediaPlayer does not hand out its element, so skipping finds the <video> inside it to seek and mute.
- *  It reports how much is seen against `playId` (progress.ts); a part skipped counts as seen. `start` is where it picks up. */
+ *  saying a failure with Try again. The parts that can be skipped are its `spans` (skip.ts): drawn on the seek bar, an "ask" part offers
+ *  Skip over the picture, an "auto" part is skipped (or muted) as it starts with Undo; a part skipped counts as seen. It reports how much
+ *  is seen against `playId` (progress.ts), from the <video> inside it (MediaPlayer hands out its state, not its element). `start` is where
+ *  it picks up, with "Picked up at" and Start over over the picture for a few seconds. */
 export function Player({ src, title, segments, kinds, length, growing, playId, start }: { src: string; title: string; segments: Segment[]; kinds: SegmentKind[]; length: number | null; growing?: string; playId: number; start: number }) {
   const box = useRef<HTMLDivElement>(null)
-  const video = () => box.current!.querySelector('video')!     // MediaPlayer kind="video" always draws one
-  // The same element as a ref for the progress report, read when its effect runs (the player is in the page by then).
-  const element = useMemo(() => ({ get current() { return video() } }), [])
+  // The <video> as a ref for the progress report, read when its effect runs (the player is in the page by then).
+  const element = useMemo(() => ({ get current() { return box.current!.querySelector('video')! } }), [])
   const seen = useWatchReport(element, playId)
   const [from] = useState(start)                              // the first answer's: a later stream status does not move the picture
   const attach = useMemo(() => startingAt(attachStream, from), [from])
   const [picked, setPicked] = useState(from > 0)
-  const [t, setT] = useState(from)
-  const [elementLength, setElementLength] = useState<number | null>(null)
-  // Placed by the library's length while the copy grows (the element only knows the part fetched so far), else by the element's own.
-  const duration = growing !== undefined ? (length ?? elementLength) : (elementLength ?? length)
-  useEffect(() => {
-    const el = video()
-    const read = () => { setT(el.currentTime); setElementLength(Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null) }
-    el.addEventListener('timeupdate', read)
-    el.addEventListener('durationchange', read)
-    return () => { el.removeEventListener('timeupdate', read); el.removeEventListener('durationchange', read) }
-  }, [])
   useEffect(() => {
     if (!picked) return
     const timer = setTimeout(() => setPicked(false), PICKED_MS)
     return () => clearTimeout(timer)
   }, [picked])
-  const seek = (to: number) => { video().currentTime = to; setT(to) }
-  const [notice, setNotice] = useState<Segment>()
-  const done = useRef(new Set<string>())                    // parts skipped, or let play, once: never acted on again
-  const muted = useRef<Segment | undefined>(undefined)
-  const parts = shown(segments, modesOf(kinds))
-  const modes = modesOf(kinds)
-  // An automatic part is acted on whatever else plays at the time (an Ask intro around an automatic sponsor read does not hold it back).
-  const auto = parts.find(s => modes[s.category] === 'auto' && t >= s.start && t < s.end && !done.current.has(segmentKey(s)))
-  const leftMute = !!muted.current && !(t >= muted.current.start && t < muted.current.end)
-  useEffect(() => {
-    const el = video()
-    if (leftMute) { el.muted = false; muted.current = undefined }
-    if (!auto) return
-    done.current.add(segmentKey(auto))
-    if (auto.action === 'mute') { el.muted = true; muted.current = auto } else { seen.mark(auto.start, auto.end); seek(auto.end) }
-    setNotice(auto)
-  }, [auto, leftMute, seen])
-  useEffect(() => {
-    if (!notice) return
-    const timer = setTimeout(() => setNotice(undefined), NOTICE_MS)
-    return () => clearTimeout(timer)
-  }, [notice])
-  const asking = at(parts.filter(s => modes[s.category] === 'ask' && !done.current.has(segmentKey(s))), t)
-  const skip = (s: Segment) => { done.current.add(segmentKey(s)); seen.mark(s.start, s.end); seek(s.end) }
-  const startOver = () => { setPicked(false); seek(0) }
-  const undo = (s: Segment) => { setNotice(undefined); if (s.action === 'mute') { video().muted = false; muted.current = undefined } else seek(s.start) }
-  const overlay = 'pointer-events-auto absolute right-3 bottom-3 rounded-tube-sm bg-tube-badge px-4 py-2 text-tube-sm font-medium text-tube-on-screen'
+  const spans = useMemo(() => spansOf(segments, kinds), [segments, kinds])
+  const spanKinds = useMemo(() => spanKindsOf(kinds), [kinds])
+  const onSpan = useCallback((s: MediaSpanData, what: SpanOutcome) => { if (what === 'skipped') seen.mark(s.start, s.end) }, [seen])
   return (
-    <div className="grid gap-1">
-      <div ref={box} className="relative">
-        <MediaPlayer kind="video" label={title} sources={[{ src, title, duration: length ?? undefined }]} attach={attach} autoPlay growing={growing !== undefined ? { status: growing } : undefined} />
-        {/* Over the picture (the top of the player, a 16:9 box), not over the controls under it. */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 aspect-video">
-          {asking && <button type="button" onClick={() => skip(asking)} className={`${overlay} hover:opacity-85`}>{skipText(asking, kinds)} ›</button>}
-          {picked && !asking && !notice && (
-            <p role="status" className={`${overlay} flex items-center gap-3`}>
-              Picked up at {runningTime(from)}
-              <button type="button" onClick={startOver} className="font-bold underline underline-offset-2">Start over</button>
-            </p>
-          )}
-          {notice && !asking && (
-            <p role="status" className={`${overlay} flex items-center gap-3`}>
-              {skippedText(notice, kinds)}
-              <button type="button" onClick={() => undo(notice)} className="font-bold underline underline-offset-2">Undo</button>
-            </p>
-          )}
-        </div>
-      </div>
-      <Timeline parts={parts} kinds={kinds} duration={duration} />
+    <div ref={box}>
+      <MediaPlayer kind="video" label={title} sources={[{ src, title, duration: length ?? undefined }]} attach={attach} autoPlay growing={growing !== undefined ? { status: growing } : undefined}
+        spans={spans} spanKinds={spanKinds} onSpan={onSpan}
+        overlay={media => picked && (
+          <p role="status" className="absolute bottom-3 left-3 flex items-center gap-2 rounded-overlay border border-border bg-background px-3 py-1 type-body-sm text-foreground shadow-overlay">
+            Picked up at {runningTime(from)}
+            <Button variant="ghost" size="sm" onClick={() => { setPicked(false); media.seek(0) }}>Start over</Button>
+          </p>
+        )} />
     </div>
   )
 }
 
-const NOTICE_MS = 5000
+/** Until the parts to skip are read: the same empty lists every render, so the player's spans stay put. */
+const NONE: Segment[] = [], NO_KINDS: SegmentKind[] = []
+
 /** How long "Picked up at" stays, with its Start over. */
 export const PICKED_MS = 8000
 
@@ -157,20 +111,6 @@ export function skipTrouble(load: Load<Segments>): string {
   if (load.status === 'error') return `The parts to skip could not be read: ${load.message}`
   if (load.status === 'ready' && load.data.error) return `The parts to skip could not be looked up: ${load.data.error}`
   return ''
-}
-
-/** The skippable parts as coloured marks along a strip the width of the picture (in SponsorBlock's colours), named for screen readers. */
-function Timeline({ parts, kinds, duration }: { parts: Segment[]; kinds: SegmentKind[]; duration: number | null }) {
-  const placed = parts.map(s => [s, place(s, duration)] as const).filter((x): x is readonly [Segment, { left: number; width: number }] => !!x[1])
-  if (!placed.length) return null
-  const label = (s: Segment) => `${kinds.find(k => k.id === s.category)!.label} ${runningTime(s.start)}–${runningTime(s.end)}`   // a part is only shown for a kind the server named
-  return (
-    <div role="img" aria-label={`Parts that can be skipped: ${placed.map(([s]) => label(s)).join(', ')}`} className="relative mx-3 h-1.5 overflow-hidden rounded-full bg-tube-chip">
-      {placed.map(([s, p]) => (
-        <span key={segmentKey(s)} title={label(s)} className="absolute inset-y-0" style={{ left: `${p.left}%`, width: `max(${p.width}%, 2px)`, background: `var(--tube-seg-${s.category}, var(--tube-quiet))` }} />
-      ))}
-    </div>
-  )
 }
 
 function Frame({ children }: { children: ReactNode }) {
@@ -220,7 +160,7 @@ function Stage({ v }: { v: VideoDetail }) {
           </div>
         </Frame>
       ) : s.playable ? (
-        <Player src={withBase(paths.playlist(copy))} title={v.title} segments={skips.status === 'ready' ? skips.data.segments : []} kinds={skips.status === 'ready' ? skips.data.categories : []} length={v.duration}
+        <Player src={withBase(paths.playlist(copy))} title={v.title} segments={skips.status === 'ready' ? skips.data.segments : NONE} kinds={skips.status === 'ready' ? skips.data.categories : NO_KINDS} length={v.duration}
           growing={s.complete ? undefined : savedText(s, v.duration)} playId={started!.play_id} start={startAt(started!.resume, s)} />
       ) : (
         <Frame><p role="status" className="text-tube-base opacity-80">{waitingText(s)}</p></Frame>
