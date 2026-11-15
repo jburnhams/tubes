@@ -262,3 +262,21 @@ describe('Skipping parts of a video', () => {
     expect(screen.queryByRole('img', { name: /Parts that can be skipped/ })).not.toBeInTheDocument()
   })
 })
+
+describe('Watch a Plex film', () => {
+  it('says what the browser decodes and streams the copy the server names', async () => {
+    Object.defineProperty(navigator, 'mediaCapabilities', { configurable: true, value: { decodingInfo: async ({ video }: { video: { contentType: string; transferFunction?: string } }) => ({ supported: video.contentType.includes('hvc1'), smooth: !video.transferFunction, powerEfficient: true }) } })
+    try {
+      openApp('/watch/plex-101')
+      expect(await screen.findByRole('heading', { level: 1, name: 'Harbour Lights' })).toBeInTheDocument()
+      await waitFor(() => expect(mock.plays).toEqual(['plex-101']))
+      expect(mock.decodes).toEqual([['h264', 'hevc']])                      // HDR not smooth here, so not claimed
+    } finally { Reflect.deleteProperty(navigator, 'mediaCapabilities') }
+  })
+
+  it('sends nothing for a video from elsewhere', async () => {
+    openApp(`/watch/${id}`)
+    await waitFor(() => expect(mock.plays).toEqual([id]))
+    expect(mock.decodes).toEqual([null])
+  })
+})

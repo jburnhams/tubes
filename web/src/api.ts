@@ -92,12 +92,14 @@ export interface LanguageCount {
 }
 
 /** Where a channel or video comes from. A BBC iPlayer programme is kept as a channel and its episodes as videos. Absent from older servers (YouTube). */
-export type Platform = 'youtube' | 'iplayer'
+export type Platform = 'youtube' | 'iplayer' | 'plex'
 
 export interface Channel {
   id: string
   /** Where it comes from: 'youtube', or 'iplayer' for a BBC iPlayer programme. */
   platform?: Platform
+  /** What it is (metadata.py): channel (YouTube), programme, network or category (iPlayer), show or filter (Plex). */
+  kind?: string | null
   title: string
   handle: string | null
   thumbnail: string | null
@@ -212,6 +214,9 @@ export interface From {
 /** `POST /api/videos/{id}/play`: the stream status, the play's id (its progress is reported against it) and where it picks up. */
 export interface Started extends Stream {
   play_id: number
+  /** The id the copy's files are under: the video's own, or `<id>~native` for a Plex file kept as it is for a browser that decodes it
+   *  (fetcher.plex_copy). Missing from a server before Plex: then the video's own. */
+  copy?: string
   /** Where the last part-watched play stopped, in seconds, or null to start from the beginning. */
   resume: number | null
 }
@@ -560,6 +565,66 @@ export function videosUrl(filter: VideoFilter, after: string | undefined, limit 
   return `${paths.videos}?${q}`
 }
 
+/** `GET /api/plex`: whether the server has Plex set up and it answers, and its film and TV libraries (src/tubes/plex.py). */
+export interface PlexStatus {
+  configured: boolean
+  reachable: boolean
+  version: string | null
+  error?: string | null
+  sections: PlexSection[]
+}
+
+export interface PlexSection {
+  key: string
+  title: string
+  type: 'movie' | 'show'
+  locations: string[]
+}
+
+/** A film or show as Plex's browser lists it; `thumb` is a Tubes picture address (the token stays on the server). */
+export interface PlexItem {
+  key: string
+  type: 'movie' | 'show' | string
+  title: string
+  year: number | null
+  thumb: string | null
+  summary: string | null
+  content_rating: string | null
+  episodes: number | null
+  section: string | null
+  followed?: boolean
+}
+
+export interface PlexPage {
+  items: PlexItem[]
+  total: number
+  /** The filters the server passed on to Plex (the rest were left out). */
+  params: Record<string, string>
+}
+
+/** One value a filter takes in a library (`genre`: {key: '1534', title: 'Animation'}). */
+export interface PlexChoice {
+  key: string
+  title: string
+}
+
+/** What a library listing is narrowed by on the Plex page, and kept in the URL. */
+export interface PlexFilter {
+  section: string
+  genre?: string
+  contentRating?: string
+  title?: string
+}
+
+/** The filters of a listing as Plex takes them (only the ones set). */
+export function plexParams(f: PlexFilter): Record<string, string> {
+  const out: Record<string, string> = {}
+  if (f.genre) out.genre = f.genre
+  if (f.contentRating) out.contentRating = f.contentRating
+  if (f.title?.trim()) out.title = f.title.trim()
+  return out
+}
+
 /** The endpoints, as paths under the server's root. Mock handlers (src/mocks/handlers.ts) match the same paths. */
 export const paths = {
   health: '/api/health',
@@ -600,6 +665,10 @@ export const paths = {
   suggestion: (id: string) => `/api/suggestions/${encodeURIComponent(id)}`,
   suggestionVideos: (id: string) => `/api/suggestions/${encodeURIComponent(id)}/videos`,
   suggestionGroup: (id: number) => `/api/suggestions/groups/${id}`,
+  plex: '/api/plex',
+  plexChoices: (section: string, name: string) => `/api/plex/sections/${encodeURIComponent(section)}/filters/${encodeURIComponent(name)}`,
+  plexBrowse: '/api/plex/browse',
+  plexFollow: '/api/plex/follow',
 } as const
 
 /** The query keys the screens share, so a write can invalidate every read it changes. */
@@ -632,6 +701,9 @@ export const keys = {
   suggestionList: (f: SuggestionFilter) => ['suggestions', 'list', f.group ?? '', f.topic ?? '', f.kids ?? '', f.dismissed ? 'dismissed' : 'open', f.order === 'suggested' ? 'suggested' : 'watched', f.pasted ? 'pasted' : 'all'],
   suggestionSummary: ['suggestions', 'summary'],
   overview: (id: string) => ['suggestions', 'overview', id],
+  plex: ['plex'],
+  plexChoices: (section: string, name: string) => ['plex', 'choices', section, name],
+  plexBrowse: (f: PlexFilter, page: number) => ['plex', 'browse', f.section, f.genre ?? '', f.contentRating ?? '', f.title?.trim() ?? '', page],
 } as const
 
 /** A request the server refused with a reason (`{detail}`), such as a fetch that cannot start. The reason is its sentence. */
@@ -652,6 +724,9 @@ export async function callJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 /** An error for a person: the server's own reason when it gave one, else Strata's sentence for the status. */
 export const describeError = (e: unknown) => (e instanceof Refused ? e.detail : describeHttpError(e))
+
+/** Items a page of a Plex library shows. */
+export const PLEX_PAGE = 50
 
 const send = (method: string, body: unknown): RequestInit => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 
@@ -676,7 +751,8 @@ export const api = {
   video: (id: string) => fetchJson<VideoDetail>(withBase(paths.video(id))),
   /** Ask the server to check these videos on YouTube (at most 50): it hides the ones YouTube no longer has. */
   check: (ids: string[]) => callJson<Checked>(withBase(paths.check), send('POST', { ids })),
-  play: (id: string, from?: From | null) => callJson<Started>(withBase(paths.play(id)), send('POST', from ?? {})),
+  /** Start a play. `decodes` is what this browser plays as it is (decodes.ts), so a Plex file is kept as it is where it can be. */
+  play: (id: string, from?: From | null, decodes?: string[]) => callJson<Started>(withBase(paths.play(id)), send('POST', { ...(from ?? {}), ...(decodes ? { decodes } : {}) })),
   /** How a play is going. `keepalive`, so a report sent as the page closes still arrives. */
   progress: (playId: number, p: Progress) => callJson<{ outcome: Outcome }>(withBase(paths.progress(playId)), { ...send('POST', p), keepalive: true }),
   continueWatching: (limit = 12) => fetchJson<Video[]>(withBase(`${paths.continueWatching}?limit=${limit}`)),
@@ -707,6 +783,14 @@ export const api = {
   dismiss: (id: string, dismissed: boolean) => callJson<Suggestion>(withBase(paths.suggestion(id)), send('PUT', { dismissed })),
   /** Add the channel's watched videos to the library, without following it. */
   addWatched: (id: string) => callJson<{ added: number; already: number; missing: number }>(withBase(paths.suggestionVideos(id)), { method: 'POST' }),
+  plex: () => fetchJson<PlexStatus>(withBase(paths.plex)),
+  plexChoices: (section: string, name: string) => fetchJson<PlexChoice[]>(withBase(paths.plexChoices(section, name))),
+  plexBrowse: (f: PlexFilter, page: number, size = PLEX_PAGE) => {
+    const q = new URLSearchParams({ section: f.section, start: String(page * size), size: String(size), ...plexParams(f) })
+    return fetchJson<PlexPage>(withBase(`${paths.plexBrowse}?${q}`))
+  },
+  /** Follow a show or a film by its key, or a library listing with filters as a channel of its own. */
+  plexFollow: (body: { key: string } | { section: string; params: Record<string, string>; title: string }) => callJson<Added>(withBase(paths.plexFollow), send('POST', body)),
   renameGroup: (id: number, name: string) => callJson<SuggestionGroup>(withBase(paths.suggestionGroup(id)), send('PUT', { name })),
 }
 

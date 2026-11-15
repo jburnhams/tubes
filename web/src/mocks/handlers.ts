@@ -8,8 +8,8 @@
 // `states: { error: [videosError] }` in the visual config.
 import { delay, http, HttpResponse } from 'msw'
 import { testcardPlaylist, testcardSegment } from './testcard'
-import { cursorOf, cursorOfRow, paths, type ChannelVisit, type Play, type CacheItem, type Channel, type From, type Progress, type HistorySource, type Pasted, type Settings, type ShownFilters, type Stream, type Suggestion, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Video, type VideoPage } from '../api'
-import { cacheItems, channelHistory, channels, defaultSettings, defaultShown, kindsFor, sampleSegments, episodes, programme, historyDays, historySources, historyStats, library, libraryNew, longChannel, pasteable, quotaNoKey, quotaSpent, quotaUnused, quotaUsage, relatedStatus, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, unfinished, videos, plays, manyPlays, playSummary, playSummaryEmpty, channelVisits } from './fixtures'
+import { cursorOf, cursorOfRow, paths, type ChannelVisit, type Play, type CacheItem, type Channel, type From, type Progress, type HistorySource, type Pasted, type Settings, type ShownFilters, type Stream, type Suggestion, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Video, type VideoPage, type PlexItem } from '../api'
+import { cacheItems, channelHistory, channels, defaultSettings, defaultShown, kindsFor, sampleSegments, episodes, programme, historyDays, historySources, historyStats, library, libraryNew, longChannel, pasteable, quotaNoKey, quotaSpent, quotaUnused, quotaUsage, relatedStatus, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, unfinished, videos, plays, manyPlays, playSummary, playSummaryEmpty, channelVisits, plexFilm, plexGenres, plexRatings, plexStatus, plexTitles } from './fixtures'
 
 /** What the mock server holds. Writes change it, so a test can pin a copy and see it pinned. */
 export const mock = {
@@ -44,6 +44,11 @@ export const mock = {
   related: { ...relatedStatus },
   /** Each import's {source, text}. */
   imports: [] as { source: string; text: string }[],
+  /** What each play said the browser decodes (null: it said nothing), beside `plays`. */
+  decodes: [] as (string[] | null)[],
+  /** Plex keys followed, and each listing followed as a channel. */
+  plexFollowed: ['101'] as string[],
+  plexListings: [] as { section: string; params: Record<string, string>; title: string }[],
 }
 
 /** Back to the healthy state: call between tests and stories. */
@@ -69,6 +74,21 @@ export function resetMock() {
   mock.sources = [...historySources]
   mock.related = { ...relatedStatus }
   mock.imports = []
+  mock.decodes = []
+  mock.plexFollowed = ['101']
+  mock.plexListings = []
+}
+
+/** `GET /api/plex/browse?...` from the Plex fixtures: section 1 lists the films, 2 the shows, narrowed by genre, rating and title. */
+export function plexPage(url: string) {
+  const p = new URL(url).searchParams
+  const kind = p.get('section') === '2' ? 'show' : 'movie'
+  const list = plexTitles.filter(t => t.type === kind && (!p.get('genre') || t.genres.includes(p.get('genre')!)) && (!p.get('contentRating') || p.get('contentRating')!.split(',').includes(t.content_rating))
+    && (!p.get('title') || t.title.toLowerCase().includes(p.get('title')!.toLowerCase())))
+  const start = Number(p.get('start') ?? 0), size = Number(p.get('size') ?? 50)
+  const items: PlexItem[] = list.slice(start, start + size).map(({ genres: _g, ...t }) => ({ ...t, followed: mock.plexFollowed.includes(t.key) }))
+  const params = Object.fromEntries(['genre', 'contentRating', 'title'].filter(k => p.get(k)).map(k => [k, p.get(k)!]))
+  return { items, total: list.length, params }
 }
 
 /** `GET /api/suggestions?...` from the held suggestions, as history.suggestions does. */
@@ -146,11 +166,28 @@ export function rowPage<T extends { at: string; id: number }>(url: string, list:
 
 const playMatches = (r: Play, p: URLSearchParams) => (!p.get('outcome') || r.outcome === p.get('outcome')) && (!p.get('source') || r.source === p.get('source'))
 
-const find = (id: string) => videos.find(v => v.id === id) ?? longChannel.find(v => v.id === id)
+const find = (id: string) => videos.find(v => v.id === id) ?? longChannel.find(v => v.id === id) ?? (id === plexFilm.id ? plexFilm : undefined)
 const stream = (id: string) => mock.streams[id] ?? streams.ready
 const shown = () => videos.filter(v => !mock.gone.includes(v.id))
 
 export const handlers = [
+  http.get(at(paths.plex), () => HttpResponse.json(plexStatus)),
+  http.get(at('/api/plex/sections/:section/filters/:name'), ({ params }) => HttpResponse.json(params.name === 'genre' ? plexGenres : params.name === 'contentRating' ? plexRatings : [])),
+  http.get(at(paths.plexBrowse), ({ request }) => HttpResponse.json(plexPage(request.url))),
+  http.post(at(paths.plexFollow), async ({ request }) => {
+    const body = (await request.json()) as { key?: string; section?: string; params?: Record<string, string>; title?: string }
+    if (body.key) {
+      const t = plexTitles.find(x => x.key === body.key)
+      if (!t) return refused(`Plex has no item ${body.key}.`, 404)
+      mock.plexFollowed.push(t.key)
+      if (t.type === 'movie') return HttpResponse.json({ kind: 'video', video: { ...plexFilm, id: `plex-${t.key}`, title: t.title } })
+      const channel: Channel = { id: `plex-${t.key}`, platform: 'plex', kind: 'show', title: t.title, handle: null, thumbnail: t.thumb, synced: null, videos: 0, latest: null, total_videos: t.episodes, follow: true, complete: false, added: '2026-11-14T12:00:00Z' }
+      return HttpResponse.json({ kind: 'channel', channel, sync: mock.job })
+    }
+    mock.plexListings.push({ section: body.section ?? '', params: body.params ?? {}, title: body.title ?? '' })
+    const channel: Channel = { id: `plex-filter-${mock.plexListings.length}`, platform: 'plex', kind: 'filter', title: body.title ?? 'Films', handle: null, thumbnail: null, synced: null, videos: 0, latest: null, total_videos: null, follow: true, complete: false, added: '2026-11-14T12:00:00Z' }
+    return HttpResponse.json({ kind: 'channel', channel, sync: mock.job })
+  }),
   http.get(at(paths.health), () => HttpResponse.json({ ok: true, version: systemStatus.version })),
   http.get(at(paths.quota), () => HttpResponse.json(quotaUsage)),
   http.get(at(paths.system), () => HttpResponse.json({ ...systemStatus, cache_dir: mock.settings.cache_dir, library: { ...library, synced: mock.synced } })),
@@ -257,9 +294,10 @@ export const handlers = [
   http.post(at('/api/videos/:id/play'), async ({ params, request }) => {
     const id = String(params.id)
     if (!find(id)) return refused(`There is no video ${id} in the library.`, 404)
-    const body = (await request.json().catch(() => ({}))) as Partial<From>
-    mock.plays.push(id); mock.playsFrom.push(body.source ? (body as From) : null)
-    return HttpResponse.json({ ...stream(id), play_id: mock.plays.length, resume: mock.resume[id] ?? null })
+    const { decodes, ...body } = (await request.json().catch(() => ({}))) as Partial<From> & { decodes?: string[] }
+    mock.plays.push(id); mock.playsFrom.push(body.source ? (body as From) : null); mock.decodes.push(decodes ?? null)
+    const copy = find(id)?.platform === 'plex' && decodes?.includes('hevc') ? `${id}~native` : id      // as fetcher.plex_copy: the file's own video for a browser that decodes it
+    return HttpResponse.json({ ...stream(copy), copy, play_id: mock.plays.length, resume: mock.resume[id] ?? null })
   }),
   http.get(at('/api/videos/:id/stream'), ({ params }) => HttpResponse.json(stream(String(params.id)))),
   // The player's own requests: every copy plays the same two-second test card (testcard.ts), so Storybook and the visual suite play
@@ -425,6 +463,22 @@ export const viewingError = [http.get(at(paths.playSummary), down), http.get(at(
 /** Three videos part watched lately (Continue watching on Home, first in Up next). */
 export const continuing = http.get(at(paths.continueWatching), () => HttpResponse.json(unfinished))
 export const continueError = http.get(at(paths.continueWatching), down)
+
+export const plexLoading = http.get(at(paths.plex), () => delay('infinite'))
+export const plexError = http.get(at(paths.plex), down)
+export const plexNotSetUp = http.get(at(paths.plex), () => HttpResponse.json({ configured: false, reachable: false, version: null, sections: [] }))
+export const plexUnreachable = http.get(at(paths.plex), () => HttpResponse.json({ configured: true, reachable: false, version: null, error: 'Plex could not be reached: Connection refused.', sections: [] }))
+export const plexChoicesLoading = http.get(at('/api/plex/sections/:section/filters/:name'), () => delay('infinite'))
+export const plexChoicesError = http.get(at('/api/plex/sections/:section/filters/:name'), down)
+export const plexBrowseLoading = http.get(at(paths.plexBrowse), () => delay('infinite'))
+export const plexFollowFails = http.post(at(paths.plexFollow), () => refused('Plex refused the request (500).', 502))
+/** A library long enough to page through: 120 films. */
+export const plexManyFilms = http.get(at(paths.plexBrowse), ({ request }) => {
+  const p = new URL(request.url).searchParams
+  const start = Number(p.get('start') ?? 0), size = Number(p.get('size') ?? 50)
+  const all = Array.from({ length: 120 }, (_, i) => ({ key: String(1000 + i), type: 'movie', title: `Film ${String(i + 1).padStart(3, '0')}`, year: 2000 + (i % 25), thumb: null, summary: null, content_rating: 'gb/PG', episodes: null, section: '1', followed: false }))
+  return HttpResponse.json({ items: all.slice(start, start + size), total: all.length, params: {} })
+})
 
 export const playLoading = http.post(at('/api/videos/:id/play'), () => delay('infinite'))
 export const playFails = http.post(at('/api/videos/:id/play'), () => refused('3 videos are already being fetched; try again when one finishes.'))
