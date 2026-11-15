@@ -22,6 +22,7 @@ import { ViewingScreen } from './screens/ViewingScreen'
 import { QuotaScreen } from './screens/QuotaScreen'
 import { SystemScreen } from './screens/SystemScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
+import { PlexScreen } from './screens/PlexScreen'
 
 export const routes: RouteObject[] = [
   {
@@ -31,6 +32,7 @@ export const routes: RouteObject[] = [
       { index: true, element: <Navigate to="/admin/system" replace /> },
       { path: 'library', element: <LibraryScreen /> },
       { path: 'suggestions', element: <SuggestionsScreen /> },
+      { path: 'plex', element: <PlexScreen /> },
       { path: 'viewing', element: <ViewingScreen /> },
       { path: 'history', element: <HistoryScreen /> },
       { path: 'cache', element: <CacheScreen /> },

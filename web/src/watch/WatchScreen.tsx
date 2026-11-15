@@ -23,6 +23,7 @@ import { Link, useParams } from 'react-router'
 import { DataView, describeHttpError, HttpError, type Load, useAsyncAction, MediaPlayer, useLoad } from 'strata-react'
 import { api, describeError, keys, paths, withBase, type Segment, type SegmentKind, type Segments, type Stream, type Video, type VideoDetail } from '../api'
 import { attachStream, startingAt } from '../player'
+import { decodes } from '../decodes'
 import { Avatar, RowsSkeleton, VideoRow, useChannelsById } from './cards'
 import { countFor, iplayerText, runningTime, viewsAndAge } from './format'
 import { FromHere, fromState, useArrivedFrom } from './from'
@@ -181,14 +182,16 @@ function Stage({ v }: { v: VideoDetail }) {
   const byId = useChannelsById()
   const channel = byId.get(v.channel_id)
   const from = useArrivedFrom()
-  const play = useLoad({ queryKey: keys.play(v.id), queryFn: () => api.play(v.id, from), staleTime: Infinity, gcTime: 0, describeError })
+  // A Plex file is fetched as the browser can play it: the play says what it decodes, and the answer names the copy to stream (`copy`).
+  const play = useLoad({ queryKey: keys.play(v.id), queryFn: async () => api.play(v.id, from, v.platform === 'plex' ? await decodes() : undefined), staleTime: Infinity, gcTime: 0, describeError })
+  const copy = (play.status === 'ready' && play.data.copy) || v.id
   const stream = useLoad({
-    queryKey: keys.stream(v.id), queryFn: () => api.stream(v.id), enabled: play.status === 'ready',
+    queryKey: keys.stream(copy), queryFn: () => api.stream(copy), enabled: play.status === 'ready',
     refetchInterval: q => (settled(q.state.data) ? false : POLL_MS),
   })
   const again = useAsyncAction(async () => {
     await queryClient.resetQueries({ queryKey: keys.play(v.id) })
-    await queryClient.invalidateQueries({ queryKey: keys.stream(v.id) })
+    await queryClient.invalidateQueries({ queryKey: keys.stream(copy) })
   }, { describeError })
   const skips = useLoad({ queryKey: keys.segments(v.id), queryFn: () => api.segments(v.id), staleTime: Infinity })   // what can be skipped: nothing (not an error) until it answers
   const started = play.status === 'ready' ? play.data : undefined
@@ -217,7 +220,7 @@ function Stage({ v }: { v: VideoDetail }) {
           </div>
         </Frame>
       ) : s.playable ? (
-        <Player src={withBase(paths.playlist(v.id))} title={v.title} segments={skips.status === 'ready' ? skips.data.segments : []} kinds={skips.status === 'ready' ? skips.data.categories : []} length={v.duration}
+        <Player src={withBase(paths.playlist(copy))} title={v.title} segments={skips.status === 'ready' ? skips.data.segments : []} kinds={skips.status === 'ready' ? skips.data.categories : []} length={v.duration}
           growing={s.complete ? undefined : savedText(s, v.duration)} playId={started!.play_id} start={startAt(started!.resume, s)} />
       ) : (
         <Frame><p role="status" className="text-tube-base opacity-80">{waitingText(s)}</p></Frame>

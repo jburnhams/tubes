@@ -168,6 +168,7 @@ export default defineVisualConfig({
         },
       },
       { name: 'admin-quota', path: '/admin/quota' },
+      { name: 'admin-plex', path: '/admin/plex', states: { ready: [], shows: { path: '/admin/plex?section=2' } } },
       { name: 'admin-system', path: '/admin/system' },
       {
         name: 'admin-settings',

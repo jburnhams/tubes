@@ -57,6 +57,9 @@ export function channelState(c: Channel): { tone: 'success' | 'info' | 'warning'
   return { tone: 'warning', word: 'Not synced' }
 }
 
+/** The line under a channel's title: its @handle, else where it comes from when that is not YouTube. */
+export const sourceLine = (c: Channel) => c.handle ?? ({ iplayer: 'BBC iPlayer', plex: 'Plex' } as Record<string, string>)[c.platform ?? ''] ?? null
+
 /** What was added, in a sentence. */
 export function describeAdded(a: Added): string {
   return a.kind === 'channel' ? `Following ${a.channel.title}. Its videos are being fetched.` : `Added “${a.video.title}”${a.video.channel ? ` from ${a.video.channel}` : ''}.`
@@ -92,7 +95,7 @@ export function LibraryScreen() {
   const selection = useSelection(rows, key)
   const configured = status.status === 'ready' && status.data.configured
   /** Whether this channel can be synced here: an iPlayer programme always, a YouTube channel only with the key. */
-  const syncable = (c: Channel) => configured || c.platform === 'iplayer'
+  const syncable = (c: Channel) => configured || c.platform === 'iplayer' || c.platform === 'plex'
 
   const remove = (c: Channel) => undoable.schedule({
     id: c.id,
@@ -109,7 +112,7 @@ export function LibraryScreen() {
       cell: c => (
         <span className="flex min-w-0 flex-col">
           <Link to={`/channels/${encodeURIComponent(c.id)}`} className="truncate hover:underline">{c.title}</Link>
-          {(c.handle || c.platform === 'iplayer') && <span className="truncate type-caption text-muted-foreground">{c.handle ?? 'BBC iPlayer'}</span>}
+          {sourceLine(c) && <span className="truncate type-caption text-muted-foreground">{sourceLine(c)}</span>}
         </span>
       ),
     },

@@ -2,7 +2,7 @@
 // tests, every Storybook story and the visual suite's screenshots, so a screen looks the same in
 // each. Dates are fixed, so screenshots do not change from day to day. Pictures are flat SVG
 // tiles as data URLs, so nothing is fetched from outside.
-import type { CacheItem, CacheReport, Channel, ChannelVisit, Outcome, Play, PlaySource, PlaySummary, Segment, SegmentKind, ChannelOverview, HistorySource, HistoryStats, LibraryStatus, QuotaTotals, QuotaUsage, RelatedStatus, Settings, ShownFilters, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video } from '../api'
+import type { PlexChoice, PlexSection, PlexStatus, CacheItem, CacheReport, Channel, ChannelVisit, Outcome, Play, PlaySource, PlaySummary, Segment, SegmentKind, ChannelOverview, HistorySource, HistoryStats, LibraryStatus, QuotaTotals, QuotaUsage, RelatedStatus, Settings, ShownFilters, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video } from '../api'
 
 export const GB = 1e9
 
@@ -378,3 +378,27 @@ export const channelVisits: ChannelVisit[] = [
   { id: 2, channel_id: 'UCcoasts0000000000000004', title: 'Rivers and Coasts', thumbnail: null, at: hoursBefore(20), source: 'channels', detail: null, detail_title: null },
   { id: 1, channel_id: 'UCgone000000000000000009', title: null, thumbnail: null, at: hoursBefore(30), source: 'link', detail: null, detail_title: null },
 ]
+
+// Plex (src/tubes/plex.py): a server with a film library and a TV library, a few titles in each, and one followed film as a video.
+export const plexSections: PlexSection[] = [
+  { key: '1', title: 'Films', type: 'movie', locations: ['/films'] },
+  { key: '2', title: 'TV shows', type: 'show', locations: ['/tv'] },
+]
+export const plexStatus: PlexStatus = { configured: true, reachable: true, version: '1.43.5', error: null, sections: plexSections }
+export const plexGenres: PlexChoice[] = [{ key: '1', title: 'Animation' }, { key: '2', title: 'Drama' }, { key: '3', title: 'Family' }]
+export const plexRatings: PlexChoice[] = [{ key: 'gb/U', title: 'gb/U' }, { key: 'gb/PG', title: 'gb/PG' }, { key: 'gb/15', title: 'gb/15' }]
+const plexTitle = (key: number, title: string, year: number, rating: string, genres: string[], hue: number, type: 'movie' | 'show' = 'movie', episodes: number | null = null) =>
+  ({ key: String(key), type, title, year, thumb: tile(hue, title), summary: `All about ${title}.`, content_rating: rating, episodes, section: type === 'movie' ? '1' : '2', genres })
+export const plexTitles = [
+  plexTitle(101, 'Harbour Lights', 2023, 'gb/U', ['1', '3'], 20),
+  plexTitle(102, 'The Paper Kite', 2021, 'gb/U', ['1'], 60),
+  plexTitle(103, 'Dark Harbour', 2019, 'gb/15', ['2'], 250),
+  plexTitle(104, 'Small Boats', 2024, 'gb/PG', ['3'], 170),
+  plexTitle(200, 'The Lighthouse Keepers', 2018, 'gb/U', ['1', '3'], 300, 'show', 154),
+  plexTitle(210, 'Night Ferry', 2022, 'gb/15', ['2'], 210, 'show', 12),
+]
+/** A Plex film followed into the library (found by the video handler, not in the lists, so other screens stay as they are). */
+export const plexFilm: Video = {
+  id: 'plex-101', platform: 'plex', channel_id: 'plex-films', channel: 'Films', title: 'Harbour Lights', published: '2023-09-21T00:00:00+00:00', duration: 5400,
+  thumbnail: tile(20, 'Harbour Lights'), views: null, cache_state: null, cache_bytes: null, gone: null, expires: null, series: null, episode: null,
+}
