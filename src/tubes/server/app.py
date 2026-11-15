@@ -144,9 +144,10 @@ def system_status():
                 disk=dict(total=du.total, used=du.used, free=du.free), library=library.status())
 
 
-def create_app():
+def create_app(recover=True):
+    """The app. `recover=False` builds it without touching the database or the cache (what `tubes openapi` needs to write the schema)."""
     app = FastAPI(title='tubes', docs_url='/api/docs', openapi_url='/api/openapi.json')
-    cache.recover(cache.stamp())
+    if recover: cache.recover(cache.stamp())
     job = app.state.sync = catalogue.Job()
     ahead = app.state.prefetch = prefetch.Prefetcher()             # its thread is started by main(), so tests and other hosts of the app start none
 

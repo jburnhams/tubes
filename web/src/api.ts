@@ -7,6 +7,7 @@
 // from YouTube and syncs them (the server's catalogue.py); the watching side reads it and plays from
 // it, and the cache keeps the fetched copies.
 import { HttpError, describeHttpError, fetchJson } from 'strata-react'
+import type { components, Schema } from './api.generated'
 
 export interface Settings {
   data_dir: string
@@ -728,6 +729,10 @@ export const describeError = (e: unknown) => (e instanceof Refused ? e.detail : 
 /** Items a page of a Plex library shows. */
 export const PLEX_PAGE = 50
 
+/** A request body as the server's model for it declares it (`*In` in server/app.py, through openapi.json → api.generated.ts, `npm run api-types`):
+ *  a body that drifts from the server's fails the typecheck. The answers are still typed by hand below, as the server declares no response models yet. */
+type In<K extends keyof components['schemas'] & `${string}In`> = Schema<K>
+
 const send = (method: string, body: unknown): RequestInit => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
 
 export const api = {
@@ -738,10 +743,10 @@ export const api = {
   quota: () => fetchJson<QuotaUsage>(withBase(paths.quota)),
   shown: () => fetchJson<ShownFilters>(withBase(paths.shown)),
   saveShown: (f: Partial<Omit<ShownFilters, 'filtered' | 'language_counts'>>) => callJson<ShownFilters>(withBase(paths.shown), send('PUT', f)),
-  add: (input: string) => callJson<Added>(withBase(paths.library), send('POST', { input })),
+  add: (input: string) => callJson<Added>(withBase(paths.library), send('POST', { input } satisfies In<'AddIn'>)),
   syncJob: () => fetchJson<SyncJob>(withBase(paths.sync)),
   /** Sync these channels, or every followed one. */
-  sync: (channels?: string[]) => callJson<SyncJob>(withBase(paths.sync), send('POST', { channels: channels ?? null })),
+  sync: (channels?: string[]) => callJson<SyncJob>(withBase(paths.sync), send('POST', { channels: channels ?? null } satisfies In<'SyncIn'>)),
   removeChannel: (id: string) => callJson<{ channel: string; videos: number }>(withBase(paths.channel(id)), { method: 'DELETE' }),
   restartChannel: (id: string) => callJson<{ channel: string; videos: number; sync: SyncJob }>(withBase(paths.restart(id)), { method: 'POST' }),
   channels: () => fetchJson<Channel[]>(withBase(paths.channels)),
@@ -750,11 +755,11 @@ export const api = {
   shuffle: (count: number) => fetchJson<Video[]>(withBase(`${paths.shuffle}?count=${count}`)),
   video: (id: string) => fetchJson<VideoDetail>(withBase(paths.video(id))),
   /** Ask the server to check these videos on YouTube (at most 50): it hides the ones YouTube no longer has. */
-  check: (ids: string[]) => callJson<Checked>(withBase(paths.check), send('POST', { ids })),
+  check: (ids: string[]) => callJson<Checked>(withBase(paths.check), send('POST', { ids } satisfies In<'CheckIn'>)),
   /** Start a play. `decodes` is what this browser plays as it is (decodes.ts), so a Plex file is kept as it is where it can be. */
-  play: (id: string, from?: From | null, decodes?: string[]) => callJson<Started>(withBase(paths.play(id)), send('POST', { ...(from ?? {}), ...(decodes ? { decodes } : {}) })),
+  play: (id: string, from?: From | null, decodes?: string[]) => callJson<Started>(withBase(paths.play(id)), send('POST', { ...(from ?? {}), ...(decodes ? { decodes } : {}) } satisfies In<'FromIn'>)),
   /** How a play is going. `keepalive`, so a report sent as the page closes still arrives. */
-  progress: (playId: number, p: Progress) => callJson<{ outcome: Outcome }>(withBase(paths.progress(playId)), { ...send('POST', p), keepalive: true }),
+  progress: (playId: number, p: Progress) => callJson<{ outcome: Outcome }>(withBase(paths.progress(playId)), { ...send('POST', p satisfies In<'ProgressIn'>), keepalive: true }),
   continueWatching: (limit = 12) => fetchJson<Video[]>(withBase(`${paths.continueWatching}?limit=${limit}`)),
   plays: (f: PlayFilter, after: string | undefined, signal?: AbortSignal) => {
     const q = new URLSearchParams()
@@ -765,22 +770,22 @@ export const api = {
   },
   playSummary: () => fetchJson<PlaySummary>(withBase(paths.playSummary)),
   channelVisits: (after: string | undefined, signal?: AbortSignal) => fetchJson<ChannelVisitPage>(withBase(after ? `${paths.channelVisits}?after=${encodeURIComponent(after)}` : paths.channelVisits), { signal }),
-  channelView: (id: string, from?: From | null) => callJson<{ id: number }>(withBase(paths.channelViews(id)), send('POST', from ?? {})),
+  channelView: (id: string, from?: From | null) => callJson<{ id: number }>(withBase(paths.channelViews(id)), send('POST', (from ?? {}) satisfies In<'FromIn'>)),
   stream: (id: string) => fetchJson<Stream>(withBase(paths.stream(id))),
   segments: (id: string) => fetchJson<Segments>(withBase(paths.segments(id))),
   skipping: () => fetchJson<SegmentKind[]>(withBase(paths.skipping)),
   cache: () => fetchJson<CacheReport>(withBase(paths.cache)),
-  pin: (id: string, pinned: boolean) => fetchJson<unknown>(withBase(paths.cacheItem(id)), send('PUT', { pinned })),
+  pin: (id: string, pinned: boolean) => fetchJson<unknown>(withBase(paths.cacheItem(id)), send('PUT', { pinned } satisfies In<'PinIn'>)),
   dropCopy: (id: string) => fetchJson<{ video_id: string; freed: number }>(withBase(paths.cacheItem(id)), { method: 'DELETE' }),
-  evict: () => fetchJson<Evicted>(withBase(paths.evict), send('POST', { dry_run: false })),
+  evict: () => fetchJson<Evicted>(withBase(paths.evict), send('POST', { dry_run: false } satisfies In<'EvictIn'>)),
   overview: (id: string) => fetchJson<ChannelOverview>(withBase(paths.overview(id))),
   history: (f: HistoryFilter) => fetchJson<HistoryStats>(withBase(historyUrl(f))),
   suggestions: (f: SuggestionFilter) => fetchJson<SuggestionPage>(withBase(suggestionsUrl(f))),
   suggestionSummary: () => fetchJson<SuggestionSummary>(withBase(paths.suggestionsSummary)),
   refreshSuggestions: () => callJson<Refreshed & { summary: SuggestionSummary }>(withBase(paths.suggestionsRefresh), { method: 'POST' }),
-  pasteSuggestions: (text: string) => callJson<Pasted>(withBase(paths.suggestionsPaste), send('POST', { text })),
-  importHistory: (source: string, text: string) => callJson<{ source: string; watches: number; first: string; last: string; refresh: Refreshed }>(withBase(paths.suggestionsImport), send('POST', { source, text })),
-  dismiss: (id: string, dismissed: boolean) => callJson<Suggestion>(withBase(paths.suggestion(id)), send('PUT', { dismissed })),
+  pasteSuggestions: (text: string) => callJson<Pasted>(withBase(paths.suggestionsPaste), send('POST', { text } satisfies In<'PasteIn'>)),
+  importHistory: (source: string, text: string) => callJson<{ source: string; watches: number; first: string; last: string; refresh: Refreshed }>(withBase(paths.suggestionsImport), send('POST', { source, text } satisfies In<'ImportIn'>)),
+  dismiss: (id: string, dismissed: boolean) => callJson<Suggestion>(withBase(paths.suggestion(id)), send('PUT', { dismissed } satisfies In<'DismissIn'>)),
   /** Add the channel's watched videos to the library, without following it. */
   addWatched: (id: string) => callJson<{ added: number; already: number; missing: number }>(withBase(paths.suggestionVideos(id)), { method: 'POST' }),
   plex: () => fetchJson<PlexStatus>(withBase(paths.plex)),
@@ -790,8 +795,8 @@ export const api = {
     return fetchJson<PlexPage>(withBase(`${paths.plexBrowse}?${q}`))
   },
   /** Follow a show or a film by its key, or a library listing with filters as a channel of its own. */
-  plexFollow: (body: { key: string } | { section: string; params: Record<string, string>; title: string }) => callJson<Added>(withBase(paths.plexFollow), send('POST', body)),
-  renameGroup: (id: number, name: string) => callJson<SuggestionGroup>(withBase(paths.suggestionGroup(id)), send('PUT', { name })),
+  plexFollow: (body: { key: string } | { section: string; params: Record<string, string>; title: string }) => callJson<Added>(withBase(paths.plexFollow), send('POST', body satisfies In<'FollowIn'>)),
+  renameGroup: (id: number, name: string) => callJson<SuggestionGroup>(withBase(paths.suggestionGroup(id)), send('PUT', { name } satisfies In<'NameIn'>)),
 }
 
 /** What is wrong with a folder, or undefined. The server takes absolute paths only, `~` included. */

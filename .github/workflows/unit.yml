@@ -79,6 +79,8 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      - name: API types match the server's schema (web/openapi.json, which the Python unit tests hold to the server)
+        run: npm run api-types:check
       - run: npm run typecheck
       - name: Unit tests with coverage (unit project only)
         run: npm run test:coverage
