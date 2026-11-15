@@ -16,7 +16,6 @@ src/tubes/metadata.py
 src/tubes/models.py
 src/tubes/oslib.py
 src/tubes/paste.py
-src/tubes/plex.py
 src/tubes/prefetch.py
 src/tubes/quota.py
 src/tubes/related.py
