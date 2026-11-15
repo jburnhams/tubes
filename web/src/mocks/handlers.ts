@@ -468,6 +468,8 @@ export const plexLoading = http.get(at(paths.plex), () => delay('infinite'))
 export const plexError = http.get(at(paths.plex), down)
 export const plexNotSetUp = http.get(at(paths.plex), () => HttpResponse.json({ configured: false, reachable: false, version: null, sections: [] }))
 export const plexUnreachable = http.get(at(paths.plex), () => HttpResponse.json({ configured: true, reachable: false, version: null, error: 'Plex could not be reached: Connection refused.', sections: [] }))
+export const plexChoicesLoading = http.get(at('/api/plex/sections/:section/filters/:name'), () => delay('infinite'))
+export const plexChoicesError = http.get(at('/api/plex/sections/:section/filters/:name'), down)
 export const plexBrowseLoading = http.get(at(paths.plexBrowse), () => delay('infinite'))
 export const plexFollowFails = http.post(at(paths.plexFollow), () => refused('Plex refused the request (500).', 502))
 /** A library long enough to page through: 120 films. */

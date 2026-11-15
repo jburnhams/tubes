@@ -9,7 +9,7 @@
 // Harbour Lights"), shown only on rows not followed yet; one filled button (Follow as a channel). Pictures come through the server
 // (/api/plex/image), never from Plex, whose address needs the token.
 import { useQueryClient } from '@tanstack/react-query'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import { AsyncButton, Button, DataTable, DataView, EmptyState, Field, Input, NativeSelect, PageHeader, RowAction, Status, TableSkeleton, Thumbnail, format, useAsyncAction, useLoad, type Column } from 'strata-react'
 import { PLEX_PAGE, api, describeError, keys, plexParams, withBase, type Added, type PlexChoice, type PlexFilter, type PlexItem, type PlexPage, type PlexSection, type PlexStatus } from '../api'
@@ -77,6 +77,7 @@ export function Browser({ sections }: { sections: PlexSection[] }) {
   const ratings = useLoad({ queryKey: keys.plexChoices(f.section, 'contentRating'), queryFn: () => api.plexChoices(f.section, 'contentRating'), staleTime: 300_000 })
   const listing = useLoad({ queryKey: keys.plexBrowse(f, page), queryFn: () => api.plexBrowse(f, page) })
   const [title, setTitle] = useState(f.title ?? '')
+  useEffect(() => setTitle(f.title ?? ''), [f.title])                         // Back, Forward or a link changes the address: the field shows its title
   const [done, setDone] = useState<Added>()
 
   /** Change some of the URL's filters; any change starts again at the first page. */
@@ -90,6 +91,8 @@ export function Browser({ sections }: { sections: PlexSection[] }) {
   const refresh = async () => { for (const queryKey of [keys.plex, keys.channels, keys.library, keys.videos, keys.sync]) await queryClient.invalidateQueries({ queryKey }) }
   const follow = useAsyncAction(async (i: PlexItem) => { setDone(await api.plexFollow({ key: i.key })); await refresh() }, { describeError })
   const genreList = genres.status === 'ready' ? genres.data : []
+  const ratingList = ratings.status === 'ready' ? ratings.data : []
+  const failed = [genres, ratings].flatMap(c => (c.status === 'error' ? [c] : []))
 
   const columns: Column<PlexItem>[] = [
     { key: 'picture', header: 'Picture', hideHeader: true, cell: i => <Thumbnail src={i.thumb ? withBase(i.thumb) : null} alt="" missing="No picture" aspect="2/3" className="w-12" /> },
@@ -117,19 +120,22 @@ export function Browser({ sections }: { sections: PlexSection[] }) {
               {sections.map(s => <option key={s.key} value={s.key}>{s.title}</option>)}
             </NativeSelect>
           </Field>
-          <Field label="Genre">
-            <NativeSelect value={f.genre ?? ''} onChange={e => set({ genre: e.target.value || undefined })}>
-              <option value="">Any genre</option>
+          <Field label="Genre" error={genres.status === 'error' ? `The genres could not be read: ${genres.message}` : undefined}>
+            <NativeSelect value={f.genre ?? ''} disabled={genres.status !== 'ready'} onChange={e => set({ genre: e.target.value || undefined })}>
+              <option value="">{genres.status === 'loading' ? 'Reading genres…' : 'Any genre'}</option>
+              {f.genre && !genreList.some(g => g.key === f.genre) && <option value={f.genre}>Genre {f.genre}</option>}
               {genreList.map(g => <option key={g.key} value={g.key}>{g.title}</option>)}
             </NativeSelect>
           </Field>
-          <Field label="Rating">
-            <NativeSelect value={f.contentRating ?? ''} onChange={e => set({ rating: e.target.value || undefined })}>
-              <option value="">Any rating</option>
-              {(ratings.status === 'ready' ? ratings.data : []).map(r => <option key={r.key} value={r.title}>{r.title}</option>)}
+          <Field label="Rating" error={ratings.status === 'error' ? `The ratings could not be read: ${ratings.message}` : undefined}>
+            <NativeSelect value={f.contentRating ?? ''} disabled={ratings.status !== 'ready'} onChange={e => set({ rating: e.target.value || undefined })}>
+              <option value="">{ratings.status === 'loading' ? 'Reading ratings…' : 'Any rating'}</option>
+              {f.contentRating && !ratingList.some(r => r.title === f.contentRating) && <option value={f.contentRating}>{f.contentRating}</option>}
+              {ratingList.map(r => <option key={r.key} value={r.title}>{r.title}</option>)}
             </NativeSelect>
           </Field>
         </div>
+        {failed.length > 0 && <div><Button size="sm" variant="outline" onClick={() => failed.forEach(c => c.retry())}>Read the filters again</Button></div>}
         <form onSubmit={onTitle} className="flex max-w-xl flex-wrap items-end gap-3" aria-label="Title">
           <Field label="Title has" className="grow">
             <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Any title" autoComplete="off" spellCheck={false} />

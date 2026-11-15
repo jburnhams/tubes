@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { plexBrowseLoading, plexError, plexFollowFails, plexManyFilms, plexNotSetUp, plexUnreachable } from '../../src/mocks/handlers'
-import { openApp, screen, waitFor, within } from '../utils/render'
+import { plexChoicesError, plexChoicesLoading, plexBrowseLoading, plexError, plexFollowFails, plexManyFilms, plexNotSetUp, plexUnreachable } from '../../src/mocks/handlers'
+import { act, openApp, screen, waitFor, within } from '../utils/render'
 import { mock, server } from '../utils/server'
 
 describe('Plex', () => {
@@ -43,6 +43,38 @@ describe('Plex', () => {
     await user.selectOptions(screen.getByRole('combobox', { name: 'Rating' }), 'Any rating')
     expect(router.state.location.search).toBe('')
     await waitFor(() => expect(within(screen.getByRole('grid', { name: 'Films, as Plex lists it' })).getAllByRole('row')).toHaveLength(5))
+  })
+
+  it('keeps the title field with the address on Back', async () => {
+    const { user, router } = openApp('/admin/plex')
+    await screen.findByRole('grid', { name: 'Films, as Plex lists it' })
+    const field = screen.getByRole('textbox', { name: 'Title has' })
+    await user.type(field, 'kite'); await user.click(screen.getByRole('button', { name: 'Narrow' }))
+    await user.clear(field); await user.type(field, 'boats'); await user.click(screen.getByRole('button', { name: 'Narrow' }))
+    expect(router.state.location.search).toBe('?title=boats')
+    await act(() => router.navigate(-1))
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'Title has' })).toHaveValue('kite'))
+  })
+
+  it('says when the genres and ratings cannot be read, keeps a filter from the address, and reads them again', async () => {
+    server.use(plexChoicesError)
+    const { user } = openApp('/admin/plex?genre=7&rating=gb%2F18')
+    expect(await screen.findByText(/^The genres could not be read:/)).toBeInTheDocument()
+    expect(screen.getByText(/^The ratings could not be read:/)).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: /^Genre/ })).toBeDisabled()
+    expect(screen.getByRole('combobox', { name: /^Genre/ })).toHaveDisplayValue('Genre 7')
+    expect(screen.getByRole('combobox', { name: /^Rating/ })).toHaveDisplayValue('gb/18')
+    server.resetHandlers()
+    await user.click(screen.getByRole('button', { name: 'Read the filters again' }))
+    await waitFor(() => expect(screen.getByRole('combobox', { name: /^Genre/ })).toBeEnabled())
+    expect(screen.queryByRole('button', { name: 'Read the filters again' })).not.toBeInTheDocument()
+  })
+
+  it('says it is reading the filters', async () => {
+    server.use(plexChoicesLoading)
+    openApp('/admin/plex')
+    expect(await screen.findByRole('option', { name: 'Reading genres…' })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: 'Reading ratings…' })).toBeInTheDocument()
   })
 
   it('lists the TV library and follows a show with a name of its own', async () => {
