@@ -350,7 +350,7 @@ describe('iPlayer episodes on the watching side', () => {
 
   it('groups a programme\'s episodes by series as the list reaches them', () => {
     expect(bySeries(episodes).map(([s, vs]) => [s, vs.length])).toEqual([['Series 2', 3], ['Series 1', 3]])
-    expect(bySeries([{ ...episodes[0], series: null }, { ...episodes[1], series: undefined }]).map(([s, vs]) => [s, vs.length])).toEqual([[null, 2]])
+    expect(bySeries([{ ...episodes[0], series: null }, { ...episodes[1], series: null }]).map(([s, vs]) => [s, vs.length])).toEqual([[null, 2]])
     expect(bySeries([])).toEqual([])
   })
 })

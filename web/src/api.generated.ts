@@ -827,15 +827,309 @@ export interface components {
             /** Input */
             input: string;
         };
+        /** AddedChannel */
+        AddedChannel: {
+            channel: components["schemas"]["Channel"];
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "channel";
+            sync: components["schemas"]["SyncJob"];
+        };
+        /** AddedVideo */
+        AddedVideo: {
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "video";
+            video: components["schemas"]["Video"];
+        };
+        /** AddedWatched */
+        AddedWatched: {
+            /** Added */
+            added: number;
+            /** Already */
+            already: number;
+            /** Missing */
+            missing: number;
+        };
+        /** CacheItem */
+        CacheItem: {
+            /** Bytes */
+            bytes: number;
+            /** Channel */
+            channel: string | null;
+            /** Error */
+            error: string | null;
+            /** Finished */
+            finished: string | null;
+            /** Formats */
+            formats: string | null;
+            /** Last Played */
+            last_played: string | null;
+            /** Pinned */
+            pinned: boolean;
+            /** Plays */
+            plays: number;
+            /** Protected */
+            protected: string | null;
+            /** Score */
+            score: number;
+            /** Started */
+            started: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "fetching" | "partial" | "ready" | "failed";
+            /** Title */
+            title: string;
+            /** Video Id */
+            video_id: string;
+        };
+        /** CacheReport */
+        CacheReport: {
+            /** By State */
+            by_state: {
+                [key: string]: number;
+            };
+            /** Bytes By State */
+            bytes_by_state: {
+                [key: string]: number;
+            };
+            /** Count */
+            count: number;
+            /** High */
+            high: number;
+            /** Items */
+            items: components["schemas"]["CacheItem"][];
+            /** Limit */
+            limit: number;
+            /** Low */
+            low: number;
+            /** Used */
+            used: number;
+        };
+        /**
+         * CacheUsage
+         * @description Sizes are bytes; eviction starts above `high` and stops under `low`.
+         */
+        CacheUsage: {
+            /** By State */
+            by_state: {
+                [key: string]: number;
+            };
+            /** Bytes By State */
+            bytes_by_state: {
+                [key: string]: number;
+            };
+            /** Count */
+            count: number;
+            /** High */
+            high: number;
+            /** Limit */
+            limit: number;
+            /** Low */
+            low: number;
+            /** Used */
+            used: number;
+        };
+        /** Channel */
+        Channel: {
+            /** Added */
+            added: string | null;
+            /**
+             * Complete
+             * @description Every page of its uploads has been read once.
+             */
+            complete: boolean;
+            /**
+             * Follow
+             * @description Its uploads are synced. False for a channel only here for videos added one by one.
+             */
+            follow: boolean;
+            /** Handle */
+            handle: string | null;
+            /**
+             * Hidden
+             * @description Videos hidden because YouTube no longer has them or they are streams not over yet.
+             */
+            hidden: number;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @description What it is (metadata.py): channel (YouTube), programme, network or category (iPlayer), show or filter (Plex).
+             */
+            kind: string | null;
+            /** Latest */
+            latest: string | null;
+            /**
+             * Platform
+             * @description Where it comes from: 'youtube', 'iplayer' for a BBC iPlayer programme, 'plex'.
+             * @enum {string}
+             */
+            platform: "youtube" | "iplayer" | "plex";
+            /**
+             * Resumable
+             * @description A first sync stopped part way and resumes from where it got to.
+             */
+            resumable: boolean;
+            /** Subscribers */
+            subscribers: number | null;
+            /**
+             * Synced
+             * @description When this channel was last synced.
+             */
+            synced: string | null;
+            /** Thumbnail */
+            thumbnail: string | null;
+            /** Title */
+            title: string;
+            /**
+             * Total Videos
+             * @description YouTube's own count (null when it hides it).
+             */
+            total_videos: number | null;
+            /**
+             * Videos
+             * @description Videos held here that can be watched.
+             */
+            videos: number;
+        };
+        /** ChannelOverview */
+        ChannelOverview: {
+            /** Channel Id */
+            channel_id: string;
+            /** Configured */
+            configured: boolean;
+            group: components["schemas"]["OverviewGroup"] | null;
+            /** Handle */
+            handle: string | null;
+            history: components["schemas"]["OverviewHistory"];
+            library: components["schemas"]["Channel"] | null;
+            suggestion: components["schemas"]["Suggestion"] | null;
+            /** Thumbnail */
+            thumbnail: string | null;
+            /** Title */
+            title: string;
+        };
+        /** ChannelVisit */
+        ChannelVisit: {
+            /** At */
+            at: string;
+            /** Channel Id */
+            channel_id: string;
+            /** Detail */
+            detail: string | null;
+            /** Detail Title */
+            detail_title: string | null;
+            /** Id */
+            id: number;
+            /** Source */
+            source: string;
+            /** Thumbnail */
+            thumbnail: string | null;
+            /** Title */
+            title: string | null;
+        };
+        /** ChannelVisitPage */
+        ChannelVisitPage: {
+            /** Has More */
+            has_more: boolean;
+            /** Items */
+            items: components["schemas"]["ChannelVisit"][];
+        };
         /** CheckIn */
         CheckIn: {
             /** Ids */
             ids: string[];
         };
+        /** Checked */
+        Checked: {
+            /** Back */
+            back: number;
+            /** Checked */
+            checked: number;
+            /** Gone */
+            gone: number;
+            /** Hidden */
+            hidden: string[];
+        };
+        /** ContinueVideo */
+        ContinueVideo: {
+            /** Cache Bytes */
+            cache_bytes: number | null;
+            /** Cache State */
+            cache_state: ("fetching" | "partial" | "ready" | "failed") | null;
+            /** Channel */
+            channel: string | null;
+            /** Channel Id */
+            channel_id: string;
+            /** Duration */
+            duration: number | null;
+            /** Episode */
+            episode: number | null;
+            /**
+             * Expires
+             * @description iPlayer: when it stops being offered (a copy already saved here stays).
+             */
+            expires: string | null;
+            /**
+             * Gone
+             * @description Since when YouTube has not had it (removed or made private). The lists leave such a video out; its own page still opens.
+             */
+            gone: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "youtube" | "iplayer" | "plex";
+            /**
+             * Progress
+             * @description How far through the video that is (0-1, null when its length is not known).
+             */
+            progress: number | null;
+            /** Published */
+            published: string;
+            /**
+             * Resume
+             * @description Where the last play stopped, in seconds.
+             */
+            resume: number | null;
+            /** Series */
+            series: string | null;
+            /** Thumbnail */
+            thumbnail: string | null;
+            /** Title */
+            title: string;
+            /** Views */
+            views: number | null;
+        };
+        /** Disk */
+        Disk: {
+            /** Free */
+            free: number;
+            /** Total */
+            total: number;
+            /** Used */
+            used: number;
+        };
         /** DismissIn */
         DismissIn: {
             /** Dismissed */
             dismissed: boolean;
+        };
+        /** Dropped */
+        Dropped: {
+            /** Freed */
+            freed: number;
+            /** Video Id */
+            video_id: string;
         };
         /** EvictIn */
         EvictIn: {
@@ -844,6 +1138,26 @@ export interface components {
              * @default false
              */
             dry_run: boolean;
+        };
+        /** Evicted */
+        Evicted: {
+            /** Dry Run */
+            dry_run: boolean;
+            /** Evicted */
+            evicted: components["schemas"]["EvictedItem"][];
+            /** Freed */
+            freed: number;
+        };
+        /** EvictedItem */
+        EvictedItem: {
+            /** Bytes */
+            bytes: number;
+            /** Score */
+            score: number;
+            /** Title */
+            title: string;
+            /** Video Id */
+            video_id: string;
         };
         /**
          * FollowIn
@@ -880,6 +1194,54 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** Health */
+        Health: {
+            /** Ok */
+            ok: boolean;
+            /** Version */
+            version: string;
+        };
+        /** HistorySource */
+        HistorySource: {
+            /** Channels */
+            channels: number;
+            /** First */
+            first: string;
+            /** Last */
+            last: string;
+            /** Source */
+            source: string;
+            /** Watches */
+            watches: number;
+        };
+        /** HistoryStats */
+        HistoryStats: {
+            /**
+             * By
+             * @enum {string}
+             */
+            by: "day" | "month";
+            /** Channels */
+            channels: number;
+            /** Channels Top */
+            channels_top: components["schemas"]["TopChannel"][];
+            /** Configured */
+            configured: boolean;
+            /** First */
+            first: string | null;
+            /** Last */
+            last: string | null;
+            /** Periods */
+            periods: components["schemas"]["Period"][];
+            /** Sources */
+            sources: components["schemas"]["HistorySource"][];
+            /** Videos */
+            videos: number;
+            /** Videos Top */
+            videos_top: components["schemas"]["TopVideo"][];
+            /** Watches */
+            watches: number;
+        };
         /** ImportIn */
         ImportIn: {
             /** Source */
@@ -887,20 +1249,314 @@ export interface components {
             /** Text */
             text: string;
         };
+        /** Imported */
+        Imported: {
+            /** First */
+            first: string;
+            /** Last */
+            last: string;
+            refresh: components["schemas"]["Refreshed"];
+            /** Source */
+            source: string;
+            /** Watches */
+            watches: number;
+        };
+        /** LanguageCount */
+        LanguageCount: {
+            /** Code */
+            code: string | null;
+            /** Videos */
+            videos: number;
+        };
+        /** LibraryStatus */
+        LibraryStatus: {
+            /** Channels */
+            channels: number;
+            /**
+             * Configured
+             * @description The YouTube key is in the server's environment, so YouTube channels can be added and synced.
+             */
+            configured: boolean;
+            /**
+             * Filtered
+             * @description Videos Admin's filters (Settings, Shown videos) leave out.
+             */
+            filtered: number;
+            /**
+             * Hidden
+             * @description Those YouTube no longer has (deleted or made private), left out of every list.
+             */
+            hidden: number;
+            /**
+             * Live
+             * @description Streams live now or scheduled, hidden from every list until they end.
+             */
+            live: number;
+            /**
+             * Synced
+             * @description When every followed channel was last synced, null before the first.
+             */
+            synced: string | null;
+            /**
+             * Videos
+             * @description Videos that can be watched.
+             */
+            videos: number;
+        };
         /** NameIn */
         NameIn: {
             /** Name */
             name: string;
+        };
+        /** OverviewGroup */
+        OverviewGroup: {
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Named */
+            named: boolean;
+        };
+        /** OverviewHistory */
+        OverviewHistory: {
+            /** First */
+            first: string | null;
+            /** Last */
+            last: string | null;
+            /** Periods */
+            periods: components["schemas"]["Period"][];
+            /** Sources */
+            sources: components["schemas"]["OverviewSource"][];
+            /** Videos */
+            videos: number;
+            /** Videos Top */
+            videos_top: components["schemas"]["OverviewVideo"][];
+            /** Watches */
+            watches: number;
+        };
+        /** OverviewSource */
+        OverviewSource: {
+            /** Source */
+            source: string;
+            /** Watches */
+            watches: number;
+        };
+        /** OverviewVideo */
+        OverviewVideo: {
+            /** In Library */
+            in_library: boolean;
+            /** Last */
+            last: string;
+            /** Title */
+            title: string | null;
+            /** Video Id */
+            video_id: string;
+            /** Watches */
+            watches: number;
         };
         /** PasteIn */
         PasteIn: {
             /** Text */
             text: string;
         };
+        /** Pasted */
+        Pasted: {
+            /** Already */
+            already: components["schemas"]["PastedAlready"][];
+            /** Found */
+            found: components["schemas"]["PastedFound"][];
+            /** Problems */
+            problems: components["schemas"]["PastedProblem"][];
+        };
+        /** PastedAlready */
+        PastedAlready: {
+            /** Input */
+            input: string;
+            /** Title */
+            title: string;
+        };
+        /** PastedFound */
+        PastedFound: {
+            /** Channel Id */
+            channel_id: string;
+            /** Input */
+            input: string;
+            /** Platform */
+            platform: string;
+            /** Title */
+            title: string;
+        };
+        /** PastedProblem */
+        PastedProblem: {
+            /** Error */
+            error: string;
+            /** Input */
+            input: string;
+        };
+        /** Period */
+        Period: {
+            /** Period */
+            period: string;
+            /** Watches */
+            watches: number;
+        };
         /** PinIn */
         PinIn: {
             /** Pinned */
             pinned: boolean;
+        };
+        /** Play */
+        Play: {
+            /** At */
+            at: string;
+            /** Channel */
+            channel: string | null;
+            /** Channel Id */
+            channel_id: string | null;
+            /** Detail */
+            detail: string | null;
+            /** Detail Title */
+            detail_title: string | null;
+            /** Id */
+            id: number;
+            /** Length */
+            length: number | null;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "none" | "short" | "partial" | "full";
+            /** Position */
+            position: number | null;
+            /** Rank */
+            rank: number | null;
+            /** Source */
+            source: string;
+            /** Thumbnail */
+            thumbnail: string | null;
+            /** Title */
+            title: string | null;
+            /** Updated */
+            updated: string | null;
+            /** Video Id */
+            video_id: string;
+            /** Watched */
+            watched: number | null;
+        };
+        /** PlayPage */
+        PlayPage: {
+            /** Has More */
+            has_more: boolean;
+            /** Items */
+            items: components["schemas"]["Play"][];
+        };
+        /** PlaySummary */
+        PlaySummary: {
+            /** Channel Views */
+            channel_views: {
+                [key: string]: number;
+            };
+            /** Days */
+            days: number;
+            /** Outcomes */
+            outcomes: {
+                [key: string]: number;
+            };
+            /** Plays */
+            plays: number;
+            /** Seconds */
+            seconds: number;
+            /** Since */
+            since: string;
+            /** Sources */
+            sources: {
+                [key: string]: components["schemas"]["SourceCount"];
+            };
+            /** Videos */
+            videos: number;
+        };
+        /** PlexChoice */
+        PlexChoice: {
+            /** Key */
+            key: string;
+            /** Title */
+            title: string;
+        };
+        /** PlexFilterKind */
+        PlexFilterKind: {
+            /** Filter */
+            filter: string | null;
+            /** Title */
+            title: string | null;
+            /** Type */
+            type: string | null;
+        };
+        /** PlexItem */
+        PlexItem: {
+            /** Content Rating */
+            content_rating: string | null;
+            /** Episodes */
+            episodes: number | null;
+            /** Followed */
+            followed?: boolean | null;
+            /** Key */
+            key: string;
+            /** Section */
+            section: string | null;
+            /** Summary */
+            summary: string | null;
+            /**
+             * Thumb
+             * @description A Tubes picture address (the token stays on the server).
+             */
+            thumb: string | null;
+            /** Title */
+            title: string;
+            /** Type */
+            type: string;
+            /** Year */
+            year: number | null;
+        };
+        /** PlexPage */
+        PlexPage: {
+            /** Items */
+            items: components["schemas"]["PlexItem"][];
+            /**
+             * Params
+             * @description The filters the server passed on to Plex (the rest were left out).
+             */
+            params: {
+                [key: string]: string;
+            };
+            /** Total */
+            total: number;
+        };
+        /** PlexSection */
+        PlexSection: {
+            /** Key */
+            key: string;
+            /** Locations */
+            locations: string[];
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "movie" | "show";
+        };
+        /** PlexStatus */
+        PlexStatus: {
+            /** Configured */
+            configured: boolean;
+            /** Error */
+            error?: string | null;
+            /** Reachable */
+            reachable: boolean;
+            /** Sections */
+            sections: components["schemas"]["PlexSection"][];
+            /** Version */
+            version: string | null;
         };
         /** ProgressIn */
         ProgressIn: {
@@ -911,10 +1567,565 @@ export interface components {
             /** Watched */
             watched?: number | null;
         };
+        /** QuotaDay */
+        QuotaDay: {
+            /** Calls */
+            calls: number;
+            /** Day */
+            day: string;
+            /**
+             * Failed
+             * @description Calls YouTube answered with an error (they still cost their units).
+             */
+            failed: number;
+            /** Purposes */
+            purposes: {
+                [key: string]: number;
+            };
+            /**
+             * Refused
+             * @description Of those, the ones refused because the quota was spent.
+             */
+            refused: number;
+            /** Units */
+            units: number;
+        };
+        /** QuotaEndpoint */
+        QuotaEndpoint: {
+            /** Calls */
+            calls: number;
+            /** Endpoint */
+            endpoint: string;
+            /**
+             * Failed
+             * @description Calls YouTube answered with an error (they still cost their units).
+             */
+            failed: number;
+            /**
+             * Refused
+             * @description Of those, the ones refused because the quota was spent.
+             */
+            refused: number;
+            /** Units */
+            units: number;
+        };
+        /** QuotaHour */
+        QuotaHour: {
+            /** Calls */
+            calls: number;
+            /**
+             * Failed
+             * @description Calls YouTube answered with an error (they still cost their units).
+             */
+            failed: number;
+            /** Hour */
+            hour: number;
+            /**
+             * Refused
+             * @description Of those, the ones refused because the quota was spent.
+             */
+            refused: number;
+            /** Units */
+            units: number;
+        };
+        /** QuotaPurpose */
+        QuotaPurpose: {
+            /** Calls */
+            calls: number;
+            /**
+             * Failed
+             * @description Calls YouTube answered with an error (they still cost their units).
+             */
+            failed: number;
+            /** Purpose */
+            purpose: string;
+            /**
+             * Refused
+             * @description Of those, the ones refused because the quota was spent.
+             */
+            refused: number;
+            /** Units */
+            units: number;
+        };
+        /** QuotaToday */
+        QuotaToday: {
+            /** Calls */
+            calls: number;
+            /** Endpoints */
+            endpoints: components["schemas"]["QuotaEndpoint"][];
+            /**
+             * Failed
+             * @description Calls YouTube answered with an error (they still cost their units).
+             */
+            failed: number;
+            /** Hours */
+            hours: components["schemas"]["QuotaHour"][];
+            /** Purposes */
+            purposes: components["schemas"]["QuotaPurpose"][];
+            /**
+             * Refused
+             * @description Of those, the ones refused because the quota was spent.
+             */
+            refused: number;
+            /** Units */
+            units: number;
+        };
+        /**
+         * QuotaUsage
+         * @description The YouTube key's daily quota as this server has counted it. Google has no call that says how much is left.
+         */
+        QuotaUsage: {
+            /** Configured */
+            configured: boolean;
+            /**
+             * Day
+             * @description Today, as the quota counts days: YYYY-MM-DD in Pacific time.
+             */
+            day: string;
+            /** Days */
+            days: components["schemas"]["QuotaDay"][];
+            /** Limit */
+            limit: number;
+            /** Refused */
+            refused: string | null;
+            /** Remaining */
+            remaining: number;
+            /** Resets */
+            resets: string;
+            today: components["schemas"]["QuotaToday"];
+            /** Used */
+            used: number;
+        };
+        /** Refreshed */
+        Refreshed: {
+            /** Channels */
+            channels: number;
+            /** Error */
+            error: string | null;
+            /** Grouped */
+            grouped: number;
+            /** Groups */
+            groups: number;
+            /** Looked Up */
+            looked_up: number;
+            /** Missing */
+            missing: number;
+        };
+        /** RefreshedWithSummary */
+        RefreshedWithSummary: {
+            /** Channels */
+            channels: number;
+            /** Error */
+            error: string | null;
+            /** Grouped */
+            grouped: number;
+            /** Groups */
+            groups: number;
+            /** Looked Up */
+            looked_up: number;
+            /** Missing */
+            missing: number;
+            summary: components["schemas"]["SuggestionSummary"];
+        };
+        /** RelatedStatus */
+        RelatedStatus: {
+            /** Asked */
+            asked: number;
+            /** Due */
+            due: number;
+            /** Failed */
+            failed: number;
+            /** Last */
+            last: string | null;
+            /** Sources */
+            sources: number;
+        };
+        /** Removed */
+        Removed: {
+            /** Channel */
+            channel: string;
+            /** Videos */
+            videos: number;
+        };
+        /** Reported */
+        Reported: {
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "none" | "short" | "partial" | "full";
+        };
+        /** Restarted */
+        Restarted: {
+            /** Channel */
+            channel: string;
+            sync: components["schemas"]["SyncJob"];
+            /** Videos */
+            videos: number;
+        };
+        /** Segment */
+        Segment: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "skip" | "mute";
+            /** Category */
+            category: string;
+            /** End */
+            end: number;
+            /** Start */
+            start: number;
+        };
+        /** SegmentKind */
+        SegmentKind: {
+            /** Detail */
+            detail: string;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode: "off" | "ask" | "auto";
+        };
+        /** Segments */
+        Segments: {
+            /** Categories */
+            categories: components["schemas"]["SegmentKind"][];
+            /**
+             * Error
+             * @description Set when the source could not be asked just now (what it had is still sent).
+             */
+            error: string | null;
+            /** Segments */
+            segments: components["schemas"]["Segment"][];
+        };
+        /**
+         * ShownFilters
+         * @description Which videos the watching side shows. Lengths in seconds, null for no limit.
+         */
+        ShownFilters: {
+            /**
+             * Captions
+             * @enum {string}
+             */
+            captions: "any" | "only";
+            /**
+             * Filtered
+             * @description How many videos these leave out now.
+             */
+            filtered: number;
+            /** Language Counts */
+            language_counts: components["schemas"]["LanguageCount"][];
+            /**
+             * Languages
+             * @description Base language codes a video's spoken language must be one of; empty for every language.
+             */
+            languages: string[];
+            /** Max Seconds */
+            max_seconds: number | null;
+            /** Min Seconds */
+            min_seconds: number | null;
+            /**
+             * Region
+             * @description The country the server watches from (GB): a video YouTube says does not play there is left out. Null: not checked.
+             */
+            region: string | null;
+            /**
+             * Streams
+             * @enum {string}
+             */
+            streams: "current" | "all";
+            /**
+             * Unknown Language
+             * @enum {string}
+             */
+            unknown_language: "show" | "hide";
+        };
+        /** SourceCount */
+        SourceCount: {
+            /** Full */
+            full: number;
+            /** Plays */
+            plays: number;
+        };
+        /** SourceRemoved */
+        SourceRemoved: {
+            refresh: components["schemas"]["Refreshed"];
+            /** Source */
+            source: string;
+        };
+        /** Started */
+        Started: {
+            /** Complete */
+            complete: boolean;
+            /**
+             * Copy
+             * @description The id the copy's files are under: the video's own, or `<id>~native` for a Plex file kept as it is (fetcher.plex_copy).
+             */
+            copy: string;
+            /** Error */
+            error: string | null;
+            /** Formats */
+            formats: string | null;
+            /** Last Played */
+            last_played: string | null;
+            /** Play Id */
+            play_id: number;
+            /** Playable */
+            playable: boolean;
+            /** Plays */
+            plays: number;
+            /**
+             * Resume
+             * @description Where the last part-watched play stopped, in seconds, or null to start from the beginning.
+             */
+            resume: number | null;
+            /** Seconds */
+            seconds: number;
+            /** Segments */
+            segments: number;
+            /**
+             * State
+             * @description none: there is no copy and no fetch.
+             */
+            state: ("fetching" | "partial" | "ready" | "failed") | "none";
+        };
+        /** Stream */
+        Stream: {
+            /** Complete */
+            complete: boolean;
+            /** Error */
+            error: string | null;
+            /** Formats */
+            formats: string | null;
+            /** Last Played */
+            last_played: string | null;
+            /** Playable */
+            playable: boolean;
+            /** Plays */
+            plays: number;
+            /** Seconds */
+            seconds: number;
+            /** Segments */
+            segments: number;
+            /**
+             * State
+             * @description none: there is no copy and no fetch.
+             */
+            state: ("fetching" | "partial" | "ready" | "failed") | "none";
+        };
+        /** Suggestion */
+        Suggestion: {
+            /** Channel Id */
+            channel_id: string;
+            /** Dismissed */
+            dismissed: string | null;
+            /** First */
+            first: string | null;
+            /** Group Id */
+            group_id: number | null;
+            /** Handle */
+            handle: string | null;
+            /** In Library */
+            in_library: boolean;
+            /** Last */
+            last: string | null;
+            /** Link */
+            link: string;
+            /** Made For Kids */
+            made_for_kids: boolean | null;
+            /** Missing */
+            missing: boolean;
+            /** Pasted */
+            pasted: string | null;
+            /** Platform */
+            platform: string;
+            /** Related Score */
+            related_score: number;
+            /** Score */
+            score: number;
+            /** Subscribers */
+            subscribers: number | null;
+            /** Suggested By */
+            suggested_by: number;
+            /** Suggested From */
+            suggested_from: string[];
+            /** Thumbnail */
+            thumbnail: string | null;
+            /** Title */
+            title: string;
+            /** Topics */
+            topics: string[];
+            /** Total Videos */
+            total_videos: number | null;
+            /** Videos */
+            videos: number;
+            /** Watches */
+            watches: number;
+        };
+        /** SuggestionGroup */
+        SuggestionGroup: {
+            /** Channels */
+            channels: number;
+            /** Id */
+            id: number;
+            /** Name */
+            name: string;
+            /** Named */
+            named: boolean;
+        };
+        /** SuggestionPage */
+        SuggestionPage: {
+            /** Items */
+            items: components["schemas"]["Suggestion"][];
+            /** Total */
+            total: number;
+        };
+        /** SuggestionSummary */
+        SuggestionSummary: {
+            /** Configured */
+            configured: boolean;
+            /**
+             * Database
+             * @description A history database is set on the server: Regroup reads it again first.
+             */
+            database: boolean;
+            /** Dismissed */
+            dismissed: number;
+            /** Followed */
+            followed: number;
+            /** Groups */
+            groups: components["schemas"]["SuggestionGroup"][];
+            /** Kids */
+            kids: number;
+            /** Open */
+            open: number;
+            /** Pasted */
+            pasted: number;
+            /** Refreshed */
+            refreshed: string | null;
+            related: components["schemas"]["RelatedStatus"];
+            /** Sources */
+            sources: components["schemas"]["HistorySource"][];
+            /** Suggested */
+            suggested: number;
+            /** Topics */
+            topics: components["schemas"]["Topic"][];
+            /** Ungrouped */
+            ungrouped: number;
+            /** Unwatched */
+            unwatched: number;
+        };
+        /** SyncError */
+        SyncError: {
+            /** Added */
+            added?: number | null;
+            /** Channel */
+            channel: string | null;
+            /** Error */
+            error: string;
+            /** Title */
+            title: string | null;
+        };
         /** SyncIn */
         SyncIn: {
             /** Channels */
             channels?: string[] | null;
+        };
+        /** SyncJob */
+        SyncJob: {
+            /**
+             * Added
+             * @description New videos so far.
+             */
+            added: number;
+            /**
+             * Current
+             * @description The channel being synced now, by title.
+             */
+            current: string | null;
+            /** Done */
+            done: number;
+            /** Errors */
+            errors: components["schemas"]["SyncError"][];
+            /** Finished */
+            finished: string | null;
+            /**
+             * Gone
+             * @description Videos the recheck after a sync of every channel found gone from YouTube, and hid.
+             */
+            gone: number;
+            /** Running */
+            running: boolean;
+            /** Started */
+            started: string | null;
+            /** Total */
+            total: number;
+        };
+        /** SystemStatus */
+        SystemStatus: {
+            cache: components["schemas"]["CacheUsage"];
+            /** Cache Dir */
+            cache_dir: string;
+            /** Can Fetch */
+            can_fetch: boolean;
+            /** Data Dir */
+            data_dir: string;
+            disk: components["schemas"]["Disk"];
+            /** Fetching */
+            fetching: string[];
+            /** Ffmpeg */
+            ffmpeg: string | null;
+            library: components["schemas"]["LibraryStatus"];
+            /** Platform */
+            platform: string;
+            /** Python */
+            python: string;
+            /** Version */
+            version: string;
+            /** Ytdlp */
+            ytdlp: string | null;
+        };
+        /** TopChannel */
+        TopChannel: {
+            /** Channel Id */
+            channel_id: string;
+            /** Followed */
+            followed: boolean;
+            /** Last */
+            last: string;
+            /** Title */
+            title: string | null;
+            /** Videos */
+            videos: number;
+            /** Watches */
+            watches: number;
+        };
+        /** TopVideo */
+        TopVideo: {
+            /** Channel */
+            channel: string | null;
+            /** Channel Id */
+            channel_id: string | null;
+            /** Last */
+            last: string;
+            /** Title */
+            title: string | null;
+            /** Video Id */
+            video_id: string;
+            /** Watches */
+            watches: number;
+        };
+        /** Topic */
+        Topic: {
+            /** Channels */
+            channels: number;
+            /** Name */
+            name: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -928,6 +2139,106 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /** Video */
+        Video: {
+            /** Cache Bytes */
+            cache_bytes: number | null;
+            /** Cache State */
+            cache_state: ("fetching" | "partial" | "ready" | "failed") | null;
+            /** Channel */
+            channel: string | null;
+            /** Channel Id */
+            channel_id: string;
+            /** Duration */
+            duration: number | null;
+            /** Episode */
+            episode: number | null;
+            /**
+             * Expires
+             * @description iPlayer: when it stops being offered (a copy already saved here stays).
+             */
+            expires: string | null;
+            /**
+             * Gone
+             * @description Since when YouTube has not had it (removed or made private). The lists leave such a video out; its own page still opens.
+             */
+            gone: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "youtube" | "iplayer" | "plex";
+            /** Published */
+            published: string;
+            /** Series */
+            series: string | null;
+            /** Thumbnail */
+            thumbnail: string | null;
+            /** Title */
+            title: string;
+            /** Views */
+            views: number | null;
+        };
+        /** VideoDetail */
+        VideoDetail: {
+            /** Cache Bytes */
+            cache_bytes: number | null;
+            /** Cache State */
+            cache_state: ("fetching" | "partial" | "ready" | "failed") | null;
+            /** Channel */
+            channel: string | null;
+            /** Channel Id */
+            channel_id: string;
+            /** Duration */
+            duration: number | null;
+            /** Episode */
+            episode: number | null;
+            /**
+             * Expires
+             * @description iPlayer: when it stops being offered (a copy already saved here stays).
+             */
+            expires: string | null;
+            /**
+             * Gone
+             * @description Since when YouTube has not had it (removed or made private). The lists leave such a video out; its own page still opens.
+             */
+            gone: string | null;
+            /** Id */
+            id: string;
+            /** Last Played */
+            last_played: string | null;
+            /**
+             * Platform
+             * @enum {string}
+             */
+            platform: "youtube" | "iplayer" | "plex";
+            /** Plays */
+            plays: number;
+            /** Published */
+            published: string;
+            /** Series */
+            series: string | null;
+            /** Thumbnail */
+            thumbnail: string | null;
+            /** Title */
+            title: string;
+            /** Views */
+            views: number | null;
+        };
+        /** VideoPage */
+        VideoPage: {
+            /** Has More */
+            has_more: boolean;
+            /** Videos */
+            videos: components["schemas"]["Video"][];
+        };
+        /** Visited */
+        Visited: {
+            /** Id */
+            id: number;
         };
     };
     responses: never;
@@ -947,13 +2258,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["CacheReport"];
                 };
             };
         };
@@ -971,13 +2282,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Evicted"];
                 };
             };
             /** @description Validation Error */
@@ -1037,13 +2348,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Dropped"];
                 };
             };
             /** @description Validation Error */
@@ -1069,13 +2380,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ChannelVisitPage"];
                 };
             };
             /** @description Validation Error */
@@ -1098,13 +2409,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Channel"][];
                 };
             };
         };
@@ -1120,13 +2431,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Channel"];
                 };
             };
             /** @description Validation Error */
@@ -1151,13 +2462,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Removed"];
                 };
             };
             /** @description Validation Error */
@@ -1182,13 +2493,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ChannelOverview"];
                 };
             };
             /** @description Validation Error */
@@ -1213,13 +2524,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Restarted"];
                 };
             };
             /** @description Validation Error */
@@ -1248,13 +2559,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Visited"];
                 };
             };
             /** @description Validation Error */
@@ -1277,13 +2588,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Health"];
                 };
             };
         };
@@ -1302,13 +2613,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["HistoryStats"];
                 };
             };
             /** @description Validation Error */
@@ -1331,13 +2642,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["LibraryStatus"];
                 };
             };
         };
@@ -1355,13 +2666,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AddedChannel"] | components["schemas"]["AddedVideo"];
                 };
             };
             /** @description Validation Error */
@@ -1384,13 +2695,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ShownFilters"];
                 };
             };
         };
@@ -1410,13 +2721,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ShownFilters"];
                 };
             };
             /** @description Validation Error */
@@ -1439,13 +2750,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SyncJob"];
                 };
             };
         };
@@ -1463,13 +2774,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SyncJob"];
                 };
             };
             /** @description Validation Error */
@@ -1529,13 +2840,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PlayPage"];
                 };
             };
             /** @description Validation Error */
@@ -1560,13 +2871,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PlaySummary"];
                 };
             };
             /** @description Validation Error */
@@ -1595,13 +2906,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Reported"];
                 };
             };
             /** @description Validation Error */
@@ -1624,13 +2935,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PlexStatus"];
                 };
             };
         };
@@ -1648,13 +2959,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PlexPage"];
                 };
             };
             /** @description Validation Error */
@@ -1681,13 +2992,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AddedChannel"] | components["schemas"]["AddedVideo"];
                 };
             };
             /** @description Validation Error */
@@ -1744,13 +3055,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PlexItem"][];
                 };
             };
             /** @description Validation Error */
@@ -1775,13 +3086,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PlexFilterKind"][];
                 };
             };
             /** @description Validation Error */
@@ -1807,13 +3118,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["PlexChoice"][];
                 };
             };
             /** @description Validation Error */
@@ -1836,13 +3147,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["QuotaUsage"];
                 };
             };
         };
@@ -1911,13 +3222,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SegmentKind"][];
                 };
             };
         };
@@ -1940,13 +3251,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SuggestionPage"];
                 };
             };
             /** @description Validation Error */
@@ -1975,13 +3286,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["OverviewGroup"];
                 };
             };
             /** @description Validation Error */
@@ -2008,13 +3319,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Imported"];
                 };
             };
             /** @description Validation Error */
@@ -2041,13 +3352,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Pasted"];
                 };
             };
             /** @description Validation Error */
@@ -2070,13 +3381,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["RefreshedWithSummary"];
                 };
             };
         };
@@ -2092,13 +3403,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SourceRemoved"];
                 };
             };
             /** @description Validation Error */
@@ -2121,13 +3432,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SuggestionSummary"];
                 };
             };
         };
@@ -2147,13 +3458,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Suggestion"];
                 };
             };
             /** @description Validation Error */
@@ -2178,13 +3489,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["AddedWatched"];
                 };
             };
             /** @description Validation Error */
@@ -2207,13 +3518,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["SystemStatus"];
                 };
             };
         };
@@ -2232,13 +3543,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["VideoPage"];
                 };
             };
             /** @description Validation Error */
@@ -2265,13 +3576,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Checked"];
                 };
             };
             /** @description Validation Error */
@@ -2296,13 +3607,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ContinueVideo"][];
                 };
             };
             /** @description Validation Error */
@@ -2328,13 +3639,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Video"][];
                 };
             };
             /** @description Validation Error */
@@ -2359,13 +3670,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["VideoDetail"];
                 };
             };
             /** @description Validation Error */
@@ -2394,13 +3705,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Started"];
                 };
             };
             /** @description Validation Error */
@@ -2425,13 +3736,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Segments"];
                 };
             };
             /** @description Validation Error */
@@ -2456,13 +3767,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["Stream"];
                 };
             };
             /** @description Validation Error */

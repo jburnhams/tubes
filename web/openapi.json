@@ -14,6 +14,673 @@
         "title": "AddIn",
         "type": "object"
       },
+      "AddedChannel": {
+        "properties": {
+          "channel": {
+            "$ref": "#/components/schemas/Channel"
+          },
+          "kind": {
+            "const": "channel",
+            "title": "Kind",
+            "type": "string"
+          },
+          "sync": {
+            "$ref": "#/components/schemas/SyncJob"
+          }
+        },
+        "required": [
+          "kind",
+          "channel",
+          "sync"
+        ],
+        "title": "AddedChannel",
+        "type": "object"
+      },
+      "AddedVideo": {
+        "properties": {
+          "kind": {
+            "const": "video",
+            "title": "Kind",
+            "type": "string"
+          },
+          "video": {
+            "$ref": "#/components/schemas/Video"
+          }
+        },
+        "required": [
+          "kind",
+          "video"
+        ],
+        "title": "AddedVideo",
+        "type": "object"
+      },
+      "AddedWatched": {
+        "properties": {
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          },
+          "already": {
+            "title": "Already",
+            "type": "integer"
+          },
+          "missing": {
+            "title": "Missing",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "added",
+          "already",
+          "missing"
+        ],
+        "title": "AddedWatched",
+        "type": "object"
+      },
+      "CacheItem": {
+        "properties": {
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "finished": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished"
+          },
+          "formats": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formats"
+          },
+          "last_played": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Played"
+          },
+          "pinned": {
+            "title": "Pinned",
+            "type": "boolean"
+          },
+          "plays": {
+            "title": "Plays",
+            "type": "integer"
+          },
+          "protected": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protected"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "started": {
+            "title": "Started",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "fetching",
+              "partial",
+              "ready",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "video_id": {
+            "title": "Video Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "video_id",
+          "title",
+          "channel",
+          "state",
+          "bytes",
+          "started",
+          "finished",
+          "formats",
+          "error",
+          "pinned",
+          "plays",
+          "last_played",
+          "score",
+          "protected"
+        ],
+        "title": "CacheItem",
+        "type": "object"
+      },
+      "CacheReport": {
+        "properties": {
+          "by_state": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "fetching",
+                "partial",
+                "ready",
+                "failed"
+              ]
+            },
+            "title": "By State",
+            "type": "object"
+          },
+          "bytes_by_state": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "fetching",
+                "partial",
+                "ready",
+                "failed"
+              ]
+            },
+            "title": "Bytes By State",
+            "type": "object"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "high": {
+            "title": "High",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CacheItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "low": {
+            "title": "Low",
+            "type": "integer"
+          },
+          "used": {
+            "title": "Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "used",
+          "limit",
+          "high",
+          "low",
+          "count",
+          "by_state",
+          "bytes_by_state",
+          "items"
+        ],
+        "title": "CacheReport",
+        "type": "object"
+      },
+      "CacheUsage": {
+        "description": "Sizes are bytes; eviction starts above `high` and stops under `low`.",
+        "properties": {
+          "by_state": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "fetching",
+                "partial",
+                "ready",
+                "failed"
+              ]
+            },
+            "title": "By State",
+            "type": "object"
+          },
+          "bytes_by_state": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "fetching",
+                "partial",
+                "ready",
+                "failed"
+              ]
+            },
+            "title": "Bytes By State",
+            "type": "object"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "high": {
+            "title": "High",
+            "type": "integer"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "low": {
+            "title": "Low",
+            "type": "integer"
+          },
+          "used": {
+            "title": "Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "used",
+          "limit",
+          "high",
+          "low",
+          "count",
+          "by_state",
+          "bytes_by_state"
+        ],
+        "title": "CacheUsage",
+        "type": "object"
+      },
+      "Channel": {
+        "properties": {
+          "added": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Added"
+          },
+          "complete": {
+            "description": "Every page of its uploads has been read once.",
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "follow": {
+            "description": "Its uploads are synced. False for a channel only here for videos added one by one.",
+            "title": "Follow",
+            "type": "boolean"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "hidden": {
+            "description": "Videos hidden because YouTube no longer has them or they are streams not over yet.",
+            "title": "Hidden",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What it is (metadata.py): channel (YouTube), programme, network or category (iPlayer), show or filter (Plex).",
+            "title": "Kind"
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest"
+          },
+          "platform": {
+            "description": "Where it comes from: 'youtube', 'iplayer' for a BBC iPlayer programme, 'plex'.",
+            "enum": [
+              "youtube",
+              "iplayer",
+              "plex"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "resumable": {
+            "description": "A first sync stopped part way and resumes from where it got to.",
+            "title": "Resumable",
+            "type": "boolean"
+          },
+          "subscribers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscribers"
+          },
+          "synced": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When this channel was last synced.",
+            "title": "Synced"
+          },
+          "thumbnail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "total_videos": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "YouTube's own count (null when it hides it).",
+            "title": "Total Videos"
+          },
+          "videos": {
+            "description": "Videos held here that can be watched.",
+            "title": "Videos",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "platform",
+          "kind",
+          "title",
+          "handle",
+          "thumbnail",
+          "synced",
+          "videos",
+          "hidden",
+          "latest",
+          "total_videos",
+          "subscribers",
+          "follow",
+          "complete",
+          "resumable",
+          "added"
+        ],
+        "title": "Channel",
+        "type": "object"
+      },
+      "ChannelOverview": {
+        "properties": {
+          "channel_id": {
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverviewGroup"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "history": {
+            "$ref": "#/components/schemas/OverviewHistory"
+          },
+          "library": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Channel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "suggestion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Suggestion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "thumbnail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel_id",
+          "title",
+          "thumbnail",
+          "handle",
+          "library",
+          "suggestion",
+          "group",
+          "configured",
+          "history"
+        ],
+        "title": "ChannelOverview",
+        "type": "object"
+      },
+      "ChannelVisit": {
+        "properties": {
+          "at": {
+            "title": "At",
+            "type": "string"
+          },
+          "channel_id": {
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "detail_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail Title"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "thumbnail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "id",
+          "channel_id",
+          "title",
+          "thumbnail",
+          "at",
+          "source",
+          "detail",
+          "detail_title"
+        ],
+        "title": "ChannelVisit",
+        "type": "object"
+      },
+      "ChannelVisitPage": {
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChannelVisit"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "title": "ChannelVisitPage",
+        "type": "object"
+      },
       "CheckIn": {
         "properties": {
           "ids": {
@@ -32,6 +699,252 @@
         "title": "CheckIn",
         "type": "object"
       },
+      "Checked": {
+        "properties": {
+          "back": {
+            "title": "Back",
+            "type": "integer"
+          },
+          "checked": {
+            "title": "Checked",
+            "type": "integer"
+          },
+          "gone": {
+            "title": "Gone",
+            "type": "integer"
+          },
+          "hidden": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Hidden",
+            "type": "array"
+          }
+        },
+        "required": [
+          "checked",
+          "gone",
+          "back",
+          "hidden"
+        ],
+        "title": "Checked",
+        "type": "object"
+      },
+      "ContinueVideo": {
+        "properties": {
+          "cache_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Bytes"
+          },
+          "cache_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fetching",
+                  "partial",
+                  "ready",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache State"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "channel_id": {
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode"
+          },
+          "expires": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "iPlayer: when it stops being offered (a copy already saved here stays).",
+            "title": "Expires"
+          },
+          "gone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Since when YouTube has not had it (removed or made private). The lists leave such a video out; its own page still opens.",
+            "title": "Gone"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "platform": {
+            "enum": [
+              "youtube",
+              "iplayer",
+              "plex"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How far through the video that is (0-1, null when its length is not known).",
+            "title": "Progress"
+          },
+          "published": {
+            "title": "Published",
+            "type": "string"
+          },
+          "resume": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the last play stopped, in seconds.",
+            "title": "Resume"
+          },
+          "series": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series"
+          },
+          "thumbnail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "views": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Views"
+          }
+        },
+        "required": [
+          "id",
+          "platform",
+          "channel_id",
+          "channel",
+          "title",
+          "published",
+          "duration",
+          "thumbnail",
+          "views",
+          "cache_state",
+          "cache_bytes",
+          "gone",
+          "expires",
+          "series",
+          "episode",
+          "resume",
+          "progress"
+        ],
+        "title": "ContinueVideo",
+        "type": "object"
+      },
+      "Disk": {
+        "properties": {
+          "free": {
+            "title": "Free",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "used": {
+            "title": "Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "used",
+          "free"
+        ],
+        "title": "Disk",
+        "type": "object"
+      },
       "DismissIn": {
         "properties": {
           "dismissed": {
@@ -45,6 +958,24 @@
         "title": "DismissIn",
         "type": "object"
       },
+      "Dropped": {
+        "properties": {
+          "freed": {
+            "title": "Freed",
+            "type": "integer"
+          },
+          "video_id": {
+            "title": "Video Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "video_id",
+          "freed"
+        ],
+        "title": "Dropped",
+        "type": "object"
+      },
       "EvictIn": {
         "properties": {
           "dry_run": {
@@ -54,6 +985,60 @@
           }
         },
         "title": "EvictIn",
+        "type": "object"
+      },
+      "Evicted": {
+        "properties": {
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "evicted": {
+            "items": {
+              "$ref": "#/components/schemas/EvictedItem"
+            },
+            "title": "Evicted",
+            "type": "array"
+          },
+          "freed": {
+            "title": "Freed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "evicted",
+          "freed",
+          "dry_run"
+        ],
+        "title": "Evicted",
+        "type": "object"
+      },
+      "EvictedItem": {
+        "properties": {
+          "bytes": {
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "video_id": {
+            "title": "Video Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "video_id",
+          "title",
+          "bytes",
+          "score"
+        ],
+        "title": "EvictedItem",
         "type": "object"
       },
       "FollowIn": {
@@ -184,6 +1169,150 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "Health": {
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "version"
+        ],
+        "title": "Health",
+        "type": "object"
+      },
+      "HistorySource": {
+        "properties": {
+          "channels": {
+            "title": "Channels",
+            "type": "integer"
+          },
+          "first": {
+            "title": "First",
+            "type": "string"
+          },
+          "last": {
+            "title": "Last",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "watches": {
+            "title": "Watches",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source",
+          "watches",
+          "channels",
+          "first",
+          "last"
+        ],
+        "title": "HistorySource",
+        "type": "object"
+      },
+      "HistoryStats": {
+        "properties": {
+          "by": {
+            "enum": [
+              "day",
+              "month"
+            ],
+            "title": "By",
+            "type": "string"
+          },
+          "channels": {
+            "title": "Channels",
+            "type": "integer"
+          },
+          "channels_top": {
+            "items": {
+              "$ref": "#/components/schemas/TopChannel"
+            },
+            "title": "Channels Top",
+            "type": "array"
+          },
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "first": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/Period"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/HistorySource"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "videos": {
+            "title": "Videos",
+            "type": "integer"
+          },
+          "videos_top": {
+            "items": {
+              "$ref": "#/components/schemas/TopVideo"
+            },
+            "title": "Videos Top",
+            "type": "array"
+          },
+          "watches": {
+            "title": "Watches",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "watches",
+          "videos",
+          "channels",
+          "first",
+          "last",
+          "by",
+          "periods",
+          "channels_top",
+          "videos_top",
+          "sources",
+          "configured"
+        ],
+        "title": "HistoryStats",
+        "type": "object"
+      },
       "ImportIn": {
         "properties": {
           "source": {
@@ -202,6 +1331,119 @@
         "title": "ImportIn",
         "type": "object"
       },
+      "Imported": {
+        "properties": {
+          "first": {
+            "title": "First",
+            "type": "string"
+          },
+          "last": {
+            "title": "Last",
+            "type": "string"
+          },
+          "refresh": {
+            "$ref": "#/components/schemas/Refreshed"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "watches": {
+            "title": "Watches",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source",
+          "watches",
+          "first",
+          "last",
+          "refresh"
+        ],
+        "title": "Imported",
+        "type": "object"
+      },
+      "LanguageCount": {
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "videos": {
+            "title": "Videos",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "videos"
+        ],
+        "title": "LanguageCount",
+        "type": "object"
+      },
+      "LibraryStatus": {
+        "properties": {
+          "channels": {
+            "title": "Channels",
+            "type": "integer"
+          },
+          "configured": {
+            "description": "The YouTube key is in the server's environment, so YouTube channels can be added and synced.",
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "filtered": {
+            "description": "Videos Admin's filters (Settings, Shown videos) leave out.",
+            "title": "Filtered",
+            "type": "integer"
+          },
+          "hidden": {
+            "description": "Those YouTube no longer has (deleted or made private), left out of every list.",
+            "title": "Hidden",
+            "type": "integer"
+          },
+          "live": {
+            "description": "Streams live now or scheduled, hidden from every list until they end.",
+            "title": "Live",
+            "type": "integer"
+          },
+          "synced": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When every followed channel was last synced, null before the first.",
+            "title": "Synced"
+          },
+          "videos": {
+            "description": "Videos that can be watched.",
+            "title": "Videos",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "synced",
+          "channels",
+          "videos",
+          "hidden",
+          "live",
+          "filtered",
+          "configured"
+        ],
+        "title": "LibraryStatus",
+        "type": "object"
+      },
       "NameIn": {
         "properties": {
           "name": {
@@ -213,6 +1455,153 @@
           "name"
         ],
         "title": "NameIn",
+        "type": "object"
+      },
+      "OverviewGroup": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "named": {
+            "title": "Named",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "named"
+        ],
+        "title": "OverviewGroup",
+        "type": "object"
+      },
+      "OverviewHistory": {
+        "properties": {
+          "first": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "periods": {
+            "items": {
+              "$ref": "#/components/schemas/Period"
+            },
+            "title": "Periods",
+            "type": "array"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewSource"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "videos": {
+            "title": "Videos",
+            "type": "integer"
+          },
+          "videos_top": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewVideo"
+            },
+            "title": "Videos Top",
+            "type": "array"
+          },
+          "watches": {
+            "title": "Watches",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "watches",
+          "videos",
+          "first",
+          "last",
+          "sources",
+          "periods",
+          "videos_top"
+        ],
+        "title": "OverviewHistory",
+        "type": "object"
+      },
+      "OverviewSource": {
+        "properties": {
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "watches": {
+            "title": "Watches",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "source",
+          "watches"
+        ],
+        "title": "OverviewSource",
+        "type": "object"
+      },
+      "OverviewVideo": {
+        "properties": {
+          "in_library": {
+            "title": "In Library",
+            "type": "boolean"
+          },
+          "last": {
+            "title": "Last",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "video_id": {
+            "title": "Video Id",
+            "type": "string"
+          },
+          "watches": {
+            "title": "Watches",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "video_id",
+          "title",
+          "watches",
+          "last",
+          "in_library"
+        ],
+        "title": "OverviewVideo",
         "type": "object"
       },
       "PasteIn": {
@@ -228,6 +1617,120 @@
         "title": "PasteIn",
         "type": "object"
       },
+      "Pasted": {
+        "properties": {
+          "already": {
+            "items": {
+              "$ref": "#/components/schemas/PastedAlready"
+            },
+            "title": "Already",
+            "type": "array"
+          },
+          "found": {
+            "items": {
+              "$ref": "#/components/schemas/PastedFound"
+            },
+            "title": "Found",
+            "type": "array"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/PastedProblem"
+            },
+            "title": "Problems",
+            "type": "array"
+          }
+        },
+        "required": [
+          "found",
+          "already",
+          "problems"
+        ],
+        "title": "Pasted",
+        "type": "object"
+      },
+      "PastedAlready": {
+        "properties": {
+          "input": {
+            "title": "Input",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "input",
+          "title"
+        ],
+        "title": "PastedAlready",
+        "type": "object"
+      },
+      "PastedFound": {
+        "properties": {
+          "channel_id": {
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "input": {
+            "title": "Input",
+            "type": "string"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "input",
+          "platform",
+          "channel_id",
+          "title"
+        ],
+        "title": "PastedFound",
+        "type": "object"
+      },
+      "PastedProblem": {
+        "properties": {
+          "error": {
+            "title": "Error",
+            "type": "string"
+          },
+          "input": {
+            "title": "Input",
+            "type": "string"
+          }
+        },
+        "required": [
+          "input",
+          "error"
+        ],
+        "title": "PastedProblem",
+        "type": "object"
+      },
+      "Period": {
+        "properties": {
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "watches": {
+            "title": "Watches",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period",
+          "watches"
+        ],
+        "title": "Period",
+        "type": "object"
+      },
       "PinIn": {
         "properties": {
           "pinned": {
@@ -239,6 +1742,546 @@
           "pinned"
         ],
         "title": "PinIn",
+        "type": "object"
+      },
+      "Play": {
+        "properties": {
+          "at": {
+            "title": "At",
+            "type": "string"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "detail_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail Title"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "length": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length"
+          },
+          "outcome": {
+            "enum": [
+              "none",
+              "short",
+              "partial",
+              "full"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rank"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "thumbnail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "updated": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated"
+          },
+          "video_id": {
+            "title": "Video Id",
+            "type": "string"
+          },
+          "watched": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Watched"
+          }
+        },
+        "required": [
+          "id",
+          "video_id",
+          "title",
+          "channel_id",
+          "channel",
+          "thumbnail",
+          "at",
+          "updated",
+          "source",
+          "detail",
+          "detail_title",
+          "rank",
+          "length",
+          "watched",
+          "position",
+          "outcome"
+        ],
+        "title": "Play",
+        "type": "object"
+      },
+      "PlayPage": {
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Play"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "has_more"
+        ],
+        "title": "PlayPage",
+        "type": "object"
+      },
+      "PlaySummary": {
+        "properties": {
+          "channel_views": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Channel Views",
+            "type": "object"
+          },
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "outcomes": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "none",
+                "short",
+                "partial",
+                "full"
+              ]
+            },
+            "title": "Outcomes",
+            "type": "object"
+          },
+          "plays": {
+            "title": "Plays",
+            "type": "integer"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "number"
+          },
+          "since": {
+            "title": "Since",
+            "type": "string"
+          },
+          "sources": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SourceCount"
+            },
+            "title": "Sources",
+            "type": "object"
+          },
+          "videos": {
+            "title": "Videos",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "since",
+          "days",
+          "plays",
+          "seconds",
+          "videos",
+          "outcomes",
+          "sources",
+          "channel_views"
+        ],
+        "title": "PlaySummary",
+        "type": "object"
+      },
+      "PlexChoice": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title"
+        ],
+        "title": "PlexChoice",
+        "type": "object"
+      },
+      "PlexFilterKind": {
+        "properties": {
+          "filter": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          }
+        },
+        "required": [
+          "filter",
+          "title",
+          "type"
+        ],
+        "title": "PlexFilterKind",
+        "type": "object"
+      },
+      "PlexItem": {
+        "properties": {
+          "content_rating": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Rating"
+          },
+          "episodes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episodes"
+          },
+          "followed": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Followed"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "thumb": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A Tubes picture address (the token stays on the server).",
+            "title": "Thumb"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "key",
+          "type",
+          "title",
+          "year",
+          "thumb",
+          "summary",
+          "content_rating",
+          "episodes",
+          "section"
+        ],
+        "title": "PlexItem",
+        "type": "object"
+      },
+      "PlexPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PlexItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "params": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The filters the server passed on to Plex (the rest were left out).",
+            "title": "Params",
+            "type": "object"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "params"
+        ],
+        "title": "PlexPage",
+        "type": "object"
+      },
+      "PlexSection": {
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "locations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Locations",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "movie",
+              "show"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "title",
+          "type",
+          "locations"
+        ],
+        "title": "PlexSection",
+        "type": "object"
+      },
+      "PlexStatus": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "reachable": {
+            "title": "Reachable",
+            "type": "boolean"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/PlexSection"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          }
+        },
+        "required": [
+          "configured",
+          "reachable",
+          "version",
+          "sections"
+        ],
+        "title": "PlexStatus",
         "type": "object"
       },
       "ProgressIn": {
@@ -283,6 +2326,1295 @@
         "title": "ProgressIn",
         "type": "object"
       },
+      "QuotaDay": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "day": {
+            "title": "Day",
+            "type": "string"
+          },
+          "failed": {
+            "description": "Calls YouTube answered with an error (they still cost their units).",
+            "title": "Failed",
+            "type": "integer"
+          },
+          "purposes": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Purposes",
+            "type": "object"
+          },
+          "refused": {
+            "description": "Of those, the ones refused because the quota was spent.",
+            "title": "Refused",
+            "type": "integer"
+          },
+          "units": {
+            "title": "Units",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "calls",
+          "units",
+          "failed",
+          "refused",
+          "day",
+          "purposes"
+        ],
+        "title": "QuotaDay",
+        "type": "object"
+      },
+      "QuotaEndpoint": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "failed": {
+            "description": "Calls YouTube answered with an error (they still cost their units).",
+            "title": "Failed",
+            "type": "integer"
+          },
+          "refused": {
+            "description": "Of those, the ones refused because the quota was spent.",
+            "title": "Refused",
+            "type": "integer"
+          },
+          "units": {
+            "title": "Units",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "calls",
+          "units",
+          "failed",
+          "refused",
+          "endpoint"
+        ],
+        "title": "QuotaEndpoint",
+        "type": "object"
+      },
+      "QuotaHour": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "failed": {
+            "description": "Calls YouTube answered with an error (they still cost their units).",
+            "title": "Failed",
+            "type": "integer"
+          },
+          "hour": {
+            "title": "Hour",
+            "type": "integer"
+          },
+          "refused": {
+            "description": "Of those, the ones refused because the quota was spent.",
+            "title": "Refused",
+            "type": "integer"
+          },
+          "units": {
+            "title": "Units",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "calls",
+          "units",
+          "failed",
+          "refused",
+          "hour"
+        ],
+        "title": "QuotaHour",
+        "type": "object"
+      },
+      "QuotaPurpose": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "failed": {
+            "description": "Calls YouTube answered with an error (they still cost their units).",
+            "title": "Failed",
+            "type": "integer"
+          },
+          "purpose": {
+            "title": "Purpose",
+            "type": "string"
+          },
+          "refused": {
+            "description": "Of those, the ones refused because the quota was spent.",
+            "title": "Refused",
+            "type": "integer"
+          },
+          "units": {
+            "title": "Units",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "calls",
+          "units",
+          "failed",
+          "refused",
+          "purpose"
+        ],
+        "title": "QuotaPurpose",
+        "type": "object"
+      },
+      "QuotaToday": {
+        "properties": {
+          "calls": {
+            "title": "Calls",
+            "type": "integer"
+          },
+          "endpoints": {
+            "items": {
+              "$ref": "#/components/schemas/QuotaEndpoint"
+            },
+            "title": "Endpoints",
+            "type": "array"
+          },
+          "failed": {
+            "description": "Calls YouTube answered with an error (they still cost their units).",
+            "title": "Failed",
+            "type": "integer"
+          },
+          "hours": {
+            "items": {
+              "$ref": "#/components/schemas/QuotaHour"
+            },
+            "title": "Hours",
+            "type": "array"
+          },
+          "purposes": {
+            "items": {
+              "$ref": "#/components/schemas/QuotaPurpose"
+            },
+            "title": "Purposes",
+            "type": "array"
+          },
+          "refused": {
+            "description": "Of those, the ones refused because the quota was spent.",
+            "title": "Refused",
+            "type": "integer"
+          },
+          "units": {
+            "title": "Units",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "calls",
+          "units",
+          "failed",
+          "refused",
+          "purposes",
+          "endpoints",
+          "hours"
+        ],
+        "title": "QuotaToday",
+        "type": "object"
+      },
+      "QuotaUsage": {
+        "description": "The YouTube key's daily quota as this server has counted it. Google has no call that says how much is left.",
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "day": {
+            "description": "Today, as the quota counts days: YYYY-MM-DD in Pacific time.",
+            "title": "Day",
+            "type": "string"
+          },
+          "days": {
+            "items": {
+              "$ref": "#/components/schemas/QuotaDay"
+            },
+            "title": "Days",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "refused": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refused"
+          },
+          "remaining": {
+            "title": "Remaining",
+            "type": "integer"
+          },
+          "resets": {
+            "title": "Resets",
+            "type": "string"
+          },
+          "today": {
+            "$ref": "#/components/schemas/QuotaToday"
+          },
+          "used": {
+            "title": "Used",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "configured",
+          "limit",
+          "day",
+          "used",
+          "remaining",
+          "resets",
+          "refused",
+          "today",
+          "days"
+        ],
+        "title": "QuotaUsage",
+        "type": "object"
+      },
+      "Refreshed": {
+        "properties": {
+          "channels": {
+            "title": "Channels",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "grouped": {
+            "title": "Grouped",
+            "type": "integer"
+          },
+          "groups": {
+            "title": "Groups",
+            "type": "integer"
+          },
+          "looked_up": {
+            "title": "Looked Up",
+            "type": "integer"
+          },
+          "missing": {
+            "title": "Missing",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channels",
+          "groups",
+          "grouped",
+          "looked_up",
+          "missing",
+          "error"
+        ],
+        "title": "Refreshed",
+        "type": "object"
+      },
+      "RefreshedWithSummary": {
+        "properties": {
+          "channels": {
+            "title": "Channels",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "grouped": {
+            "title": "Grouped",
+            "type": "integer"
+          },
+          "groups": {
+            "title": "Groups",
+            "type": "integer"
+          },
+          "looked_up": {
+            "title": "Looked Up",
+            "type": "integer"
+          },
+          "missing": {
+            "title": "Missing",
+            "type": "integer"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SuggestionSummary"
+          }
+        },
+        "required": [
+          "channels",
+          "groups",
+          "grouped",
+          "looked_up",
+          "missing",
+          "error",
+          "summary"
+        ],
+        "title": "RefreshedWithSummary",
+        "type": "object"
+      },
+      "RelatedStatus": {
+        "properties": {
+          "asked": {
+            "title": "Asked",
+            "type": "integer"
+          },
+          "due": {
+            "title": "Due",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "sources": {
+            "title": "Sources",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sources",
+          "asked",
+          "due",
+          "failed",
+          "last"
+        ],
+        "title": "RelatedStatus",
+        "type": "object"
+      },
+      "Removed": {
+        "properties": {
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "videos": {
+            "title": "Videos",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channel",
+          "videos"
+        ],
+        "title": "Removed",
+        "type": "object"
+      },
+      "Reported": {
+        "properties": {
+          "outcome": {
+            "enum": [
+              "none",
+              "short",
+              "partial",
+              "full"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          }
+        },
+        "required": [
+          "outcome"
+        ],
+        "title": "Reported",
+        "type": "object"
+      },
+      "Restarted": {
+        "properties": {
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "sync": {
+            "$ref": "#/components/schemas/SyncJob"
+          },
+          "videos": {
+            "title": "Videos",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channel",
+          "videos",
+          "sync"
+        ],
+        "title": "Restarted",
+        "type": "object"
+      },
+      "Segment": {
+        "properties": {
+          "action": {
+            "enum": [
+              "skip",
+              "mute"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "end": {
+            "title": "End",
+            "type": "number"
+          },
+          "start": {
+            "title": "Start",
+            "type": "number"
+          }
+        },
+        "required": [
+          "category",
+          "start",
+          "end",
+          "action"
+        ],
+        "title": "Segment",
+        "type": "object"
+      },
+      "SegmentKind": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "mode": {
+            "enum": [
+              "off",
+              "ask",
+              "auto"
+            ],
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "detail",
+          "mode"
+        ],
+        "title": "SegmentKind",
+        "type": "object"
+      },
+      "Segments": {
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/SegmentKind"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Set when the source could not be asked just now (what it had is still sent).",
+            "title": "Error"
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/Segment"
+            },
+            "title": "Segments",
+            "type": "array"
+          }
+        },
+        "required": [
+          "segments",
+          "categories",
+          "error"
+        ],
+        "title": "Segments",
+        "type": "object"
+      },
+      "ShownFilters": {
+        "description": "Which videos the watching side shows. Lengths in seconds, null for no limit.",
+        "properties": {
+          "captions": {
+            "enum": [
+              "any",
+              "only"
+            ],
+            "title": "Captions",
+            "type": "string"
+          },
+          "filtered": {
+            "description": "How many videos these leave out now.",
+            "title": "Filtered",
+            "type": "integer"
+          },
+          "language_counts": {
+            "items": {
+              "$ref": "#/components/schemas/LanguageCount"
+            },
+            "title": "Language Counts",
+            "type": "array"
+          },
+          "languages": {
+            "description": "Base language codes a video's spoken language must be one of; empty for every language.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Languages",
+            "type": "array"
+          },
+          "max_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Seconds"
+          },
+          "min_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Seconds"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The country the server watches from (GB): a video YouTube says does not play there is left out. Null: not checked.",
+            "title": "Region"
+          },
+          "streams": {
+            "enum": [
+              "current",
+              "all"
+            ],
+            "title": "Streams",
+            "type": "string"
+          },
+          "unknown_language": {
+            "enum": [
+              "show",
+              "hide"
+            ],
+            "title": "Unknown Language",
+            "type": "string"
+          }
+        },
+        "required": [
+          "min_seconds",
+          "max_seconds",
+          "streams",
+          "region",
+          "languages",
+          "unknown_language",
+          "captions",
+          "filtered",
+          "language_counts"
+        ],
+        "title": "ShownFilters",
+        "type": "object"
+      },
+      "SourceCount": {
+        "properties": {
+          "full": {
+            "title": "Full",
+            "type": "integer"
+          },
+          "plays": {
+            "title": "Plays",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "plays",
+          "full"
+        ],
+        "title": "SourceCount",
+        "type": "object"
+      },
+      "SourceRemoved": {
+        "properties": {
+          "refresh": {
+            "$ref": "#/components/schemas/Refreshed"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "refresh"
+        ],
+        "title": "SourceRemoved",
+        "type": "object"
+      },
+      "Started": {
+        "properties": {
+          "complete": {
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "copy": {
+            "description": "The id the copy's files are under: the video's own, or `<id>~native` for a Plex file kept as it is (fetcher.plex_copy).",
+            "title": "Copy",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "formats": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formats"
+          },
+          "last_played": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Played"
+          },
+          "play_id": {
+            "title": "Play Id",
+            "type": "integer"
+          },
+          "playable": {
+            "title": "Playable",
+            "type": "boolean"
+          },
+          "plays": {
+            "title": "Plays",
+            "type": "integer"
+          },
+          "resume": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the last part-watched play stopped, in seconds, or null to start from the beginning.",
+            "title": "Resume"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "number"
+          },
+          "segments": {
+            "title": "Segments",
+            "type": "integer"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fetching",
+                  "partial",
+                  "ready",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "none",
+                "type": "string"
+              }
+            ],
+            "description": "none: there is no copy and no fetch.",
+            "title": "State"
+          }
+        },
+        "required": [
+          "state",
+          "segments",
+          "seconds",
+          "complete",
+          "playable",
+          "error",
+          "formats",
+          "plays",
+          "last_played",
+          "play_id",
+          "copy",
+          "resume"
+        ],
+        "title": "Started",
+        "type": "object"
+      },
+      "Stream": {
+        "properties": {
+          "complete": {
+            "title": "Complete",
+            "type": "boolean"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "formats": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formats"
+          },
+          "last_played": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Played"
+          },
+          "playable": {
+            "title": "Playable",
+            "type": "boolean"
+          },
+          "plays": {
+            "title": "Plays",
+            "type": "integer"
+          },
+          "seconds": {
+            "title": "Seconds",
+            "type": "number"
+          },
+          "segments": {
+            "title": "Segments",
+            "type": "integer"
+          },
+          "state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fetching",
+                  "partial",
+                  "ready",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "none",
+                "type": "string"
+              }
+            ],
+            "description": "none: there is no copy and no fetch.",
+            "title": "State"
+          }
+        },
+        "required": [
+          "state",
+          "segments",
+          "seconds",
+          "complete",
+          "playable",
+          "error",
+          "formats",
+          "plays",
+          "last_played"
+        ],
+        "title": "Stream",
+        "type": "object"
+      },
+      "Suggestion": {
+        "properties": {
+          "channel_id": {
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "dismissed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dismissed"
+          },
+          "first": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group Id"
+          },
+          "handle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Handle"
+          },
+          "in_library": {
+            "title": "In Library",
+            "type": "boolean"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "link": {
+            "title": "Link",
+            "type": "string"
+          },
+          "made_for_kids": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Made For Kids"
+          },
+          "missing": {
+            "title": "Missing",
+            "type": "boolean"
+          },
+          "pasted": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pasted"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "related_score": {
+            "title": "Related Score",
+            "type": "number"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "subscribers": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscribers"
+          },
+          "suggested_by": {
+            "title": "Suggested By",
+            "type": "integer"
+          },
+          "suggested_from": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Suggested From",
+            "type": "array"
+          },
+          "thumbnail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "topics": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Topics",
+            "type": "array"
+          },
+          "total_videos": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Videos"
+          },
+          "videos": {
+            "title": "Videos",
+            "type": "integer"
+          },
+          "watches": {
+            "title": "Watches",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channel_id",
+          "title",
+          "handle",
+          "thumbnail",
+          "watches",
+          "videos",
+          "first",
+          "last",
+          "score",
+          "group_id",
+          "subscribers",
+          "total_videos",
+          "topics",
+          "made_for_kids",
+          "missing",
+          "dismissed",
+          "in_library",
+          "suggested_by",
+          "related_score",
+          "suggested_from",
+          "platform",
+          "pasted",
+          "link"
+        ],
+        "title": "Suggestion",
+        "type": "object"
+      },
+      "SuggestionGroup": {
+        "properties": {
+          "channels": {
+            "title": "Channels",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "named": {
+            "title": "Named",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "named",
+          "channels"
+        ],
+        "title": "SuggestionGroup",
+        "type": "object"
+      },
+      "SuggestionPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Suggestion"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "SuggestionPage",
+        "type": "object"
+      },
+      "SuggestionSummary": {
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "database": {
+            "description": "A history database is set on the server: Regroup reads it again first.",
+            "title": "Database",
+            "type": "boolean"
+          },
+          "dismissed": {
+            "title": "Dismissed",
+            "type": "integer"
+          },
+          "followed": {
+            "title": "Followed",
+            "type": "integer"
+          },
+          "groups": {
+            "items": {
+              "$ref": "#/components/schemas/SuggestionGroup"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "kids": {
+            "title": "Kids",
+            "type": "integer"
+          },
+          "open": {
+            "title": "Open",
+            "type": "integer"
+          },
+          "pasted": {
+            "title": "Pasted",
+            "type": "integer"
+          },
+          "refreshed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refreshed"
+          },
+          "related": {
+            "$ref": "#/components/schemas/RelatedStatus"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/HistorySource"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "suggested": {
+            "title": "Suggested",
+            "type": "integer"
+          },
+          "topics": {
+            "items": {
+              "$ref": "#/components/schemas/Topic"
+            },
+            "title": "Topics",
+            "type": "array"
+          },
+          "ungrouped": {
+            "title": "Ungrouped",
+            "type": "integer"
+          },
+          "unwatched": {
+            "title": "Unwatched",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sources",
+          "groups",
+          "ungrouped",
+          "topics",
+          "kids",
+          "open",
+          "dismissed",
+          "followed",
+          "refreshed",
+          "configured",
+          "database",
+          "suggested",
+          "unwatched",
+          "pasted",
+          "related"
+        ],
+        "title": "SuggestionSummary",
+        "type": "object"
+      },
+      "SyncError": {
+        "properties": {
+          "added": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Added"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "error": {
+            "title": "Error",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "required": [
+          "channel",
+          "title",
+          "error"
+        ],
+        "title": "SyncError",
+        "type": "object"
+      },
       "SyncIn": {
         "properties": {
           "channels": {
@@ -301,6 +3633,290 @@
           }
         },
         "title": "SyncIn",
+        "type": "object"
+      },
+      "SyncJob": {
+        "properties": {
+          "added": {
+            "description": "New videos so far.",
+            "title": "Added",
+            "type": "integer"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The channel being synced now, by title.",
+            "title": "Current"
+          },
+          "done": {
+            "title": "Done",
+            "type": "integer"
+          },
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/SyncError"
+            },
+            "title": "Errors",
+            "type": "array"
+          },
+          "finished": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished"
+          },
+          "gone": {
+            "description": "Videos the recheck after a sync of every channel found gone from YouTube, and hid.",
+            "title": "Gone",
+            "type": "integer"
+          },
+          "running": {
+            "title": "Running",
+            "type": "boolean"
+          },
+          "started": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "running",
+          "total",
+          "done",
+          "current",
+          "added",
+          "gone",
+          "errors",
+          "started",
+          "finished"
+        ],
+        "title": "SyncJob",
+        "type": "object"
+      },
+      "SystemStatus": {
+        "properties": {
+          "cache": {
+            "$ref": "#/components/schemas/CacheUsage"
+          },
+          "cache_dir": {
+            "title": "Cache Dir",
+            "type": "string"
+          },
+          "can_fetch": {
+            "title": "Can Fetch",
+            "type": "boolean"
+          },
+          "data_dir": {
+            "title": "Data Dir",
+            "type": "string"
+          },
+          "disk": {
+            "$ref": "#/components/schemas/Disk"
+          },
+          "fetching": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Fetching",
+            "type": "array"
+          },
+          "ffmpeg": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ffmpeg"
+          },
+          "library": {
+            "$ref": "#/components/schemas/LibraryStatus"
+          },
+          "platform": {
+            "title": "Platform",
+            "type": "string"
+          },
+          "python": {
+            "title": "Python",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "ytdlp": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ytdlp"
+          }
+        },
+        "required": [
+          "version",
+          "python",
+          "platform",
+          "ytdlp",
+          "ffmpeg",
+          "can_fetch",
+          "data_dir",
+          "cache_dir",
+          "cache",
+          "fetching",
+          "disk",
+          "library"
+        ],
+        "title": "SystemStatus",
+        "type": "object"
+      },
+      "TopChannel": {
+        "properties": {
+          "channel_id": {
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "followed": {
+            "title": "Followed",
+            "type": "boolean"
+          },
+          "last": {
+            "title": "Last",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "videos": {
+            "title": "Videos",
+            "type": "integer"
+          },
+          "watches": {
+            "title": "Watches",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channel_id",
+          "title",
+          "watches",
+          "videos",
+          "last",
+          "followed"
+        ],
+        "title": "TopChannel",
+        "type": "object"
+      },
+      "TopVideo": {
+        "properties": {
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "channel_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel Id"
+          },
+          "last": {
+            "title": "Last",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "video_id": {
+            "title": "Video Id",
+            "type": "string"
+          },
+          "watches": {
+            "title": "Watches",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "video_id",
+          "title",
+          "channel_id",
+          "channel",
+          "watches",
+          "last"
+        ],
+        "title": "TopVideo",
+        "type": "object"
+      },
+      "Topic": {
+        "properties": {
+          "channels": {
+            "title": "Channels",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "channels"
+        ],
+        "title": "Topic",
         "type": "object"
       },
       "ValidationError": {
@@ -342,6 +3958,389 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "Video": {
+        "properties": {
+          "cache_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Bytes"
+          },
+          "cache_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fetching",
+                  "partial",
+                  "ready",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache State"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "channel_id": {
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode"
+          },
+          "expires": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "iPlayer: when it stops being offered (a copy already saved here stays).",
+            "title": "Expires"
+          },
+          "gone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Since when YouTube has not had it (removed or made private). The lists leave such a video out; its own page still opens.",
+            "title": "Gone"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "platform": {
+            "enum": [
+              "youtube",
+              "iplayer",
+              "plex"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "published": {
+            "title": "Published",
+            "type": "string"
+          },
+          "series": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series"
+          },
+          "thumbnail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "views": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Views"
+          }
+        },
+        "required": [
+          "id",
+          "platform",
+          "channel_id",
+          "channel",
+          "title",
+          "published",
+          "duration",
+          "thumbnail",
+          "views",
+          "cache_state",
+          "cache_bytes",
+          "gone",
+          "expires",
+          "series",
+          "episode"
+        ],
+        "title": "Video",
+        "type": "object"
+      },
+      "VideoDetail": {
+        "properties": {
+          "cache_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Bytes"
+          },
+          "cache_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "fetching",
+                  "partial",
+                  "ready",
+                  "failed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache State"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel"
+          },
+          "channel_id": {
+            "title": "Channel Id",
+            "type": "string"
+          },
+          "duration": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration"
+          },
+          "episode": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Episode"
+          },
+          "expires": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "iPlayer: when it stops being offered (a copy already saved here stays).",
+            "title": "Expires"
+          },
+          "gone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Since when YouTube has not had it (removed or made private). The lists leave such a video out; its own page still opens.",
+            "title": "Gone"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_played": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Played"
+          },
+          "platform": {
+            "enum": [
+              "youtube",
+              "iplayer",
+              "plex"
+            ],
+            "title": "Platform",
+            "type": "string"
+          },
+          "plays": {
+            "title": "Plays",
+            "type": "integer"
+          },
+          "published": {
+            "title": "Published",
+            "type": "string"
+          },
+          "series": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series"
+          },
+          "thumbnail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thumbnail"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "views": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Views"
+          }
+        },
+        "required": [
+          "id",
+          "platform",
+          "channel_id",
+          "channel",
+          "title",
+          "published",
+          "duration",
+          "thumbnail",
+          "views",
+          "cache_state",
+          "cache_bytes",
+          "gone",
+          "expires",
+          "series",
+          "episode",
+          "plays",
+          "last_played"
+        ],
+        "title": "VideoDetail",
+        "type": "object"
+      },
+      "VideoPage": {
+        "properties": {
+          "has_more": {
+            "title": "Has More",
+            "type": "boolean"
+          },
+          "videos": {
+            "items": {
+              "$ref": "#/components/schemas/Video"
+            },
+            "title": "Videos",
+            "type": "array"
+          }
+        },
+        "required": [
+          "videos",
+          "has_more"
+        ],
+        "title": "VideoPage",
+        "type": "object"
+      },
+      "Visited": {
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "title": "Visited",
+        "type": "object"
       }
     }
   },
@@ -358,10 +4357,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/CacheReport"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           }
         },
         "summary": "Get Cache"
@@ -384,10 +4385,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Evicted"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -421,10 +4424,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Dropped"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -523,10 +4528,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelVisitPage"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -549,10 +4556,16 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Channel"
+                  },
+                  "title": "Response 200 Get Channels Api Channels Get",
+                  "type": "array"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           }
         },
         "summary": "Get Channels"
@@ -576,10 +4589,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Removed"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -611,10 +4626,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Channel"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -649,10 +4666,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelOverview"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -686,10 +4705,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Restarted"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -741,10 +4762,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Visited"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -767,10 +4790,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           }
         },
         "summary": "Get Health"
@@ -845,10 +4870,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryStats"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -871,10 +4898,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/LibraryStatus"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           }
         },
         "summary": "Get Library"
@@ -895,10 +4924,20 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AddedChannel"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AddedVideo"
+                    }
+                  ],
+                  "title": "Response 200 Post Library Api Library Post"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -921,10 +4960,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ShownFilters"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           }
         },
         "summary": "Get Shown"
@@ -947,10 +4988,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ShownFilters"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -973,10 +5016,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SyncJob"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           }
         },
         "summary": "Get Sync"
@@ -1004,10 +5049,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SyncJob"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -1139,10 +5186,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PlayPage"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -1179,10 +5228,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PlaySummary"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -1227,10 +5278,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Reported"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -1253,10 +5306,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PlexStatus"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           }
         },
         "summary": "Get Plex"
@@ -1303,10 +5358,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PlexPage"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -1339,10 +5396,20 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/AddedChannel"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AddedVideo"
+                    }
+                  ],
+                  "title": "Response 200 Post Plex Follow Api Plex Follow Post"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -1428,10 +5495,16 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlexItem"
+                  },
+                  "title": "Response 200 Get Plex Search Api Plex Search Get",
+                  "type": "array"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -1465,10 +5538,16 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlexFilterKind"
+                  },
+                  "title": "Response 200 Get Plex Filters Api Plex Sections  Section  Filters Get",
+                  "type": "array"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -1511,10 +5590,16 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PlexChoice"
+                  },
+                  "title": "Response 200 Get Plex Choices Api Plex Sections  Section  Filters  Name  Get",
+                  "type": "array"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -1537,10 +5622,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/QuotaUsage"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           }
         },
         "summary": "Get Quota"
@@ -1606,10 +5693,16 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SegmentKind"
+                  },
+                  "title": "Response 200 Get Skipping Api Skipping Get",
+                  "type": "array"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           }
         },
         "summary": "Get Skipping"
@@ -1730,10 +5823,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionPage"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -1777,10 +5872,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/OverviewGroup"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -1813,10 +5910,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Imported"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -1849,10 +5948,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Pasted"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -1875,10 +5976,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RefreshedWithSummary"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           }
         },
         "summary": "Post Suggestions Refresh"
@@ -1902,10 +6005,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SourceRemoved"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -1928,10 +6033,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionSummary"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           }
         },
         "summary": "Get Suggestions Summary"
@@ -1965,10 +6072,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Suggestion"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -2002,10 +6111,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/AddedWatched"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -2028,10 +6139,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SystemStatus"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           }
         },
         "summary": "Get System"
@@ -2106,10 +6219,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/VideoPage"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -2143,10 +6258,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Checked"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -2184,10 +6301,16 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ContinueVideo"
+                  },
+                  "title": "Response 200 Get Continue Api Videos Continue Get",
+                  "type": "array"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -2240,10 +6363,16 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Video"
+                  },
+                  "title": "Response 200 Get Shuffle Api Videos Shuffle Get",
+                  "type": "array"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -2277,10 +6406,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/VideoDetail"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -2331,10 +6462,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Started"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -2369,10 +6502,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Segments"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {
@@ -2406,10 +6541,12 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/Stream"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "OK"
           },
           "422": {
             "content": {

@@ -36,6 +36,14 @@ def database(db_url, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def checked_answers(monkeypatch):
+    """Every 200 answer of a route that declares its model (server/answers.py) is validated against it, so the schema the web app's types
+    come from cannot drift from what the server sends."""
+    from tubes.server import answers
+    monkeypatch.setattr(answers, 'CHECK', True)
+
+
+@pytest.fixture(autouse=True)
 def no_network(monkeypatch):
     """A test that opens an outbound connection fails at once (loopback and unix sockets are fine)."""
     real = socket.socket.connect

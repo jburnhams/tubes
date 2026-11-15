@@ -27,100 +27,30 @@ export interface Settings {
 export type SkipMode = 'off' | 'ask' | 'auto'
 
 /** A part of a video the player can skip, under SponsorBlock's categories (src/tubes/segments.py). `mute` parts are muted rather than skipped when skipped automatically. */
-export interface Segment {
-  category: string
-  start: number
-  end: number
-  action: 'skip' | 'mute'
-}
+export type Segment = Schema<'Segment'>
 
 /** A kind of segment, with the server's setting for it. */
-export interface SegmentKind {
-  id: string
-  label: string
-  detail: string
-  mode: SkipMode
-}
+export type SegmentKind = Schema<'SegmentKind'>
 
 /** `GET /api/videos/{id}/segments`: what can be skipped, and `error` when its source could not be asked just now. */
-export interface Segments {
-  segments: Segment[]
-  categories: SegmentKind[]
-  error: string | null
-}
+export type Segments = Schema<'Segments'>
 
 /** `GET /api/library`: what the library holds. `synced` is when every followed channel was last synced, null before the first. */
-export interface LibraryStatus {
-  synced: string | null
-  channels: number
-  /** Videos that can be watched; `hidden` are those YouTube no longer has (deleted or made private), left out of every list. */
-  videos: number
-  hidden: number
-  /** Streams live now or scheduled, hidden from every list until they end (a past one is shown). Absent from older servers. */
-  live?: number
-  /** Videos Admin's filters (Settings, Shown videos) leave out: too short, too long, or past streams. Absent from older servers. */
-  filtered?: number
-  /** The YouTube key is in the server's environment, so YouTube channels can be added and synced. iPlayer programmes need no key. */
-  configured: boolean
-}
+export type LibraryStatus = Schema<'LibraryStatus'>
 
 /** Which streams the watching side leaves out: 'current' those live now or scheduled (they cannot be played), 'all' past streams and premieres too. */
 export type StreamFilter = 'current' | 'all'
 
 /** `GET /api/library/shown`: which videos the watching side shows, kept in the server's database. Lengths in seconds, null for no limit. */
-export interface ShownFilters {
-  min_seconds: number | null
-  max_seconds: number | null
-  streams: StreamFilter
-  /** The country the server watches from (`GB`): a video YouTube says does not play there is left out. Null: not checked. */
-  region: string | null
-  /** Base language codes (`en`) a video's spoken language must be one of; empty for every language. */
-  languages: string[]
-  /** Whether a video whose language is not known is shown while `languages` are chosen. */
-  unknown_language: 'show' | 'hide'
-  /** 'only': just videos with captions the uploader added (one it is not known for is kept). */
-  captions: 'any' | 'only'
-  /** How many videos these leave out now. */
-  filtered: number
-  /** The spoken languages of the videos there are, before the filters, most first; `code` null for those not known. */
-  language_counts: LanguageCount[]
-}
+export type ShownFilters = Schema<'ShownFilters'>
 
 /** How many videos the library offers in one spoken language. */
-export interface LanguageCount {
-  code: string | null
-  videos: number
-}
+export type LanguageCount = Schema<'LanguageCount'>
 
 /** Where a channel or video comes from. A BBC iPlayer programme is kept as a channel and its episodes as videos. Absent from older servers (YouTube). */
 export type Platform = 'youtube' | 'iplayer' | 'plex'
 
-export interface Channel {
-  id: string
-  /** Where it comes from: 'youtube', or 'iplayer' for a BBC iPlayer programme. */
-  platform?: Platform
-  /** What it is (metadata.py): channel (YouTube), programme, network or category (iPlayer), show or filter (Plex). */
-  kind?: string | null
-  title: string
-  handle: string | null
-  thumbnail: string | null
-  /** When this channel was last synced. */
-  synced: string | null
-  /** Videos held here that can be watched, and those hidden because YouTube no longer has them or they are streams not over yet. */
-  videos: number
-  hidden?: number
-  latest: string | null
-  /** YouTube's own counts (null when it hides them). */
-  total_videos?: number | null
-  subscribers?: number | null
-  /** Its uploads are synced. False for a channel only here for videos added one by one. */
-  follow?: boolean
-  /** Every page of its uploads has been read once. */
-  complete?: boolean
-  /** A first sync stopped part way and resumes from where it got to. */
-  resumable?: boolean
-  added?: string | null
-}
+export type Channel = Schema<'Channel'>
 
 /** Calls to the YouTube Data API, and the quota units they cost, in one slice (a purpose, an endpoint, an hour, a day). */
 export interface QuotaTotals {
@@ -136,73 +66,19 @@ export interface QuotaTotals {
 export type QuotaPurpose = 'sync' | 'recheck' | 'add' | 'reported' | 'past' | 'suggestions' | 'related' | 'paste' | 'history' | 'other' | (string & {})
 
 /** `GET /api/quota`: the YouTube key's daily quota as this server has counted it. Google has no call that says how much is left. */
-export interface QuotaUsage {
-  /** The YouTube key is in the server's environment. */
-  configured: boolean
-  /** The key's daily quota in units (YOUTUBE_API_QUOTA, else Google's 10,000). */
-  limit: number
-  /** Today, as the quota counts days: YYYY-MM-DD in Pacific time. */
-  day: string
-  used: number
-  /** What is left of the limit; 0 once YouTube has refused a call today, whoever spent it. */
-  remaining: number
-  /** When the quota next resets (midnight Pacific), as an ISO time. */
-  resets: string
-  /** When YouTube last refused a call today because the quota was spent, else null. */
-  refused: string | null
-  today: QuotaTotals & {
-    purposes: (QuotaTotals & { purpose: QuotaPurpose })[]
-    endpoints: (QuotaTotals & { endpoint: string })[]
-    /** Pacific hours (0-23) that had calls, in order. */
-    hours: (QuotaTotals & { hour: number })[]
-  }
-  /** The last 30 days, today first, each with its units by purpose. */
-  days: (QuotaTotals & { day: string; purposes: Record<string, number> })[]
-}
+export type QuotaUsage = Schema<'QuotaUsage'>
 
 /** `GET /api/library/sync`: the background sync, one at a time. */
-export interface SyncJob {
-  running: boolean
-  total: number
-  done: number
-  /** The channel being synced now, by title. */
-  current: string | null
-  /** New videos so far. */
-  added: number
-  /** Videos the recheck after a sync of every channel found gone from YouTube, and hid. */
-  gone: number
-  errors: { channel: string | null; title: string | null; error: string; added?: number }[]
-  started: string | null
-  finished: string | null
-}
+export type SyncJob = Schema<'SyncJob'>
 
 /** `POST /api/library`: what was added, and the sync that started for a new channel. */
-export type Added = { kind: 'channel'; channel: Channel; sync: SyncJob } | { kind: 'video'; video: Video }
+export type Added = Schema<'AddedChannel'> | Schema<'AddedVideo'>
 
 export type CacheState = 'fetching' | 'partial' | 'ready' | 'failed'     // partial: only its first seconds, prefetched so a play starts at once
 
-export interface Video {
-  id: string
-  platform?: Platform
-  channel_id: string
-  channel: string | null
-  title: string
-  published: string
-  duration: number | null
-  thumbnail: string | null
-  views: number | null
-  cache_state: CacheState | null
-  cache_bytes: number | null
-  /** Since when YouTube has not had it (removed or made private), else null. The lists leave such a video out; its own page still opens. */
-  gone: string | null
-  /** iPlayer: when it stops being offered (a copy already saved here stays), its series' title and its number in the series. */
-  expires?: string | null
-  series?: string | null
-  episode?: number | null
-  /** Continue watching only: where the last play stopped (seconds), and how far through the video that is (0-1, null when its length is not known). */
-  resume?: number | null
-  progress?: number | null
-}
+export type Video = Schema<'Video'> & Partial<Pick<ContinueVideo, 'resume' | 'progress'>>
+/** A Continue watching row: a video with where its last play stopped and how far through that is. */
+export type ContinueVideo = Schema<'ContinueVideo'>
 
 /** Where a play or a channel visit was started from (src/tubes/viewing.py): the list, which one (a channel's id, the search words, the
  *  video Up next was beside) and the item's place in it from 0. None at all is a typed, reloaded or shared address. */
@@ -213,14 +89,7 @@ export interface From {
 }
 
 /** `POST /api/videos/{id}/play`: the stream status, the play's id (its progress is reported against it) and where it picks up. */
-export interface Started extends Stream {
-  play_id: number
-  /** The id the copy's files are under: the video's own, or `<id>~native` for a Plex file kept as it is for a browser that decodes it
-   *  (fetcher.plex_copy). Missing from a server before Plex: then the video's own. */
-  copy?: string
-  /** Where the last part-watched play stopped, in seconds, or null to start from the beginning. */
-  resume: number | null
-}
+export type Started = Schema<'Started'>
 
 /** `POST /api/plays/{id}`: how the play is going, as the player sees it. `watched` counts each second seen once. */
 export interface Progress {
@@ -236,37 +105,9 @@ export type Outcome = 'none' | 'short' | 'partial' | 'full'
 export type PlaySource = From['source'] | 'link' | 'other'
 
 /** `GET /api/plays`: one play with everything kept of it (src/tubes/viewing.py). */
-export interface Play {
-  id: number
-  video_id: string
-  /** The library's title, or the cached copy's once the video has left the library; null when neither knows it. */
-  title: string | null
-  channel_id: string | null
-  channel: string | null
-  thumbnail: string | null
-  /** When the play started, and when the player last said how it was going (null: it never did). */
-  at: string
-  updated: string | null
-  source: PlaySource
-  /** Which one: the channel's id, the search words, the video Up next was beside. */
-  detail: string | null
-  /** What `detail` points at, by name: the channel, or the video Up next was beside. */
-  detail_title: string | null
-  /** Its place in that list, from 0. */
-  rank: number | null
-  /** The running time in seconds (the player's figure, else the library's). */
-  length: number | null
-  /** Seconds seen, each once; null for a play from before this was kept. */
-  watched: number | null
-  /** Where it stopped. */
-  position: number | null
-  outcome: Outcome
-}
+export type Play = Schema<'Play'>
 
-export interface PlayPage {
-  items: Play[]
-  has_more: boolean
-}
+export type PlayPage = Schema<'PlayPage'>
 
 /** Which plays the Viewing page lists. */
 export interface PlayFilter {
@@ -275,203 +116,56 @@ export interface PlayFilter {
 }
 
 /** `GET /api/plays/summary`: the last `days` of viewing in numbers. */
-export interface PlaySummary {
-  since: string
-  days: number
-  plays: number
-  /** Seconds seen in all. */
-  seconds: number
-  /** Different videos played. */
-  videos: number
-  outcomes: Record<Outcome, number>
-  sources: Record<string, { plays: number; full: number }>
-  channel_views: Record<string, number>
-}
+export type PlaySummary = Schema<'PlaySummary'>
 
 /** `GET /api/channel-views`: one visit to a channel's page. */
-export interface ChannelVisit {
-  id: number
-  channel_id: string
-  title: string | null
-  thumbnail: string | null
-  at: string
-  source: PlaySource
-  detail: string | null
-  /** The video whose page it was opened from. */
-  detail_title: string | null
-}
+export type ChannelVisit = Schema<'ChannelVisit'>
 
-export interface ChannelVisitPage {
-  items: ChannelVisit[]
-  has_more: boolean
-}
+export type ChannelVisitPage = Schema<'ChannelVisitPage'>
 
 /** The cursor after a play or a channel visit: `<at>|<id>`, as the server pages them. */
 export const cursorOfRow = (r: { at: string; id: number }) => `${r.at}|${r.id}`
 
 /** `POST /api/videos/check`: what the recheck of these videos found (how many asked about, newly gone, back) and the ids now hidden. */
-export interface Checked {
-  checked: number
-  gone: number
-  back: number
-  hidden: string[]
-}
+export type Checked = Schema<'Checked'>
 
 /** `GET /api/videos/{id}`: one video with how often it has been played. */
-export interface VideoDetail extends Video {
-  plays: number
-  last_played: string | null
-}
+export type VideoDetail = Schema<'VideoDetail'>
 
 /** `GET /api/videos?...`: one page, newest first. */
-export interface VideoPage {
-  videos: Video[]
-  has_more: boolean
-}
+export type VideoPage = Schema<'VideoPage'>
 
 /** `GET /api/videos/{id}/stream`: how far the copy has got. `state` none means there is no copy and no fetch. */
-export interface Stream {
-  state: CacheState | 'none'
-  segments: number
-  seconds: number
-  complete: boolean
-  playable: boolean
-  error: string | null
-  formats: string | null
-  plays: number
-  last_played: string | null
-}
+export type Stream = Schema<'Stream'>
 
-export interface CacheItem {
-  video_id: string
-  title: string
-  channel: string | null
-  state: CacheState
-  bytes: number
-  started: string
-  finished: string | null
-  formats: string | null
-  error: string | null
-  pinned: boolean
-  plays: number
-  last_played: string | null
-  score: number
-  protected: string | null
-}
+export type CacheItem = Schema<'CacheItem'>
 
 /** `GET /api/cache`. Sizes are bytes; eviction starts above `high` and stops under `low`. */
-export interface CacheReport {
-  used: number
-  limit: number
-  high: number
-  low: number
-  count: number
-  by_state: Record<CacheState, number>
-  bytes_by_state: Record<CacheState, number>
-  items: CacheItem[]
-}
+export type CacheReport = Schema<'CacheReport'>
 
-export interface Evicted { evicted: { video_id: string; title: string; bytes: number; score: number }[]; freed: number; dry_run: boolean }
+export type Evicted = Schema<'Evicted'>
 
 /** `GET /api/system`. Sizes are bytes. */
-export interface SystemStatus {
-  version: string
-  python: string
-  platform: string
-  ytdlp: string | null
-  ffmpeg: string | null
-  can_fetch: boolean
-  data_dir: string
-  cache_dir: string
-  cache: Omit<CacheReport, 'items'>
-  fetching: string[]
-  disk: { total: number; used: number; free: number }
-  library: LibraryStatus
-}
+export type SystemStatus = Schema<'SystemStatus'>
 
 /** One imported watch history (`tubes history import`, or the Suggestions page). */
-export interface HistorySource {
-  source: string
-  watches: number
-  channels: number
-  first: string
-  last: string
-}
+export type HistorySource = Schema<'HistorySource'>
 
 /** `GET /api/suggestions`: a channel the library could take in, from the watch history or pointed at by related channels. */
-export interface Suggestion {
-  channel_id: string
-  title: string
-  handle: string | null
-  thumbnail: string | null
-  watches: number
-  /** Different videos of it watched. */
-  videos: number
-  first: string | null
-  last: string | null
-  /** Its watches added up, each counting half as much a year later: the list's order. */
-  score: number
-  group_id: number | null
-  subscribers: number | null
-  total_videos: number | null
-  /** YouTube's broad topics for the channel, such as Music or Hobby. */
-  topics: string[]
-  /** What the channel says of its audience; null when YouTube was not asked or it says nothing. */
-  made_for_kids: boolean | null
-  missing: boolean
-  dismissed: string | null
-  /** The library holds some of its videos without following it. */
-  in_library: boolean
-  /** How many of the followed channels and the history's most watched ones point at it (their watch pages list its videos, or they feature it). */
-  suggested_by: number
-  /** Those pointers added up, each by the share of its watch pages that listed this channel: the suggested order's tie-break. */
-  related_score: number
-  /** Up to three of the channels pointing at it, the strongest first. */
-  suggested_from: string[]
-  /** Where it is: a YouTube channel, or an iPlayer programme (which only comes in pasted). */
-  platform: string
-  /** When someone pasted it into the page; null for one from the history or related channels only. */
-  pasted: string | null
-  /** Its page on YouTube or iPlayer: where its title goes, and what Follow adds. */
-  link: string
-}
+export type Suggestion = Schema<'Suggestion'>
 
 /** `POST /api/suggestions/paste`: what a pasted list named. `found` are now suggested, `already` are followed, `problems` say why a line named nothing. */
-export interface Pasted {
-  found: { input: string; platform: string; channel_id: string; title: string }[]
-  already: { input: string; title: string }[]
-  problems: { input: string; error: string }[]
-}
+export type Pasted = Schema<'Pasted'>
 
-export interface SuggestionPage { items: Suggestion[]; total: number }
+export type SuggestionPage = Schema<'SuggestionPage'>
 
-export interface SuggestionGroup { id: number; name: string; named: boolean; channels: number }
+export type SuggestionGroup = Schema<'SuggestionGroup'>
 
 /** `GET /api/suggestions/summary`: what surrounds the list. Counts are of channels. */
-export interface SuggestionSummary {
-  sources: HistorySource[]
-  groups: SuggestionGroup[]
-  ungrouped: number
-  topics: { name: string; channels: number }[]
-  kids: number
-  open: number
-  dismissed: number
-  followed: number
-  refreshed: string | null
-  configured: boolean
-  /** A history database is set on the server: Regroup reads it again first. */
-  database?: boolean
-  /** Open channels a related channel points at, and open channels with no watches (only pointed at). */
-  suggested: number
-  unwatched: number
-  /** Open channels pasted in. */
-  pasted: number
-  /** How far asking YouTube about related channels has got (`tubes related` on the server's timer, each channel again after a week). */
-  related: RelatedStatus
-}
+export type SuggestionSummary = Schema<'SuggestionSummary'>
 
 /** Of the followed and most watched channels (`sources`), how many YouTube was asked about, how many are due again, and how many failed last time. */
-export interface RelatedStatus { sources: number; asked: number; due: number; failed: number; last: string | null }
+export type RelatedStatus = Schema<'RelatedStatus'>
 
 /** What the list is filtered by; each lives in the page's URL. */
 export interface SuggestionFilter { group?: string; topic?: string; kids?: string; dismissed?: boolean; order?: string; pasted?: boolean }
@@ -489,20 +183,7 @@ export function suggestionsUrl(f: SuggestionFilter): string {
 }
 
 /** `GET /api/history`: what was watched in a timeframe. `periods` counts watches per `by` (a day, or a month for spans over 92 days). */
-export interface HistoryStats {
-  watches: number
-  videos: number
-  channels: number
-  first: string | null
-  last: string | null
-  by: 'day' | 'month'
-  periods: { period: string; watches: number }[]
-  channels_top: { channel_id: string; title: string | null; watches: number; videos: number; last: string; followed: boolean }[]
-  videos_top: { video_id: string; title: string | null; channel_id: string | null; channel: string | null; watches: number; last: string }[]
-  sources: HistorySource[]
-  /** The YouTube key is in the server's environment, so a channel can be followed from here. */
-  configured?: boolean
-}
+export type HistoryStats = Schema<'HistoryStats'>
 
 export interface HistoryFilter { start?: string; end?: string; source?: string }
 
@@ -516,29 +197,9 @@ export function historyUrl(f: HistoryFilter): string {
 }
 
 /** `GET /api/channels/{id}/overview`: everything known of a channel, whether or not the library has it. */
-export interface ChannelOverview {
-  channel_id: string
-  title: string
-  thumbnail: string | null
-  handle: string | null
-  /** The library's channel, or null when it is not in the library. */
-  library: Channel | null
-  /** Its suggestion, or null when it was never in a watch history. */
-  suggestion: Suggestion | null
-  group: { id: number; name: string; named: boolean } | null
-  configured: boolean
-  history: {
-    watches: number
-    videos: number
-    first: string | null
-    last: string | null
-    sources: { source: string; watches: number }[]
-    periods: { period: string; watches: number }[]
-    videos_top: { video_id: string; title: string | null; watches: number; last: string; in_library: boolean }[]
-  }
-}
+export type ChannelOverview = Schema<'ChannelOverview'>
 
-export interface Refreshed { channels: number; groups: number; grouped: number; looked_up: number; missing: number; error: string | null }
+export type Refreshed = Schema<'Refreshed'>
 
 // Where the app is served from: '' at the server's own root, '/prefix' behind a reverse proxy. Read
 // from the page's base URL: the server gives every page a relative <base> back to its root
@@ -567,47 +228,17 @@ export function videosUrl(filter: VideoFilter, after: string | undefined, limit 
 }
 
 /** `GET /api/plex`: whether the server has Plex set up and it answers, and its film and TV libraries (src/tubes/plex.py). */
-export interface PlexStatus {
-  configured: boolean
-  reachable: boolean
-  version: string | null
-  error?: string | null
-  sections: PlexSection[]
-}
+export type PlexStatus = Schema<'PlexStatus'>
 
-export interface PlexSection {
-  key: string
-  title: string
-  type: 'movie' | 'show'
-  locations: string[]
-}
+export type PlexSection = Schema<'PlexSection'>
 
 /** A film or show as Plex's browser lists it; `thumb` is a Tubes picture address (the token stays on the server). */
-export interface PlexItem {
-  key: string
-  type: 'movie' | 'show' | string
-  title: string
-  year: number | null
-  thumb: string | null
-  summary: string | null
-  content_rating: string | null
-  episodes: number | null
-  section: string | null
-  followed?: boolean
-}
+export type PlexItem = Schema<'PlexItem'>
 
-export interface PlexPage {
-  items: PlexItem[]
-  total: number
-  /** The filters the server passed on to Plex (the rest were left out). */
-  params: Record<string, string>
-}
+export type PlexPage = Schema<'PlexPage'>
 
 /** One value a filter takes in a library (`genre`: {key: '1534', title: 'Animation'}). */
-export interface PlexChoice {
-  key: string
-  title: string
-}
+export type PlexChoice = Schema<'PlexChoice'>
 
 /** What a library listing is narrowed by on the Plex page, and kept in the URL. */
 export interface PlexFilter {
@@ -760,7 +391,7 @@ export const api = {
   play: (id: string, from?: From | null, decodes?: string[]) => callJson<Started>(withBase(paths.play(id)), send('POST', { ...(from ?? {}), ...(decodes ? { decodes } : {}) } satisfies In<'FromIn'>)),
   /** How a play is going. `keepalive`, so a report sent as the page closes still arrives. */
   progress: (playId: number, p: Progress) => callJson<{ outcome: Outcome }>(withBase(paths.progress(playId)), { ...send('POST', p satisfies In<'ProgressIn'>), keepalive: true }),
-  continueWatching: (limit = 12) => fetchJson<Video[]>(withBase(`${paths.continueWatching}?limit=${limit}`)),
+  continueWatching: (limit = 12) => fetchJson<ContinueVideo[]>(withBase(`${paths.continueWatching}?limit=${limit}`)),
   plays: (f: PlayFilter, after: string | undefined, signal?: AbortSignal) => {
     const q = new URLSearchParams()
     if (f.outcome) q.set('outcome', f.outcome)

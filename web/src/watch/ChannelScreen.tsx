@@ -17,7 +17,7 @@ import { useVideos } from './useVideos'
 export function bySeries(vs: Video[]): [string | null, Video[]][] {
   const runs: [string | null, Video[]][] = []
   for (const v of vs) {
-    const s = v.series ?? null
+    const s = v.series
     if (runs.length && runs[runs.length - 1][0] === s) runs[runs.length - 1][1].push(v)
     else runs.push([s, [v]])
   }
