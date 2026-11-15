@@ -20,6 +20,7 @@ def isolated_env(tmp_path_factory, monkeypatch):
     monkeypatch.setenv('HOME', str(base / 'home')); monkeypatch.setenv('USERPROFILE', str(base / 'home'))
     monkeypatch.setenv('TUBES_HOME', str(base / 'app-home')); monkeypatch.setenv('TUBES_DATA', str(base / 'data'))
     for k in TUNING: monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv('TUBES_SYNC_RETRY', '0')                                  # a failed channel is tried again at once, not after catalogue.RETRY_DELAY
     for k in ('TUBES_IPLAYER_API', 'TUBES_MEDIASELECTOR'): monkeypatch.setenv(k, 'http://127.0.0.1:9')     # nothing answers there: iPlayer is unreachable unless a test uses fake_iplayer
     return base
 
