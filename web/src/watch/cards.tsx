@@ -33,14 +33,15 @@ export function Avatar({ channel, name, size = 'size-9' }: { channel?: Channel; 
 
 const SAVED: Record<string, string> = { ready: 'Saved', fetching: 'Fetching' }
 
-/** The thumbnail with its running time, and a corner label when a copy is on this server: Strata's `Thumbnail` (a grey box until it loads,
- *  asked for as it nears the screen), trying YouTube's hqdefault size after the stored one, refusing YouTube's grey placeholder, and
+/** The thumbnail with its running time, and a corner label when a copy is on this server: Strata's `Thumbnail` (a grey box until it loads),
+ *  asked for at once (`eager`) as the <img> before it was: a lazy one is drawn grey below the fold in a whole-page screenshot (strata-react
+ *  #273), and lazy loading waits for that. It tries YouTube's hqdefault size after the stored one, refusing YouTube's grey placeholder, and
  *  reporting the video as missing when none gives a picture. */
 export function Picture({ v, className = '' }: { v: Video; className?: string }) {
   const saved = v.cache_state ? SAVED[v.cache_state] : undefined
   const src = v.thumbnail ? [v.thumbnail, fallbackThumbnail(v.thumbnail)].filter((s): s is string => !!s) : null
   return (
-    <Thumbnail src={src} alt="" aspect="16/9" className={`block rounded-tube ${className}`} fallback={<span className="block size-full bg-tube-chip" />}
+    <Thumbnail src={src} alt="" aspect="16/9" eager className={`block rounded-tube ${className}`} fallback={<span className="block size-full bg-tube-chip" />}
       onLoad={img => !isPlaceholder(img)} onMissing={() => reportMissing(v.id)}>
       {saved && <span className="absolute top-2 left-2 rounded-tube-sm bg-tube-badge px-1.5 py-0.5 text-tube-xs font-medium text-tube-on-screen">{saved}</span>}
       {v.duration ? <span className={`absolute right-2 ${v.progress ? 'bottom-3' : 'bottom-2'} rounded-tube-sm bg-tube-badge px-1 text-tube-xs font-medium text-tube-on-screen tabular-nums`}>{runningTime(v.duration)}</span> : null}
@@ -140,9 +141,9 @@ export function RowsSkeleton({ rows = 4, size = 'large' }: { rows?: number; size
  *  its `data-index`), and draws nothing after the last page. No rule between pages. */
 export function More({ list, skeleton }: { list: InfiniteLoad<Video>; skeleton: ReactNode }) {
   return (
-    <LoadMore state={list} moreLabel="Show more" moreSkeleton={skeleton} rootMargin="600px" ruled={false} className="mt-10"
-      loading={s => <div className="grid gap-6">{s}</div>}
-      more={({ label, load }) => <div className="flex justify-center"><Pill onClick={load}>{label}</Pill></div>}
-      error={({ message, retry }) => <div className="flex flex-wrap items-center justify-center gap-4 text-tube-sm text-tube-ink">{message}<Pill onClick={retry}>Try again</Pill></div>} />
+    <LoadMore state={list} moreLabel="Show more" moreSkeleton={skeleton} rootMargin="600px" ruled={false}
+      loading={s => <div className="mt-10 grid gap-6">{s}</div>}
+      more={({ label, load }) => <div className="mt-10 flex justify-center"><Pill onClick={load}>{label}</Pill></div>}
+      error={({ message, retry }) => <div className="mt-10 flex flex-wrap items-center justify-center gap-4 text-tube-sm text-tube-ink">{message}<Pill onClick={retry}>Try again</Pill></div>} />
   )
 }
