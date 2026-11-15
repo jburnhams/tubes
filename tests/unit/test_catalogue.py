@@ -430,3 +430,54 @@ def test_metadata_is_kept_refreshed_by_a_recheck_and_removed_with_its_channel(fa
     assert 'meta' not in library.video(v) and library.videos(A)['videos'][0]['kind'] == 'video'
     catalogue.remove(A)
     assert metadata.get('video', v)['images'] == [] and metadata.get('channel', A)['tags'] == []
+
+
+def test_a_failed_channel_is_tried_again_after_the_rest(fake_youtube, monkeypatch):
+    fake_youtube.channel(A, 'Workshop', videos=2).channel(B, 'Night sky', videos=1)
+    catalogue.add(A); catalogue.add(B)
+    real, calls, waits = catalogue.sync_channel, [], []
+    def flaky(cid, now=None, progress=None):
+        calls.append(cid)
+        if cid == A and calls.count(A) == 1: raise youtube.YoutubeError('YouTube refused the request (503).')
+        return real(cid, now, progress)
+    monkeypatch.setattr(catalogue, 'sync_channel', flaky)
+    monkeypatch.delenv('TUBES_SYNC_RETRY')
+    r = catalogue.sync(sleep=waits.append)
+    assert calls == [B, A, A] and waits == [catalogue.RETRY_DELAY] and r['errors'] == []
+    assert r['recovered'] == [dict(channel=A, title='Workshop', error='YouTube refused the request (503).', added=0)] and not catalogue.failed(r)
+    assert r['added'] == 3 and library.status()['synced'] == r['synced']
+
+
+def test_only_two_channels_failing_twice_or_the_quota_is_a_failed_sync(fake_youtube, monkeypatch):
+    fake_youtube.channel(A, 'Workshop', videos=1).channel(B, 'Night sky', videos=1)
+    catalogue.add(A); catalogue.add(B)
+    calls = []
+    def broken(cid, now=None, progress=None):
+        calls.append(cid); raise youtube.YoutubeError('YouTube refused the request (503).')
+    monkeypatch.setattr(catalogue, 'sync_channel', broken)
+    r = catalogue.sync()
+    assert calls == [B, A, B, A] and [e['error'] for e in r['errors']] == ['YouTube refused the request (503). (tried twice)'] * 2 and catalogue.failed(r)
+    assert not catalogue.failed(dict(errors=[r['errors'][0], dict(channel=None, title='The recheck', error='down', added=0)]))
+    calls.clear()
+    def gone(cid, now=None, progress=None):
+        calls.append(cid); raise catalogue.NotFound(f'YouTube has no channel {cid}.')
+    monkeypatch.setattr(catalogue, 'sync_channel', gone)
+    assert len(catalogue.sync()['errors']) == 2 and calls == [B, A]                 # gone is not tried again
+    calls.clear()
+    def spent(cid, now=None, progress=None):
+        calls.append(cid); raise youtube.YoutubeError('The YouTube quota for today is used up.')
+    monkeypatch.setattr(catalogue, 'sync_channel', spent)
+    r = catalogue.sync()
+    assert calls == [B] and catalogue.failed(r)                                       # the quota stops it, with no second try
+
+
+def test_a_second_try_that_runs_out_of_quota_stops_there(fake_youtube, monkeypatch):
+    fake_youtube.channel(A, 'Workshop', videos=1).channel(B, 'Night sky', videos=1)
+    catalogue.add(A); catalogue.add(B)
+    calls = []
+    def worse(cid, now=None, progress=None):
+        calls.append(cid)
+        raise youtube.YoutubeError('YouTube refused the request (503).' if len(calls) <= 2 else 'The YouTube quota for today is used up.')
+    monkeypatch.setattr(catalogue, 'sync_channel', worse)
+    r = catalogue.sync()
+    assert calls == [B, A, B] and catalogue.failed(r) and 'quota' in r['errors'][-1]['error']

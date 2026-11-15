@@ -34,7 +34,7 @@ side's reports leave iPlayer episodes alone.
 
 `Job` runs a sync of several channels in a background thread for the web server, one at a time, and reports how far it has got; the timer
 runs `tubes sync` (cli.py), which calls `sync` directly."""
-import datetime, json, math, re, threading
+import datetime, json, math, os, re, threading, time
 
 from tubes import cache, db, iplayer, library, metadata, plex, quota, youtube
 
@@ -46,7 +46,8 @@ CHANNEL_FIELDS = ('platform', 'title', 'handle', 'thumbnail', 'description', 'pu
 VIDEO_FIELDS = ('platform', 'channel_id', 'title', 'published', 'duration', 'thumbnail', 'views', 'description', 'likes', 'comments', 'definition', 'live', 'expires', 'series', 'episode', 'language', 'captions', 'regions_allowed', 'regions_blocked',
                 'kind', 'tagline', 'year', 'network', 'season', 'content_rating', 'min_age', 'kids', 'width', 'height', 'hdr', 'colours', 'source')
 # the shared metadata's fields (metadata.py): a source that does not say one leaves it None
-ERRORS = (youtube.YoutubeError, iplayer.IplayerError, plex.PlexError)                          # what a sync notes against a channel and goes on from
+ERRORS = (youtube.YoutubeError, iplayer.IplayerError, plex.PlexError)
+RETRY_DELAY = 30                                                                 # seconds before the channels that failed are tried once more (a 503 from YouTube passes); TUBES_SYNC_RETRY overrides (the tests set 0)                          # what a sync notes against a channel and goes on from
 
 
 class NotFound(LookupError):
@@ -505,36 +506,60 @@ def followed():
 
 
 @quota.purpose('sync')
-def sync(channel_ids=None, now=None, on_channel=None, progress=None):
-    """Sync these channels (default: every followed one) in turn; returns `{channels: [...], errors: [...], added, synced}`. A failure on one
-    channel is noted (with the videos it had added before it failed, which are kept and counted) and the next goes on, except running out of
-    quota, which stops the rest. `on_channel(id, title)` is called before each. A sync of every followed channel that did not run out of quota
-    ends with a `recheck` (its result is `recheck`, or None).
-    After a sync of every followed channel, the library's `synced` time moves on."""
+def sync(channel_ids=None, now=None, on_channel=None, progress=None, sleep=time.sleep):
+    """Sync these channels (default: every followed one) in turn; returns `{channels: [...], errors: [...], recovered: [...], added, synced}`.
+    A failure on one channel is noted (with the videos it had added before it failed, which are kept and counted) and the next goes on,
+    except running out of quota, which stops the rest. The channels that failed (but not one that is gone, nor a quota stop) are tried once
+    more after the rest, RETRY_DELAY seconds later: most failures pass (YouTube answering 503 for a moment, 2026-11-15), so `errors` holds
+    only the ones that failed twice and `recovered` the ones the second try brought round. `on_channel(id, title)` is called before each.
+    A sync of every followed channel that did not run out of quota ends with a `recheck` (its result is `recheck`, or None).
+    After a sync of every followed channel with no channel still failing, the library's `synced` time moves on."""
     now = now or cache.stamp(); everything = channel_ids is None
     if everything: todo = followed()
     else:
         with db.connect() as con: titles = dict(tuple(r) for r in con.execute('SELECT id, title FROM channels'))
         todo = [(i, titles.get(i, i)) for i in channel_ids]
-    done, errors = [], []
-    for cid, title in todo:
+    done, errors, recovered = [], [], []
+
+    def one(cid, title):
+        """Sync one channel; returns its error row, or None when it went through (added to `done`)."""
         if on_channel: on_channel(cid, title)
         so_far = [0]
 
         def counted(added, so_far=so_far):
             so_far[0] = added
             if progress: progress(added)
-        try: done.append(sync_channel(cid, now, counted))
-        except (*ERRORS, NotFound) as e:
-            errors.append(dict(channel=cid, title=title, error=str(e), added=so_far[0]))
-            if 'quota' in str(e): break
+        try: done.append(sync_channel(cid, now, counted)); return None
+        except NotFound as e: return dict(channel=cid, title=title, error=str(e), added=so_far[0], again=False)
+        except ERRORS as e: return dict(channel=cid, title=title, error=str(e), added=so_far[0], again='quota' not in str(e))
+
+    for cid, title in todo:
+        e = one(cid, title)
+        if e: errors.append(e)
+        if e and 'quota' in e['error']: break
+    again = [e for e in errors if e['again']]
+    if again and not any('quota' in e['error'] for e in errors):
+        sleep(float(os.environ.get('TUBES_SYNC_RETRY', RETRY_DELAY)))
+        for e in again:
+            second = one(e['channel'], e['title'])
+            errors.remove(e)
+            if second: errors.append(dict(second, added=e['added'] + second['added'], error=f"{second['error']} (tried twice)"))
+            else: recovered.append(dict(channel=e['channel'], title=e['title'], error=e['error'], added=e['added']))
+            if second and 'quota' in second['error']: break
+    for e in errors: e.pop('again', None)
     if everything and not errors:
         with db.connect() as con: con.execute("INSERT INTO meta (key, value) VALUES ('library_synced', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (now,))
     checked = None
     if everything and not any('quota' in e['error'] for e in errors):
         try: checked = recheck(now=now)
         except youtube.YoutubeError as e: errors.append(dict(channel=None, title='The recheck for videos gone from YouTube', error=str(e), added=0))   # named: not one that stopped the sync
-    return dict(channels=done, errors=errors, added=sum(d['added'] for d in done + errors), synced=now, recheck=checked)
+    return dict(channels=done, errors=errors, recovered=recovered, added=sum(d['added'] for d in done + errors + recovered), synced=now, recheck=checked)
+
+
+def failed(result, limit=2):
+    """Whether a sync went badly enough to say so (`tubes sync` exits non-zero, so the timer's alert fires): `limit` or more channels still
+    failing after their second try, or the quota running out. One channel failing twice is noted in the log and left for the next sync."""
+    return sum(1 for e in result['errors'] if e['channel']) >= limit or any('quota' in e['error'] for e in result['errors'])
 
 
 class Job:

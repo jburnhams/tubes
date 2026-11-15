@@ -35,14 +35,16 @@ def gb(n): return f'{n / 1e9:.2f} GB'
 
 
 def cmd_sync(args):
-    """Sync the named channels, or every followed one; exits non-zero if any failed (the timer's log then shows it)."""
+    """Sync the named channels, or every followed one; a channel that fails is tried once more after the rest. Exits non-zero only when two
+    or more channels still fail, or the quota ran out (catalogue.failed), so one passing hiccup does not set off the timer's alert."""
     if not youtube.configured() and catalogue.needs_youtube(args.channel or None): sys.exit('YOUTUBE_API_KEY is not in the environment, so the library cannot be synced.')
     r = catalogue.sync(args.channel or None)
     lines = [f"  {c['channel']:26} {c['added']:>6} new  {'complete' if c['complete'] else 'backfill continues next sync':30} {c['title'][:40]}" for c in r['channels']]
+    lines += [f"  {e['channel']:26} failed once, then synced: {e['error']}" for e in r['recovered']]
     lines += [f"  {e['channel'] or 'library':26} FAILED  {'' if e['channel'] else (e['title'] or 'the sync') + ': '}{e['error']}" for e in r['errors']] + [f"  {len(r['channels'])} channel(s) synced, {r['added']} new video(s)"]
     if r['recheck']: lines.append(f"  {r['recheck']['checked']} video(s) rechecked: {r['recheck']['gone']} gone from YouTube and hidden, {r['recheck']['back']} back")
     out(args, r, '\n'.join(lines))
-    return 1 if r['errors'] else 0
+    return 1 if catalogue.failed(r) else 0
 
 
 def cmd_recheck(args):

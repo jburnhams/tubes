@@ -46,10 +46,18 @@ def test_add_sync_channels_and_remove(capsys, fake_youtube, monkeypatch):
     assert cli.main(['channels', '--json']) == 0 and len(json.loads(capsys.readouterr().out)) == 2
 
     del fake_youtube.channels['UCbbbbbbbbbbbbbbbbbbbbbb']
-    assert cli.main(['sync']) == 1 and 'FAILED  YouTube has no channel' in capsys.readouterr().out
+    assert cli.main(['sync']) == 0 and 'FAILED  YouTube has no channel' in capsys.readouterr().out          # one channel failing is noted, not an alert
+    real = catalogue.sync_channel
+    def flaky(cid, now=None, progress=None, calls=[]):
+        calls.append(cid)
+        if cid == A and calls.count(A) == 1: raise youtube.YoutubeError('YouTube refused the request (503: The service is currently unavailable.).')
+        return real(cid, now, progress)
+    monkeypatch.setattr(catalogue, 'sync_channel', flaky)
+    assert cli.main(['sync', A]) == 0 and f'{A}   failed once, then synced: YouTube refused the request (503' in capsys.readouterr().out
+    monkeypatch.setattr(catalogue, 'sync_channel', real)
     def down(now=None): raise youtube.YoutubeError('YouTube could not be reached: down')
     monkeypatch.setattr(catalogue, 'recheck', down)
-    assert cli.main(['sync', A]) == 0 and cli.main(['sync']) == 1 and 'library                    FAILED  The recheck for videos gone from YouTube: YouTube could not be reached: down' in capsys.readouterr().out
+    assert cli.main(['sync', A]) == 0 and cli.main(['sync']) == 0 and 'library                    FAILED  The recheck for videos gone from YouTube: YouTube could not be reached: down' in capsys.readouterr().out
     assert cli.main(['remove', 'UCbbbbbbbbbbbbbbbbbbbbbb']) == 0 and 'removed UCbbbbbbbbbbbbbbbbbbbbbb and 1 video(s)' in capsys.readouterr().out
     with pytest.raises(SystemExit, match='no channel UCbbbbbbbbbbbbbbbbbbbbbb'): cli.main(['remove', 'UCbbbbbbbbbbbbbbbbbbbbbb'])
     monkeypatch.delenv('YOUTUBE_API_KEY')
