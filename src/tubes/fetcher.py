@@ -64,6 +64,7 @@ class Job:
         self.reached = False       # it stopped there on purpose
         self.wanted = False        # a play came after it stopped there: fetch the whole video once the prefix is kept
         self.prefer = prefer       # {video, audio}: the format ids a kept prefix was cut from, which this fetch must use too
+        self.auto_client = until is not None or prefer is not None  # prefetches and prefix upgrades let yt-dlp choose the client; cold plays try player_client first
         self.ended = threading.Event()     # set once it has left `_running` (cancel waits for it: a prefetch runs in the prefetcher's thread, not its own)
 
     def stop(self, cancel=True):
@@ -87,14 +88,14 @@ def direct_command(url, out_name=cache.PLAYLIST):
             '-hls_flags', 'independent_segments+temp_file', '-hls_fmp4_init_filename', 'init.mp4', '-hls_segment_filename', 'seg_%05d.m4s', out_name]
 
 
-def stream_command(fmt_id, info_path, signed_in=False):
-    return ytdlp.base_command(signed_in) + ['--no-part', '-f', str(fmt_id), '--load-info-json', info_path, '-o', '-']
+def stream_command(fmt_id, info_path, signed_in=False, auto_client=False):
+    return ytdlp.base_command(signed_in, auto_client) + ['--no-part', '-f', str(fmt_id), '--load-info-json', info_path, '-o', '-']
 
 
-def choose_once(url, signed_in=False, prefer=None):
+def choose_once(url, signed_in=False, prefer=None, auto_client=False):
     """One probe and its streams: (info, video format, audio format, signed_in). With `prefer` ({video, audio} format ids, a kept prefix's),
     those formats when the probe offers both, whatever would be chosen otherwise."""
-    info = ytdlp.probe(url, signed_in)
+    info = ytdlp.probe(url, signed_in, auto_client=True) if auto_client else ytdlp.probe(url, signed_in)
     if prefer:
         ids = {f.get('format_id'): f for f in info.get('formats') or []}
         if prefer['video'] in ids and prefer['audio'] in ids: return info, ids[prefer['video']], ids[prefer['audio']], signed_in
@@ -106,14 +107,14 @@ def same(chosen, prefer):
     return not prefer or (chosen[1].get('format_id'), chosen[2].get('format_id')) == (prefer['video'], prefer['audio'])
 
 
-def choose_both(url, prefer=None):
+def choose_both(url, prefer=None, auto_client=False):
     """With a signed-in browser set: probe signed out (the fast `visionos` client) and signed in at once. The signed-out answer wins when its
     streams have no ad wait (visionos played; about 1.3 s sooner); else the signed-in one; else, when the session cannot be read (browser
     signed out, keyring locked), the signed-out one with its wait. Running both costs neither any time (measured). With `prefer`, an answer
     that offers a kept prefix's formats goes before one that does not."""
     pool = ThreadPoolExecutor(2)
     try:
-        out, inn = pool.submit(choose_once, url, False, prefer), pool.submit(choose_once, url, True, prefer)
+        out, inn = pool.submit(choose_once, url, False, prefer, auto_client), pool.submit(choose_once, url, True, prefer, auto_client)
         try:
             fast = out.result()
             if ytdlp.ad_wait(fast[0], fast[1], fast[2]) == 0 and same(fast, prefer): return fast
@@ -126,12 +127,20 @@ def choose_both(url, prefer=None):
     finally: pool.shutdown(wait=False)        # a probe that lost is left to finish on its own
 
 
-def choose(url, prefer=None):
-    """Probe the video and choose its streams: (info, video format, audio format, signed_in). A probe without usable streams is tried once more."""
+def _choose(url, prefer=None, auto_client=False):
+    """Probe the video and choose its streams: (info, video, audio, signed_in, auto_client). A failed probe tries once more letting yt-dlp choose."""
     for attempt in (1, 2):
-        try: return choose_both(url, prefer) if ytdlp.signed_in_available() else choose_once(url, prefer=prefer)
+        use_auto = auto_client or attempt == 2
+        try:
+            res = choose_both(url, prefer, use_auto) if ytdlp.signed_in_available() else choose_once(url, prefer=prefer, auto_client=use_auto)
+            return (*res, use_auto)
         except ytdlp.YtdlpError:
             if attempt == 2: raise
+
+
+def choose(url, prefer=None, auto_client=False):
+    """Probe the video and choose its streams: (info, video format, audio format, signed_in). A probe without usable streams is tried once more letting yt-dlp choose."""
+    return _choose(url, prefer, auto_client)[:4]
 
 
 NATIVE = '~native'           # a Plex copy kept as the file has it (its HEVC, AV1, HDR), for a browser that decodes that; without it, one any browser plays (H.264)
@@ -254,7 +263,7 @@ def _run(job, url):
     """Probe, choose the streams, run the pipeline, record the result, then trim the cache. Never raises: a failure is recorded on the video's copy."""
     error = None; kept = 0
     try:
-        info, video, audio, signed_in = choose(url, job.prefer)
+        info, video, audio, signed_in, job.auto_client = _choose(url, job.prefer, job.auto_client)
         if not same((info, video, audio), job.prefer):        # YouTube no longer offers the prefix's formats: start again without it
             note(job.video_id, '[tubes] the kept start\'s formats are not offered now; fetching from scratch')
             cache.begin(job.video_id, cache.stamp()); job.prefer = None
@@ -401,8 +410,8 @@ def pipeline(job, info_path, video_fmt, audio_fmt, duration=None, signed_in=Fals
         try:
             ff = subprocess.Popen(hls_command(video_fd=rv, audio_fd=ra), cwd=out, pass_fds=(rv, ra), stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=log)
             job.procs.append(ff)
-            job.procs.append(subprocess.Popen(stream_command(video_fmt, info_path, signed_in), stdin=subprocess.DEVNULL, stdout=wv, stderr=log))
-            job.procs.append(subprocess.Popen(stream_command(audio_fmt, info_path, signed_in), stdin=subprocess.DEVNULL, stdout=wa, stderr=log))
+            job.procs.append(subprocess.Popen(stream_command(video_fmt, info_path, signed_in, job.auto_client), stdin=subprocess.DEVNULL, stdout=wv, stderr=log))
+            job.procs.append(subprocess.Popen(stream_command(audio_fmt, info_path, signed_in, job.auto_client), stdin=subprocess.DEVNULL, stdout=wa, stderr=log))
         except OSError:
             job.stop(); raise
         finally:
