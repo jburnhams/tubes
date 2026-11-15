@@ -147,6 +147,7 @@ function drive(video: HTMLVideoElement) {
   Object.defineProperty(video, 'paused', { configurable: true, get: () => state.paused })
   Object.defineProperty(video, 'seeking', { configurable: true, get: () => state.seeking })
   Object.defineProperty(video, 'duration', { configurable: true, get: () => state.duration })
+  Object.defineProperty(video, 'readyState', { configurable: true, get: () => 1 })
   const fire = (type: string) => act(() => { video.dispatchEvent(new Event(type)) })
   return {
     state, fire,
@@ -188,14 +189,23 @@ describe('The player', () => {
   it('counts a part it skips as seen', async () => {
     const { user } = openApp(`/watch/${id}`)
     const video = drive((await screen.findByLabelText('Building a bird box, video', { selector: 'video' })) as HTMLVideoElement)
-    await screen.findByRole('img', { name: /Parts that can be skipped/ })
+    await video.fire('durationchange')
+    await screen.findByRole('img', { name: /Sponsor/ })
     await video.play(60.5)                                                                  // into the sponsor read (1:00-1:35), skipped as it starts
     await waitFor(() => expect(video.state.t).toBe(95))
     video.state.paused = true; await video.fire('pause')
     await waitFor(() => expect(mock.reports.at(-1)!.report.watched).toBe(95))
-    await video.seek(5)
-    await user.click(screen.getByRole('button', { name: 'Skip intro ›' }))                  // one the person skips counts too, though seen already here
+    await video.seek(5); await video.play(5.25)                                             // the button is offered while it plays
+    await user.click(screen.getByRole('button', { name: 'Skip intro' }))                  // one the person skips counts too, though seen already here
     await waitFor(() => expect(video.state.t).toBe(12))
+  })
+
+  it('reports no length while the video does not know its own', async () => {
+    openApp(`/watch/${id}`)
+    const video = drive((await screen.findByLabelText('Building a bird box, video', { selector: 'video' })) as HTMLVideoElement)
+    video.state.duration = NaN                                                              // a stream before its metadata
+    await video.play(5); video.state.paused = true; await video.fire('pause')
+    await waitFor(() => expect(mock.reports.at(-1)!.report).toEqual({ position: 5, watched: 5, length: null }))
   })
 
   it('keeps playing when a report cannot be sent, and sends it again as the page is left', async () => {

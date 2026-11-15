@@ -5,7 +5,7 @@ import { Refused, cursorOf, describeError, folderProblem, numberProblem, running
 import { channels, library, libraryEmpty, syncJobs, longChannel, report, streams, systemStatus, systemTrouble, tile, videos } from '../../src/mocks/fixtures'
 import { videoPage } from '../../src/mocks/handlers'
 import { createHlsAttacher, type HlsEngine } from 'strata-react/hls'
-import { fromTheStart, startingAt } from '../../src/player'
+import { startingAt } from '../../src/player'
 import { describeCache, describeEvicted } from '../../src/screens/CacheScreen'
 import { describeShown, languageName, settingsProblems, shownProblems } from '../../src/screens/SettingsScreen'
 import { describeSystem, usable } from '../../src/screens/SystemScreen'
@@ -13,7 +13,7 @@ import { describeDetail, shareSeen, sourceParts, timeSpent } from '../../src/scr
 import { channelState, describeAdded, describeJob, describeLibrary } from '../../src/screens/LibraryScreen'
 import { ago, countFor, episodeLabel, iplayerText, leaving, videoCount, views, viewsAndAge } from '../../src/watch/format'
 import { bySeries } from '../../src/watch/ChannelScreen'
-import { at, modesOf, place, segmentKey, shown, skippedText, skipText } from '../../src/watch/skip'
+import { modesOf, shown, spanKindsOf, spansOf } from '../../src/watch/skip'
 import { defaultSettings, defaultShown, kindsFor, sampleSegments } from '../../src/mocks/fixtures'
 import { episodes } from '../../src/mocks/fixtures'
 import { fallbackThumbnail, isPlaceholder } from '../../src/watch/missing'
@@ -99,10 +99,9 @@ describe('the player', () => {
 
   it('starts a growing stream at its beginning, and a restart where playback had reached', () => {
     made.length = 0
-    const Engine = fromTheStart(FakeHls as unknown as HlsEngine)
     const el = { canPlayType: () => '' } as unknown as HTMLMediaElement
-    const hold = createHlsAttacher(Engine)(el, '/api/media/x/index.m3u8', { startAt: 0, onProblem: () => {} })
-    expect(made[0].startPosition).toBe(0)                 // strata-react asks for -1, the live edge of an EVENT playlist
+    const hold = createHlsAttacher(FakeHls as unknown as HlsEngine)(el, '/api/media/x/index.m3u8', { startAt: 0, growing: true, onProblem: () => {} })
+    expect(made[0].startPosition).toBe(0)                 // not -1, the live edge of an EVENT playlist
     hold.reload(42)
     expect(made[1].startPosition).toBe(42)
     hold.detach()
@@ -110,7 +109,7 @@ describe('the player', () => {
 
   it('picks up where the last play stopped, and a restart where playback had reached', () => {
     made.length = 0
-    const attach = startingAt(createHlsAttacher(fromTheStart(FakeHls as unknown as HlsEngine)), 245)
+    const attach = startingAt(createHlsAttacher(FakeHls as unknown as HlsEngine), 245)
     const el = { canPlayType: () => '' } as unknown as HTMLMediaElement
     attach(el, '/p.m3u8', { startAt: 0, onProblem: () => {} }).detach()     // MediaPlayer's first load
     attach(el, '/p.m3u8', { startAt: 12, onProblem: () => {} }).detach()
@@ -379,23 +378,14 @@ describe('skipping', () => {
     expect(shown([{ ...sampleSegments[0], start: 0, end: 20 }, sampleSegments[0]], modes).map(s => s.end)).toEqual([12, 20])
     expect(modes.sponsor).toBe('auto')
   })
-  it('finds the part playing, the longer of two, its end outside it', () => {
-    const two = [{ category: 'intro', start: 0, end: 12, action: 'skip' as const }, { category: 'outro', start: 5, end: 30, action: 'skip' as const }]
-    expect(at(two, 3)?.category).toBe('intro')
-    expect(at(two, 6)?.category).toBe('outro')
-    expect(at(two, 30)).toBeUndefined()
-    expect(segmentKey(two[0])).toBe('intro@0')
-  })
-  it('says what is skipped, and places it on the timeline', () => {
-    expect(skipText(sampleSegments[0], kinds)).toBe('Skip intro')
-    expect(skipText({ ...sampleSegments[0], category: 'mystery' }, kinds)).toBe('Skip segment')
-    expect(skippedText(sampleSegments[1], kinds)).toBe('Skipped sponsor')
-    expect(skippedText({ category: 'music_offtopic', start: 0, end: 1, action: 'mute' }, kinds)).toBe('Muted non-music section')
-    expect(skippedText({ category: 'mystery', start: 0, end: 1, action: 'skip' }, kinds)).toBe('Skipped segment')
-    expect(place(sampleSegments[1], 400)).toEqual({ left: 15, width: 8.75 })
-    expect(place({ ...sampleSegments[2], end: 500 }, 400)).toEqual({ left: 90, width: 10 })
-    expect(place(sampleSegments[0], null)).toBeUndefined()
-    expect(place(sampleSegments[0], 0)).toBeUndefined()
+  it('gives the player each kind with its tone, and cuts an automatic part out of the others', () => {
+    expect(spanKindsOf(kinds).sponsor).toEqual({ label: 'Sponsor', behaviour: 'auto', tone: 'success' })
+    expect(spanKindsOf([{ ...kinds[0], id: 'mystery' }]).mystery.tone).toBe('neutral')
+    expect(spansOf(sampleSegments, kinds)).toEqual([{ kind: 'intro', start: 0, end: 12, action: 'skip' }, { kind: 'sponsor', start: 60, end: 95, action: 'skip' }, { kind: 'outro', start: 360, end: 400, action: 'skip' }])
+    const inside = [{ category: 'intro', start: 0, end: 30, action: 'skip' as const }, { category: 'sponsor', start: 10, end: 20, action: 'skip' as const }]
+    expect(spansOf(inside, kinds).map(s => `${s.kind} ${s.start}-${s.end}`)).toEqual(['intro 0-10', 'sponsor 10-20', 'intro 20-30'])
+    expect(spansOf([{ category: 'intro', start: 5, end: 15, action: 'skip' }, { category: 'sponsor', start: 0, end: 20, action: 'skip' }], kinds).map(s => s.kind)).toEqual(['sponsor'])     // wholly inside an automatic part: gone
+    expect(spansOf([{ category: 'outro', start: 0, end: 30, action: 'skip' }, { category: 'intro', start: 0, end: 12, action: 'skip' }], kinds).map(s => s.kind)).toEqual(['intro', 'outro'])  // same start: the shorter first
   })
 })
 

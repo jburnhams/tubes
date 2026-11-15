@@ -1,5 +1,15 @@
 # Progress log
 
+## 2026-11-15: strata-react 1.1.2, and the pieces Tubes asked Strata for
+
+- Asked for: upgrade to the latest strata-react and use its new features (its changelog). The bump itself (1.0.35 → 1.1.2) needed no change: typecheck and all 260 web tests passed on it as they were.
+- The player's skippable parts are now `MediaPlayer`'s own `spans` (#207): drawn on the seek bar, an Ask part offers Skip over the picture (and the `s` key), an automatic one is skipped or muted as it starts with Undo, each acted on once; `onSpan` marks a skipped part as seen. Gone from Tubes: the strip under the player, the hand-kept skip, mute and notice state and the overlays. Two rules stay in `watch/skip.ts`: kinds drawn in the nearest status tone (Strata has no colour per kind; asked in strata-react #270), and an automatic part cut out of any part it overlaps, as the player acts on the first stretch it is in. Behaviour that moved with it: nothing is acted on while paused, the notice stays six seconds, a muted part mutes through the volume (so the volume control shows it), and the Skip button reads "Skip intro" (the arrow is hidden from screen readers).
+- The player also gains Strata's Full screen button and `f` key, click to play or pause, double click for full screen. "Picked up at" with Start over is drawn through `overlay` with `media.seek` (#211), in the bottom left so it never covers Skip.
+- HLS: Strata's attacher starts a growing source at its beginning (#208), so the `fromTheStart` engine subclass is gone; `startingAt` stays, as `MediaPlayer` still has no start time.
+- Video pictures are Strata's `Thumbnail` (#209): the stored size then hqdefault as a list of sources, YouTube's grey placeholder refused in `onLoad`, `onMissing` reporting the video. They now wait to be near the screen before loading. Show more is Strata's `LoadMore` (#210) with this side's rows (`more`, `loading`, `error`, `ruled={false}`), so focus moves to the first new video after Show more (cards carry `data-index`).
+- Not adopted: `strata-api-types` (types from the server's OpenAPI schema) needs `openapi-typescript` as a dev dependency, which is Jonathan's call.
+- Asked of strata-react: #270 (a colour per span kind; spans drawn with the browser's own controls, which draw none today, so a touch screen sees no parts).
+
 ## 2026-11-12: strata-react 1.0.35, and the watching side on Strata's components
 
 - Asked for: move the whole web app to the latest strata-react and use its components on the watching side too, keeping its look; then (same evening) use Strata's own `MediaPlayer` look for the player and improve it in Strata, ask Strata for skippable segments on the seek bar, and use Strata's dependency stack.
