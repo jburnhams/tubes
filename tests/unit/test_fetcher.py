@@ -60,9 +60,12 @@ def test_a_fetch_in_the_background_succeeds_and_trims_the_cache(monkeypatch):
 
 def test_a_probe_without_usable_streams_is_tried_once_more(monkeypatch):
     answers = [dict(formats=[dict(format_id='96', vcodec='avc1', acodec='mp4a', height=1080, protocol='m3u8_native')]), INFO]   # SABR-only, then a normal answer
-    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: answers.pop(0))
+    seen = []
+    def fake(url, signed_in=False, auto_client=False):
+        seen.append(auto_client); return answers.pop(0)
+    monkeypatch.setattr(ytdlp, 'probe', fake)
     info, video, audio, signed_in = fetcher.choose('https://u')
-    assert not signed_in and info is INFO and (video['format_id'], audio['format_id']) == ('399', '140') and answers == []
+    assert not signed_in and info is INFO and (video['format_id'], audio['format_id']) == ('399', '140') and answers == [] and seen == [False, True]
 
 
 @pytest.mark.parametrize('probe, pipeline_result, error', [
@@ -73,7 +76,7 @@ def test_a_probe_without_usable_streams_is_tried_once_more(monkeypatch):
 ])
 def test_failures_are_recorded_on_the_copy(monkeypatch, probe, pipeline_result, error):
     seed()
-    def fake_probe(url, signed_in=False):
+    def fake_probe(url, signed_in=False, auto_client=False):
         if isinstance(probe, Exception): raise probe
         return probe
     def fake_pipeline(*a):
@@ -132,12 +135,12 @@ def test_a_failed_iplayer_download_is_run_once_more(monkeypatch):
 
 def test_a_video_youtube_no_longer_has_is_hidden_until_a_fetch_finds_it(monkeypatch):
     seed()
-    def gone(url, signed_in=False): raise ytdlp.YtdlpError('[youtube] aaaaaaaaaaa: Video unavailable. This video has been removed by the uploader')
+    def gone(url, signed_in=False, auto_client=False): raise ytdlp.YtdlpError('[youtube] aaaaaaaaaaa: Video unavailable. This video has been removed by the uploader')
     monkeypatch.setattr(ytdlp, 'probe', gone)
     assert fetcher.start('aaaaaaaaaaa', background=False)['state'] == 'failed'
     assert library.video('aaaaaaaaaaa')['gone'] and 'aaaaaaaaaaa' not in [v['id'] for v in library.videos()['videos']]
     catalogue.mark_gone('aaaaaaaaaaa', now='later'); assert library.video('aaaaaaaaaaa')['gone'] != 'later'     # keeps when it first went
-    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: INFO)
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False, auto_client=False: INFO)
     monkeypatch.setattr(fetcher, 'pipeline', lambda job, *a: write_playlist(job.video_id, 2, True))
     monkeypatch.setattr(cache, 'evict', lambda now: None)
     assert fetcher.start('aaaaaaaaaaa', background=False)['state'] == 'ready' and library.video('aaaaaaaaaaa')['gone'] is None
@@ -145,7 +148,7 @@ def test_a_video_youtube_no_longer_has_is_hidden_until_a_fetch_finds_it(monkeypa
 
 def test_a_video_not_offered_in_this_country_is_hidden_as_blocked_not_gone(monkeypatch):
     seed()
-    def blocked(url, signed_in=False): raise ytdlp.YtdlpError('[youtube] aaaaaaaaaaa: The uploader has not made this video available in your country')
+    def blocked(url, signed_in=False, auto_client=False): raise ytdlp.YtdlpError('[youtube] aaaaaaaaaaa: The uploader has not made this video available in your country')
     monkeypatch.setattr(ytdlp, 'probe', blocked)
     assert fetcher.start('aaaaaaaaaaa', background=False)['state'] == 'failed'
     v = library.video('aaaaaaaaaaa')
@@ -346,7 +349,7 @@ def test_signed_in_alone_when_signed_out_fails_and_both_failing_is_an_error(monk
         return INFO
     monkeypatch.setattr(ytdlp, 'probe', only_in)
     assert chosen_ids(fetcher.choose('https://u')) == ('399', '140', True)
-    def neither(url, signed_in=False): raise ytdlp.YtdlpError('cookies' if signed_in else 'UNPLAYABLE')
+    def neither(url, signed_in=False, auto_client=False): raise ytdlp.YtdlpError('cookies' if signed_in else 'UNPLAYABLE')
     monkeypatch.setattr(ytdlp, 'probe', neither)
     with pytest.raises(ytdlp.YtdlpError, match='cookies'): fetcher.choose('https://u')
 
@@ -485,7 +488,7 @@ def test_a_fetch_that_fails_twice_keeps_its_log_and_says_why_in_the_server_log(m
 
 def test_a_probe_failure_has_no_log_to_keep(monkeypatch, capsys):
     seed()
-    def refuse(url, signed_in=False): raise ytdlp.YtdlpError('Sign in to confirm you are not a bot')
+    def refuse(url, signed_in=False, auto_client=False): raise ytdlp.YtdlpError('Sign in to confirm you are not a bot')
     monkeypatch.setattr(ytdlp, 'probe', refuse)
     assert fetcher.start('aaaaaaaaaaa', background=False)['state'] == 'failed'
     assert not os.path.exists(os.path.join(settings.data_dir(), fetcher.FAILED_LOGS, 'aaaaaaaaaaa.log')) and 'not a bot' in capsys.readouterr().err
@@ -518,8 +521,8 @@ def stop_at(job_seconds):
 def test_a_prefetch_keeps_the_start_and_a_play_fetches_the_rest_from_the_same_formats(monkeypatch):
     seed()
     probes = []
-    def probe(url, signed_in=False):
-        probes.append(url)                                                                      # the second probe ranks another format first
+    def probe(url, signed_in=False, auto_client=False):
+        probes.append((url, auto_client))                                                       # the second probe ranks another format first
         return INFO if len(probes) == 1 else dict(INFO, formats=[dict(INFO['formats'][0], format_id='401', height=1080)] + INFO['formats'])
     monkeypatch.setattr(ytdlp, 'probe', probe)
     pipe = stop_at(6); monkeypatch.setattr(fetcher, 'pipeline', pipe)
@@ -527,18 +530,19 @@ def test_a_prefetch_keeps_the_start_and_a_play_fetches_the_rest_from_the_same_fo
     st = fetcher.start('aaaaaaaaaaa', 'Building a shelf', 'Workshop', background=False, until=10)
     assert (st['state'], st['segments'], st['seconds']) == ('partial', 3, 12.0) and cache.prefix('aaaaaaaaaaa')['video'] == '399'
     assert fetcher.start('aaaaaaaaaaa', background=False, until=10)['state'] == 'partial'                # already prefetched: nothing runs
-    assert len(probes) == 1
+    assert probes == [('https://www.youtube.com/watch?v=aaaaaaaaaaa', True)]
     st = fetcher.start('aaaaaaaaaaa', background=False)
+    assert probes == [('https://www.youtube.com/watch?v=aaaaaaaaaaa', True), ('https://www.youtube.com/watch?v=aaaaaaaaaaa', True)]
     assert pipe.seen == [('399', '140'), ('399', '140')] and st['state'] == 'ready' and st['complete'] is True
     assert cache.prefix('aaaaaaaaaaa') is None and cache.entry('aaaaaaaaaaa')['title'] == 'Building a shelf'
 
 
 def test_a_prefix_whose_formats_are_gone_is_fetched_from_scratch(monkeypatch):
     seed()
-    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: INFO)
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False, auto_client=False: INFO)
     monkeypatch.setattr(fetcher, 'pipeline', stop_at(6)); monkeypatch.setattr(cache, 'evict', lambda now: None)
     fetcher.start('aaaaaaaaaaa', background=False, until=10)
-    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: dict(INFO, formats=[dict(INFO['formats'][0], format_id='398')] + INFO['formats'][1:]))
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False, auto_client=False: dict(INFO, formats=[dict(INFO['formats'][0], format_id='398')] + INFO['formats'][1:]))
     begun = []; real = cache.begin; monkeypatch.setattr(cache, 'begin', lambda *a: begun.append(a[0]) or real(*a))
     assert fetcher.start('aaaaaaaaaaa', background=False)['complete'] is True and begun == ['aaaaaaaaaaa']
 
@@ -554,7 +558,7 @@ def test_a_play_lets_a_running_prefetch_carry_on_to_the_end(monkeypatch):
 
 def test_a_play_as_the_prefetch_stops_fetches_the_whole_video_after(monkeypatch):
     seed()
-    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: INFO); monkeypatch.setattr(cache, 'evict', lambda now: None)
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False, auto_client=False: INFO); monkeypatch.setattr(cache, 'evict', lambda now: None)
     pipe = stop_at(6)
     def racing(job, *a):
         r = pipe(job, *a)
@@ -598,16 +602,16 @@ def test_signed_in_wins_when_only_it_offers_the_prefixes_formats(monkeypatch):
     settings.save(dict(cookies_from_browser='chrome'))
     out = dict(INFO, epoch=100, formats=[dict(f, available_at=100) for f in INFO['formats'][:1]] + [dict(INFO['formats'][1], format_id='251', acodec='opus', available_at=100)])
     inn = dict(INFO, epoch=100, formats=[dict(f, available_at=100) for f in INFO['formats']])
-    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: inn if signed_in else out)
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False, auto_client=False: inn if signed_in else out)
     assert chosen_ids(fetcher.choose('u', dict(video='399', audio='140'))) == ('399', '140', True)
     assert chosen_ids(fetcher.choose('u')) == ('399', '251', False)
-    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: dict(out, formats=out['formats'][:1] + [dict(out['formats'][1], format_id='140')]) if not signed_in else dict(inn, formats=[dict(INFO['formats'][0], format_id='401', available_at=100), INFO['formats'][1]]))
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False, auto_client=False: dict(out, formats=out['formats'][:1] + [dict(out['formats'][1], format_id='140')]) if not signed_in else dict(inn, formats=[dict(INFO['formats'][0], format_id='401', available_at=100), INFO['formats'][1]]))
     assert chosen_ids(fetcher.choose('u', dict(video='399', audio='140'))) == ('399', '140', False)  # only signed out offers them
 
 
 def test_a_whole_fetch_that_cannot_start_after_a_kept_start_is_said_in_the_server_log(monkeypatch, capsys):
     seed()
-    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False: INFO); monkeypatch.setattr(cache, 'evict', lambda now: None)
+    monkeypatch.setattr(ytdlp, 'probe', lambda url, signed_in=False, auto_client=False: INFO); monkeypatch.setattr(cache, 'evict', lambda now: None)
     pipe = stop_at(6)
     def racing(job, *a):
         r = pipe(job, *a); job.until = None; job.wanted = True
@@ -658,3 +662,18 @@ def test_a_play_clearing_the_length_mid_check_does_not_break_the_watch(monkeypat
     monkeypatch.setattr(cache, 'covered', covered)
     def sleep(s): p.returncode = 0
     assert fetcher.watch(job, clock=lambda: 0, sleep=sleep) is False and job.reached is False
+
+
+def test_cold_play_uses_configured_client_first_and_auto_client_on_retry(monkeypatch):
+    seed(); seen = []
+    def flaky_probe(url, signed_in=False, auto_client=False):
+        seen.append(auto_client)
+        if len(seen) == 1: raise ytdlp.YtdlpError('[youtube] aaaaaaaaaaa: The page needs to be reloaded.')
+        return INFO
+    pipe_auto = []
+    def fake_pipeline(job, *a):
+        pipe_auto.append(job.auto_client); write_playlist(job.video_id, 2, True); return None
+    monkeypatch.setattr(ytdlp, 'probe', flaky_probe); monkeypatch.setattr(fetcher, 'pipeline', fake_pipeline); monkeypatch.setattr(cache, 'evict', lambda now: None)
+    assert fetcher.start('aaaaaaaaaaa', background=False)['state'] == 'ready'
+    assert seen == [False, True] and pipe_auto == [True]
+    assert '--extractor-args' not in ' '.join(fetcher.stream_command('399', '/p.json', False, auto_client=True))

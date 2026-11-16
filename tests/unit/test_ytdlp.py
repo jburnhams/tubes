@@ -128,3 +128,11 @@ def test_choose_formats_says_what_is_missing():
     with pytest.raises(ytdlp.YtdlpError, match='No video stream at or under 1080p'): ytdlp.choose_formats([fmt('a', a='opus')], 1080)
     with pytest.raises(ytdlp.YtdlpError, match='No separate audio'): ytdlp.choose_formats([fmt('v', v='vp9', h=360, w=640)], 1080)
     with pytest.raises(ytdlp.YtdlpError, match='No video'): ytdlp.choose_formats([], 1080)
+
+
+def test_auto_client_lets_ytdlp_choose_and_reload_is_busy():
+    settings.save(dict(player_client='visionos', cookies_from_browser='chrome'))
+    assert ytdlp.base_command(False, auto_client=True) == ['yt-dlp', '--no-warnings', '--no-progress', '--ignore-config']
+    assert ytdlp.base_command(True, auto_client=True) == ['yt-dlp', '--no-warnings', '--no-progress', '--ignore-config', '--cookies-from-browser', 'chrome']
+    assert ytdlp.BUSY.search('[youtube] x: The page needs to be reloaded.')
+    assert not ytdlp.says_gone('Video unavailable. The page needs to be reloaded.')

@@ -25,7 +25,7 @@ PAUSE_SECONDS = 3600         # YouTube asked to slow down
 RETRY_HOURS = 24
 MAX_SECONDS = 300
 ASKED = 100                  # how many recently offered videos are remembered
-SLOW_DOWN = re.compile(r'try again later|not a bot|rate.?limit|too many requests|\b429\b', re.I)
+SLOW_DOWN = re.compile(r'try again later|not a bot|rate.?limit|too many requests|\b429\b|page needs to be reloaded', re.I)
 
 
 def length(video_id):

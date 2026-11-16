@@ -119,3 +119,11 @@ def test_home_that_cannot_be_read_still_leaves_the_offered_ones(monkeypatch):
     monkeypatch.setattr(library, 'videos', broken)
     p = prefetch.Prefetcher(); p.want(['aaaaaaaaaaa'])
     assert p.candidates() == ['aaaaaaaaaaa']
+
+
+def test_page_needs_to_be_reloaded_pauses_prefetching(monkeypatch):
+    seed(); t = [DAY]; p = prefetch.Prefetcher(clock=lambda: t[0])
+    def reload_err(vid):
+        cache.begin(vid, cache.stamp()); cache.finish(vid, cache.stamp(), '[youtube] aaaaaaaaaaa: The page needs to be reloaded.'); return cache.status(vid)
+    runs(monkeypatch, reload_err)
+    assert p.step() == 'aaaaaaaaaaa' and p.step() == 'paused' and p.state()['paused_until'] is not None

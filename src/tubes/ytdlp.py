@@ -34,10 +34,10 @@ def signed_in_available():
     return bool(settings.get('cookies_from_browser'))
 
 
-def base_command(signed_in=False):
+def base_command(signed_in=False, auto_client=False):
     """yt-dlp and the options every call shares; signed in, it reads the browser's YouTube session (and a probe and its downloads must agree)."""
     cmd = [settings.get('ytdlp'), '--no-warnings', '--no-progress', '--ignore-config']
-    client = settings.get('player_client')
+    client = '' if auto_client else settings.get('player_client')
     if signed_in:
         cmd += ['--cookies-from-browser', settings.get('cookies_from_browser')]
         if client == 'visionos': client = SIGNED_IN_CLIENT          # visionos takes no cookies; asking for it alone would leave no client
@@ -51,9 +51,9 @@ def watch_url(video_id):
     return f'https://www.youtube.com/watch?v={video_id}'
 
 
-def run_json(args, timeout, signed_in=False):
+def run_json(args, timeout, signed_in=False, auto_client=False):
     """Run yt-dlp with `args` and parse its JSON output."""
-    cmd = base_command(signed_in) + list(args)
+    cmd = base_command(signed_in, auto_client) + list(args)
     try: p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except FileNotFoundError: raise YtdlpError(f'yt-dlp is not installed (looked for {cmd[0]!r}); set the ytdlp setting to its path.') from None
     except subprocess.TimeoutExpired: raise YtdlpError(f'yt-dlp took longer than {timeout} s and was stopped.') from None
@@ -79,7 +79,7 @@ def last_error(text):
 
 
 GONE = re.compile(r'Video unavailable|This video is unavailable|Private video|has been removed|no longer available|account associated with this video has been terminated', re.I)
-BUSY = re.compile(r'try again later|not a bot|confirm your age', re.I)
+BUSY = re.compile(r'try again later|not a bot|confirm your age|page needs to be reloaded', re.I)
 
 
 BLOCKED = re.compile(r'not made this video available in your country|not available in your country|blocked it in your country|geo.?restrict', re.I)
@@ -98,9 +98,9 @@ def says_gone(message):
     return bool(message and GONE.search(message) and not BUSY.search(message) and not says_blocked(message))
 
 
-def probe(url, signed_in=False):
+def probe(url, signed_in=False, auto_client=False):
     """Full information about one video, with its formats. A signed-in probe whose browser session cannot be read fails (yt-dlp exits with an error in about 0.6 s)."""
-    return run_json(['--dump-single-json', '--no-playlist', url], PROBE_TIMEOUT, signed_in)
+    return run_json(['--dump-single-json', '--no-playlist', url], PROBE_TIMEOUT, signed_in, auto_client)
 
 
 def ad_wait(info, *chosen):
