@@ -1,5 +1,9 @@
 # Progress log
 
+## 2026-11-18: Fullscreen controls auto-hide
+
+- Tubes now uses [strata-react 1.1.3](https://github.com/jburnhams/strata-react/releases/tag/v1.1.3). Its shared player hides the custom controls after three idle seconds of fullscreen playback. Mouse movement or a playback shortcut brings them back, and pausing shows them.
+
 ## 2026-11-15: strata-react 1.1.2, and the pieces Tubes asked Strata for
 
 - Asked for: upgrade to the latest strata-react and use its new features (its changelog). The bump itself (1.0.35 → 1.1.2) needed no change: typecheck and all 260 web tests passed on it as they were.
