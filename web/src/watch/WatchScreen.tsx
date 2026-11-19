@@ -20,7 +20,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
-import { Button, DataView, describeHttpError, HttpError, type Load, type MediaSpanData, MediaPlayer, type SpanOutcome, useAsyncAction, useLoad } from 'strata-react'
+import { Button, DataView, describeHttpError, HttpError, type Load, type MediaSpanData, MediaPlayer, type PlayerWarningEvent, type SpanOutcome, useAsyncAction, useLoad, usePlayerWarnings } from 'strata-react'
 import { api, describeError, keys, paths, withBase, type Segment, type SegmentKind, type Segments, type Stream, type Video, type VideoDetail } from '../api'
 import { attachStream, startingAt } from '../player'
 import { decodes } from '../decodes'
@@ -30,7 +30,7 @@ import { FromHere, fromState, useArrivedFrom } from './from'
 import { useWatchReport } from './progress'
 import { reportMissing, useHidden } from './missing'
 import { spanKindsOf, spansOf } from './skip'
-import { Pill, trouble } from './Shown'
+import { trouble } from './Shown'
 
 /** How often the copy's progress is read while it is still arriving. */
 export const POLL_MS = 1000
@@ -69,7 +69,7 @@ export const RESUME_MARGIN = 10
  *  Skip over the picture, an "auto" part is skipped (or muted) as it starts with Undo; a part skipped counts as seen. It reports how much
  *  is seen against `playId` (progress.ts), from the <video> inside it (MediaPlayer hands out its state, not its element). `start` is where
  *  it picks up, with "Picked up at" and Start over over the picture for a few seconds. */
-export function Player({ src, title, segments, kinds, length, growing, playId, start }: { src: string; title: string; segments: Segment[]; kinds: SegmentKind[]; length: number | null; growing?: string; playId: number; start: number }) {
+export function Player({ src, title, segments, kinds, length, growing, playId, start, warning }: { src: string; title: string; segments: Segment[]; kinds: SegmentKind[]; length: number | null; growing?: string; playId: number; start: number; warning?: PlayerWarningEvent }) {
   const box = useRef<HTMLDivElement>(null)
   // The <video> as a ref for the progress report, read when its effect runs (the player is in the page by then).
   const element = useMemo(() => ({ get current() { return box.current!.querySelector('video')! } }), [])
@@ -88,7 +88,7 @@ export function Player({ src, title, segments, kinds, length, growing, playId, s
   return (
     <div ref={box}>
       <MediaPlayer kind="video" label={title} sources={[{ src, title, duration: length ?? undefined }]} attach={attach} autoPlay growing={growing !== undefined ? { status: growing } : undefined}
-        spans={spans} spanKinds={spanKinds} onSpan={onSpan}
+        spans={spans} spanKinds={spanKinds} onSpan={onSpan} warning={warning}
         overlay={media => picked && (
           <p role="status" className="absolute bottom-3 left-3 flex items-center gap-2 rounded-overlay border border-border bg-background px-3 py-1 type-body-sm text-foreground shadow-overlay">
             Picked up at {runningTime(from)}
@@ -134,6 +134,17 @@ function Stage({ v }: { v: VideoDetail }) {
     await queryClient.invalidateQueries({ queryKey: keys.stream(copy) })
   }, { describeError })
   const skips = useLoad({ queryKey: keys.segments(v.id), queryFn: () => api.segments(v.id), staleTime: Infinity })   // what can be skipped: nothing (not an error) until it answers
+  const skipMessage = skipTrouble(skips)
+  const { warning, warn } = usePlayerWarnings()
+  const skipReadFailed = skips.status === 'error'
+  useEffect(() => {
+    if (!skipMessage) return
+    warn({
+      title: skipMessage,
+      description: 'The video plays as it is.',
+      action: skipReadFailed ? { label: 'Try again', onPress: () => { void queryClient.refetchQueries({ queryKey: keys.segments(v.id), exact: true }) } } : undefined,
+    })
+  }, [skipMessage, skipReadFailed, warn, queryClient, v.id])
   const started = play.status === 'ready' ? play.data : undefined
   const s = !started ? undefined : stream.status === 'ready' ? stream.data : started
   const failed = s?.state === 'failed'
@@ -161,15 +172,10 @@ function Stage({ v }: { v: VideoDetail }) {
         </Frame>
       ) : s.playable ? (
         <Player src={withBase(paths.playlist(copy))} title={v.title} segments={skips.status === 'ready' ? skips.data.segments : NONE} kinds={skips.status === 'ready' ? skips.data.categories : NO_KINDS} length={v.duration}
-          growing={s.complete ? undefined : savedText(s, v.duration)} playId={started!.play_id} start={startAt(started!.resume, s)} />
+          growing={s.complete ? undefined : savedText(s, v.duration)} playId={started!.play_id} start={startAt(started!.resume, s)}
+          warning={warning} />
       ) : (
         <Frame><p role="status" className="text-tube-base opacity-80">{waitingText(s)}</p></Frame>
-      )}
-      {s?.playable && !failed && skipTrouble(skips) && (
-        <p role="status" className="flex flex-wrap items-center gap-3 text-tube-xs text-tube-quiet">
-          {skipTrouble(skips)} The video plays as it is.
-          {skips.status === 'error' && <Pill onClick={skips.retry}>Try again</Pill>}
-        </p>
       )}
 
       <h1 className="text-tube-lg font-bold">{v.title}</h1>

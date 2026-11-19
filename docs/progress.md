@@ -1,5 +1,9 @@
 # Progress log
 
+## 2026-11-19: Fullscreen picture and playback warnings
+
+- Strata React 1.1.4 expands the fullscreen picture into the space freed by hidden controls. Timed Skip prompts stay over the picture. Tubes now uses the player's warning hook for a failed read of skip data, with Try again where the request can be retried. The warning slides in over playback and expires without reserving a row below the video.
+
 ## 2026-11-18: Fullscreen controls auto-hide
 
 - Tubes now uses [strata-react 1.1.3](https://github.com/jburnhams/strata-react/releases/tag/v1.1.3). Its shared player hides the custom controls after three idle seconds of fullscreen playback. Mouse movement or a playback shortcut brings them back, and pausing shows them.

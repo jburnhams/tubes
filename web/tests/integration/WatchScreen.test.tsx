@@ -239,23 +239,24 @@ describe('Skipping parts of a video', () => {
   it('plays on with nothing drawn when the segments cannot be read', async () => {
     server.use(http.get('*/api/videos/:id/segments', () => new HttpResponse(null, { status: 503 })))
     openApp(`/watch/${id}`)
-    expect(await screen.findByText(/^The parts to skip could not be read: .* The video plays as it is\.$/)).toBeInTheDocument()
+    expect(await screen.findByText(/^The parts to skip could not be read:/)).toBeInTheDocument()
+    expect(screen.getByText('The video plays as it is.')).toBeInTheDocument()
     lasting(400)
     expect(screen.queryByRole('img', { name: /Sponsor/ })).not.toBeInTheDocument()
     server.use(http.get('*/api/videos/:id/segments', () => HttpResponse.json({ segments: sampleSegments, categories: kindsFor(mock.settings), error: null })))
-    const trouble = screen.getByText(/could not be read/)
-    await userEvent.click(within(trouble).getByRole('button', { name: 'Try again' }))
+    await userEvent.click(within(screen.getByRole('group', { name: /could not be read/ })).getByRole('button', { name: 'Try again' }))
     expect(await span(/Sponsor/)).toBeInTheDocument()
-    expect(screen.queryByText(/could not be read/)).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText(/could not be read/)).not.toBeInTheDocument())
   })
 
   it('says when the server could not ask the source, and still draws what it had', async () => {
     server.use(http.get('*/api/videos/:id/segments', () => HttpResponse.json({ segments: sampleSegments, categories: kindsFor(mock.settings), error: 'SponsorBlock could not be reached: timed out.' })))
     openApp(`/watch/${id}`)
-    expect(await screen.findByText('The parts to skip could not be looked up: SponsorBlock could not be reached: timed out. The video plays as it is.')).toBeInTheDocument()
+    expect(await screen.findByText('The parts to skip could not be looked up: SponsorBlock could not be reached: timed out.')).toBeInTheDocument()
+    expect(screen.getByText('The video plays as it is.')).toBeInTheDocument()
     lasting(400)
     expect(await span(/Sponsor/)).toBeInTheDocument()
-    expect(within(screen.getByText(/could not be looked up/)).queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
+    expect(within(screen.getByRole('group', { name: /could not be looked up/ })).queryByRole('button', { name: 'Try again' })).not.toBeInTheDocument()
   })
 
   it('skips an automatic part inside an Ask one', async () => {
