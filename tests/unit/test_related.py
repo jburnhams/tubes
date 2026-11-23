@@ -137,9 +137,9 @@ def test_refresh_counts_what_the_followed_channels_point_at(two_followed):
 
 def test_suggested_order_breaks_ties_by_score_and_rejects_others(two_followed):
     related.refresh(NOW, pause=0)
-    assert [i["channel_id"] for i in history.suggestions()["items"]][
-        0
-    ] == P  # watched order: no watches anywhere, so related score decides
+    assert (
+        next(i["channel_id"] for i in history.suggestions()["items"]) == P
+    )  # watched order: no watches anywhere, so related score decides
     with pytest.raises(ValueError, match="Order by watched or suggested"):
         history.suggestions(order="newest")
 

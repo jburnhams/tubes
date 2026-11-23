@@ -67,7 +67,7 @@ def test_run_json_failures(fake_run, monkeypatch):
             a[0], 1, "", "WARNING: slow\nERROR: [youtube] x: Sign in to confirm\nmore\n"
         ),
     )
-    with pytest.raises(ytdlp.YtdlpError, match="^\\[youtube\\] x: Sign in to confirm$"):
+    with pytest.raises(ytdlp.YtdlpError, match=r"^\[youtube\] x: Sign in to confirm$"):
         ytdlp.probe("https://x.test/v")
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: subprocess.CompletedProcess(a[0], 2, "", ""))
     with pytest.raises(ytdlp.YtdlpError, match="exited with code 2"):
@@ -120,7 +120,7 @@ def test_last_error():
 
 
 @pytest.mark.parametrize(
-    "message, gone",
+    ("message", "gone"),
     [
         ("[youtube] Ab1-Cd2_Ef3: Video unavailable", True),
         ("[youtube] Ab1-Cd2_Ef3: Video unavailable. This video has been removed by the uploader", True),
@@ -152,7 +152,7 @@ def test_says_gone(message, gone):
 
 
 @pytest.mark.parametrize(
-    "message, blocked",
+    ("message", "blocked"),
     [
         ("[youtube] Ab1-Cd2_Ef3: The uploader has not made this video available in your country", True),
         ("[youtube] Ab1-Cd2_Ef3: Video unavailable. This video is not available in your country.", True),

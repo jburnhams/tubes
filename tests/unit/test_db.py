@@ -1,4 +1,5 @@
 import pytest
+import sqlalchemy.exc
 
 # strata_python.db's standard tests: the migrated test database matches the models, and every revision goes up, down and up again on a
 # scratch database (what `strata-db check` does), on SQLite and with --pg on Postgres.
@@ -18,12 +19,11 @@ def test_the_engine_tubes_opens_matches_the_models():
 def test_a_unit_of_work_commits_or_is_undone_whole():
     with db.connect() as con:
         con.execute("INSERT INTO meta (key, value) VALUES ('a', ?)", ("1",))
-    with pytest.raises(Exception):
-        with db.connect() as con:
-            con.execute("INSERT INTO meta (key, value) VALUES (:k, :v)", dict(k="b", v="2"))
-            con.execute(
-                "INSERT INTO meta (key, value) VALUES ('a', '3')"
-            )  # duplicate key: the whole unit of work is undone
+    with pytest.raises(sqlalchemy.exc.IntegrityError), db.connect() as con:  # noqa: PT012 - the unit of work is the point
+        con.execute("INSERT INTO meta (key, value) VALUES (:k, :v)", dict(k="b", v="2"))
+        con.execute(
+            "INSERT INTO meta (key, value) VALUES ('a', '3')"
+        )  # duplicate key: the whole unit of work is undone
     with db.connect() as con:
         assert db.rows(con.execute("SELECT key, value FROM meta")) == [dict(key="a", value="1")]
         assert db.row(con.execute("SELECT key FROM meta WHERE key = 'b'")) is None

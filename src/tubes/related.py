@@ -254,7 +254,7 @@ def save_source(channel_id, got, now):
             con.execute("DELETE FROM related_links WHERE source_id = ?", (channel_id,))
             con.executemany(
                 "INSERT INTO related_links (source_id, channel_id, title, handle, hits, featured) VALUES (:s, :c, :title, :handle, :hits, :featured)",
-                [dict(l, s=channel_id, c=c) for c, l in got["links"].items()],
+                [dict(link, s=channel_id, c=c) for c, link in got["links"].items()],
             )
         con.execute(
             """INSERT INTO related_sources (channel_id, fetched, videos, error) VALUES (?, ?, ?, ?)
@@ -313,18 +313,18 @@ def aggregate():
             {},
             collections.defaultdict(collections.Counter),
         )
-        for l in links:
-            c = l["channel_id"]
-            if l["source_id"] not in live or c in followed:
+        for link in links:
+            c = link["channel_id"]
+            if link["source_id"] not in live or c in followed:
                 continue
-            by[c].add(l["source_id"])
-            score[c] += (l["hits"] / l["videos"] if l["videos"] else 0) + (FEATURED if l["featured"] else 0)
-            if l["title"]:
-                title.setdefault(c, l["title"])
-            if l["handle"]:
-                handle.setdefault(c, l["handle"])
-            if l["source_id"] in group_of:
-                votes[c][group_of[l["source_id"]]] += 1
+            by[c].add(link["source_id"])
+            score[c] += (link["hits"] / link["videos"] if link["videos"] else 0) + (FEATURED if link["featured"] else 0)
+            if link["title"]:
+                title.setdefault(c, link["title"])
+            if link["handle"]:
+                handle.setdefault(c, link["handle"])
+            if link["source_id"] in group_of:
+                votes[c][group_of[link["source_id"]]] += 1
         con.execute(
             "UPDATE suggestions SET suggested_by = ?, related_score = ? WHERE platform = 'youtube'", (0, 0.0)
         )  # iPlayer's are iplayer_suggest.py's

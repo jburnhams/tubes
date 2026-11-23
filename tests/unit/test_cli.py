@@ -90,7 +90,9 @@ def test_add_sync_channels_and_remove(capsys, fake_youtube, monkeypatch):
     )  # one channel failing is noted, not an alert
     real = catalogue.sync_channel
 
-    def flaky(cid, now=None, progress=None, calls=[]):
+    calls = []
+
+    def flaky(cid, now=None, progress=None):
         calls.append(cid)
         if cid == A and calls.count(A) == 1:
             raise youtube.YoutubeError("YouTube refused the request (503: The service is currently unavailable.).")

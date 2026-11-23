@@ -11,7 +11,7 @@ A = "UCaaaaaaaaaaaaaaaaaaaaaa"
 
 
 @pytest.mark.parametrize(
-    "utc, local",
+    ("utc", "local"),
     [
         ("2026-01-15T07:59:00+00:00", "2026-01-14T23:59:00"),  # winter: UTC-8
         ("2026-07-01T07:00:00+00:00", "2026-07-01T00:00:00"),  # summer: UTC-7
@@ -27,7 +27,7 @@ def test_pacific_time_follows_the_us_clock_changes(utc, local):
 
 
 @pytest.mark.parametrize(
-    "utc, at",
+    ("utc", "at"),
     [
         ("2026-11-12T05:00:00+00:00", "2026-11-12T08:00:00+00:00"),  # 9 pm PST: midnight is 08:00 UTC
         ("2026-07-01T06:59:00+00:00", "2026-07-01T07:00:00+00:00"),  # a minute before midnight PDT

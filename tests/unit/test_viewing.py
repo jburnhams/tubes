@@ -22,7 +22,7 @@ def watch(vid, at, watched, position=None, length=600.0, **where):
 
 
 @pytest.mark.parametrize(
-    "watched, length, expected",
+    ("watched", "length", "expected"),
     [
         (0, 600, "none"),
         (None, 600, "none"),
@@ -80,7 +80,7 @@ def test_reports_only_move_watched_up_and_keep_what_they_leave_out():
     assert (late["watched"], late["position"], late["length"], late["outcome"]) == (300, 20, 600, "partial")
     assert viewing.report(p, watched=5000, now=day(10))["watched"] == 600  # never more than the whole
     assert viewing.report(p, position=None, now=day(10))["position"] == 20
-    with pytest.raises(viewing.NotFound, match="There is no play 999."):
+    with pytest.raises(viewing.NotFound, match=r"There is no play 999\."):
         viewing.report(999, watched=1)
     q = viewing.start(B, day(10))["play_id"]  # the player has not said how long it is yet
     assert (
@@ -200,7 +200,7 @@ def test_recent_plays_newest_first_with_titles_even_once_the_video_left_the_libr
 
 def test_recent_plays_in_pages_by_cursor_and_filtered():
     seed()
-    for n in range(5):
+    for _ in range(5):
         viewing.start(A, day(10))  # the same moment: the id decides
     first = viewing.recent(limit=2)
     assert [p["id"] for p in first["items"]] == [5, 4] and first["has_more"] is True

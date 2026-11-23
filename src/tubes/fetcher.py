@@ -35,6 +35,7 @@ joins it. A fetch can stop on purpose once `until` seconds are listed: a prefetc
 (cache.keep_prefix) and fetched whole from the same formats when it is played (see cache.py's notes). A play of a video whose prefetch is
 running lets it carry on to the end instead. Prefetches do not count against `MAX_RUNNING`. The pipes need file descriptors passed by number, which Windows lacks, so fetching from YouTube runs on Linux and macOS only (CAN_PASS_FDS); an iPlayer fetch has no pipes and runs anywhere."""
 
+import contextlib
 import os
 import shutil
 import subprocess
@@ -168,7 +169,8 @@ def direct_command(url, out_name=cache.PLAYLIST):
 
 
 def stream_command(fmt_id, info_path, signed_in=False, auto_client=False):
-    return ytdlp.base_command(signed_in, auto_client) + [
+    return [
+        *ytdlp.base_command(signed_in, auto_client),
         "--no-part",
         "-f",
         str(fmt_id),
@@ -488,10 +490,8 @@ def _run(job, url):
     finally:
         if job.cancelled and not error:
             error = "The fetch was stopped."
-        try:
+        with contextlib.suppress(OSError):
             os.remove(os.path.join(cache.folder(job.video_id), INFO))  # its stream URLs expire within hours anyway
-        except OSError:
-            pass
         if error:
             keep_log(job.video_id, error)
         if not kept:

@@ -180,7 +180,10 @@ def choose_formats(formats, max_height):
 def describe(video, audio):
     """A short label for what was fetched, such as `1080p AV1 + AAC`."""
     names = {"av01": "AV1", "vp09": "VP9", "vp9": "VP9", "avc1": "H.264", "mp4a": "AAC", "opus": "Opus"}
-    name = lambda c: next((n for p, n in names.items() if (c or "").lower().startswith(p)), (c or "?").split(".")[0])
+
+    def name(c):
+        return next((n for p, n in names.items() if (c or "").lower().startswith(p)), (c or "?").split(".")[0])
+
     return f"{video.get('height')}p {name(video.get('vcodec'))} + {name(audio.get('acodec'))}"
 
 

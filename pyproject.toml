@@ -43,7 +43,12 @@ ignore = [
 "pytest.importorskip".msg = "Do not skip when a dependency is missing: install it (locally and in CI) and let the test fail if it is not there."
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101", "S104", "S105", "S106", "S108", "S603", "S607", "PT018"]    # asserts, fake secrets, tmp paths, subprocess of our own CLI; a row's fields checked in one assert
+# SQL is built only from names in the code (columns, tables, `?` lists) and the owner's own history_table setting; every value is a bound parameter.
+"src/tubes/{catalogue,history,iplayer_suggest,library,metadata,paste,related,viewing}.py" = ["S608"]
+"src/tubes/server/app.py" = ["S608"]
+# yt-dlp and ffmpeg are the programs the settings name, run with arguments built here (never through a shell).
+"src/tubes/{fetcher,plex,ytdlp}.py" = ["S603"]
+"tests/**" = ["S101", "S104", "S105", "S106", "S108", "S603", "S607", "PT018", "E731"]    # asserts, fake secrets, tmp paths, subprocess of our own CLI; a row's fields checked in one assert; one-line helpers
 
 [tool.pyright]
 include = ["src"]

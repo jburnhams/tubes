@@ -116,7 +116,7 @@ def shown(now=None, f=None):
     """What the lists show, as SQL and its arguments (needs the copies joined as k and the channels as c): still offered, not a stream live now or scheduled, and
     let through by Admin's filters. Never NULL, so NOT works."""
     chosen, args = _chosen(f or filters())
-    return f"({AVAILABLE} AND {NOT_STREAMING} AND {chosen})", [_now(now)] + args
+    return f"({AVAILABLE} AND {NOT_STREAMING} AND {chosen})", [_now(now), *args]
 
 
 CHANNEL_COLUMNS = """c.id, c.platform, c.title, c.handle, c.thumbnail, c.synced, c.published, c.country, c.subscribers, c.total_videos, c.views, c.complete, c.follow,
@@ -141,7 +141,7 @@ def status(now=None):
                                         COALESCE(SUM(CASE WHEN {STREAMING} THEN 1 ELSE 0 END), 0),
                                         COALESCE(SUM(CASE WHEN {AVAILABLE} AND {NOT_STREAMING} AND NOT {chosen} THEN 1 ELSE 0 END), 0)
                                  FROM videos v LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = v.id""",
-            args + [_now(now)] + chosen_args,
+            [*args, _now(now), *chosen_args],
         ).fetchone()
     channel_count, total, videos_, live, filtered = counts
     return dict(
@@ -225,21 +225,21 @@ def videos(channel_id=None, search=None, after=None, limit=24, now=None):
     sql = f"""SELECT {VIDEO_COLUMNS} FROM videos v LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = v.id
               WHERE {" AND ".join(where)} ORDER BY v.published DESC, v.id DESC LIMIT ?"""
     with db.connect() as con:
-        rows = [api_row(r) for r in db.rows(con.execute(sql, args + [limit + 1]))]
+        rows = [api_row(r) for r in db.rows(con.execute(sql, [*args, limit + 1]))]
     return dict(videos=rows[:limit], has_more=len(rows) > limit)
 
 
 def shuffle(count=24, channel_id=None, now=None):
     """`count` videos picked at random (from one channel, if given), for a page that offers something different on every visit."""
     ok, args = shown(now)
-    where, args = (f"WHERE {ok} AND v.channel_id = ?", args + [channel_id]) if channel_id else (f"WHERE {ok}", args)
+    where, args = (f"WHERE {ok} AND v.channel_id = ?", [*args, channel_id]) if channel_id else (f"WHERE {ok}", args)
     with db.connect() as con:
         return [
             api_row(r)
             for r in db.rows(
                 con.execute(
                     f"SELECT {VIDEO_COLUMNS} FROM videos v LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = v.id {where} ORDER BY RANDOM() LIMIT ?",
-                    args + [count],
+                    [*args, count],
                 )
             )
         ]

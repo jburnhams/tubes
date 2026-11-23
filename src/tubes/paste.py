@@ -40,7 +40,9 @@ def lines(text):
 
 
 def _same(a, b):
-    squash = lambda t: re.sub(r"[^0-9a-z]+", "", (t or "").lower())
+    def squash(t):
+        return re.sub(r"[^0-9a-z]+", "", (t or "").lower())
+
     return squash(a) == squash(b) and squash(a) != ""
 
 

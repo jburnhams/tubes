@@ -139,7 +139,10 @@ def cmd_channels(args):
     if not items and not args.json:
         print("  (no channels yet: ./tubes add <channel link or @handle>)")
         return 0
-    state = lambda c: "complete" if c["complete"] else "backfilling" if c["follow"] else "not followed"
+
+    def state(c):
+        return "complete" if c["complete"] else "backfilling" if c["follow"] else "not followed"
+
     return out(
         args,
         items,

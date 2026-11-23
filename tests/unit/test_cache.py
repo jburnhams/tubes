@@ -1,5 +1,6 @@
 import os
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import pytest
 from hypothesis import given
@@ -39,7 +40,7 @@ def test_score_mixes_popularity_and_recency():
 @given(st.lists(st.integers(0, 400), max_size=20), st.integers(0, 400))
 def test_one_more_play_never_lowers_the_score(days, extra):
     plays = [NOW - timedelta(days=d) for d in days]
-    assert cache.score(plays + [NOW - timedelta(days=extra)], NOW, 30) > cache.score(plays, NOW, 30)
+    assert cache.score([*plays, NOW - timedelta(days=extra)], NOW, 30) > cache.score(plays, NOW, 30)
 
 
 def item(
@@ -298,12 +299,8 @@ def test_a_prefix_keeps_what_reaches_its_length_but_never_the_last_listed_segmen
         "seg_00001.m4s",
         "seg_00002.m4s",
     ]
-    text = open(os.path.join(d, "index.m3u8")).read()
-    assert (
-        text == open(os.path.join(d, "prefix.m3u8")).read()
-        and "#EXT-X-ENDLIST" not in text
-        and "#EXT-X-VERSION:7" in text
-    )
+    text = Path(d, "index.m3u8").read_text()
+    assert text == Path(d, "prefix.m3u8").read_text() and "#EXT-X-ENDLIST" not in text and "#EXT-X-VERSION:7" in text
     assert cache.lengths(text) == [(4.0, "seg_00000.m4s"), (6.0, "seg_00001.m4s"), (4.0, "seg_00002.m4s")]
     assert cache.prefix("aaaaaaaaaaa") == dict(video="399", audio="140", seconds=14.0)
     st = cache.status("aaaaaaaaaaa")
@@ -345,7 +342,7 @@ def test_a_fetch_from_a_prefix_serves_the_prefix_until_it_has_more():
     d = cache.folder("aaaaaaaaaaa")
     with open(os.path.join(d, "index.m3u8"), "w") as f:
         f.write("#EXTM3U\n")  # ffmpeg starts the playlist again
-    assert cache.served_playlist("aaaaaaaaaaa") == open(os.path.join(d, "prefix.m3u8")).read()
+    assert cache.served_playlist("aaaaaaaaaaa") == Path(d, "prefix.m3u8").read_text()
     assert cache.status("aaaaaaaaaaa")["segments"] == 3
     with open(os.path.join(d, "init.mp4"), "wb") as f:
         f.write(b"")  # being written again

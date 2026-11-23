@@ -215,10 +215,13 @@ def chapters(description, duration=None):
     if len(marks) < 3 or marks[0][0] != 0:
         return []
     starts = [t for t, _ in marks]
-    ends = starts[1:] + [duration]
-    if any(b is not None and b - a < 10 for a, b in zip(starts, ends)):
+    ends = [*starts[1:], duration]
+    if any(b is not None and b - a < 10 for a, b in zip(starts, ends, strict=True)):
         return []
-    return [dict(start=float(a), end=float(b) if b is not None else None, title=t) for (a, t), b in zip(marks, ends)]
+    return [
+        dict(start=float(a), end=float(b) if b is not None else None, title=t)
+        for (a, t), b in zip(marks, ends, strict=True)
+    ]
 
 
 def age_rating(cd):
@@ -295,7 +298,7 @@ def video_row(item, now):
         kind="video",
         year=_year(sn.get("publishedAt")),
         kids=(item.get("status") or {}).get("madeForKids"),
-        **dict(zip(("content_rating", "min_age"), age_rating(cd))),
+        **dict(zip(("content_rating", "min_age"), age_rating(cd), strict=True)),
         meta=video_meta(item),
     )
 
@@ -334,14 +337,11 @@ def regions(restriction):
     alpha-2 codes (YouTube's own), or None. An `allowed` list means it plays only there; a `blocked` one means everywhere but there; YouTube
     gives one or neither. An empty `allowed` list (it plays nowhere) is kept as `-`, which matches no country."""
     r = restriction or {}
-    codes = lambda xs: (
-        ",".join(
-            sorted(
-                {x.strip().upper() for x in xs or [] if isinstance(x, str) and re.match(r"^[A-Za-z]{2}$", x.strip())}
-            )
-        )
-        or None
-    )
+
+    def codes(xs):
+        ok = {x.strip().upper() for x in xs or [] if isinstance(x, str) and re.match(r"^[A-Za-z]{2}$", x.strip())}
+        return ",".join(sorted(ok)) or None
+
     allowed = codes(r.get("allowed"))
     return dict(
         regions_allowed=allowed if allowed or r.get("allowed") is None else "-", regions_blocked=codes(r.get("blocked"))

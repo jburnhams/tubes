@@ -33,8 +33,9 @@ def sittings_of(groups, days):
 
 def two_crowds():
     """A, B and C are watched together, D, E and F together (never in the same sitting as the first three); G once."""
-    return sittings_of([[A, B, C], [D, E, F]], range(0, 60, 10)) + [
-        watch(at(100), "vg000000001", "Lone", G, "Channel g")
+    return [
+        *sittings_of([[A, B, C], [D, E, F]], range(0, 60, 10)),
+        watch(at(100), "vg000000001", "Lone", G, "Channel g"),
     ]
 
 
@@ -46,7 +47,7 @@ def load(watches, source="one", lookup=False, now=NOW):
 
 
 @pytest.mark.parametrize(
-    "text, expected",
+    ("text", "expected"),
     [
         ("9 Oct 2026, 21:57:37 BST", "2026-10-09T20:57:37+00:00"),
         ("Oct 9, 2026, 9:57:37 AM", "2026-10-09T09:57:37+00:00"),
@@ -368,7 +369,7 @@ def test_stats_count_rank_and_bucket():
         watch(at(d), f"v{d % 3:010d}", f"Video {d % 3}", A if d % 3 else B, f"Channel {'a' if d % 3 else 'b'}")
         for d in range(0, 200, 5)
     ]
-    load(ws + [watch(at(7), "gone0000001", "Gone", None)], source="one")
+    load([*ws, watch(at(7), "gone0000001", "Gone", None)], source="one")
     load([watch(at(3), "w0000000001", "Other", C, "Channel c")], source="two")
     s = history.stats()
     assert (s["watches"], s["videos"], s["channels"], s["first"], s["by"]) == (42, 5, 3, at(0), "month")
@@ -393,7 +394,7 @@ def test_overview_brings_library_history_and_suggestion_together(fake_youtube):
     from fake_youtube import vid
 
     fake_youtube.channel(A, "Channel A", topics=["Music"], videos=3)
-    load(two_crowds() + [watch(at(70), vid(A, 0), "Upload 0", A, "Channel a")], source="one", lookup=True)
+    load([*two_crowds(), watch(at(70), vid(A, 0), "Upload 0", A, "Channel a")], source="one", lookup=True)
     load([watch(at(80), vid(A, 0), "Upload 0", A, "Channel a")], source="two")
     o = history.overview(A)
     assert (o["title"], o["library"], o["suggestion"]["topics"], o["group"]["named"], o["configured"]) == (

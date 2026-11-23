@@ -236,7 +236,7 @@ def recent(limit=PAGE, after=None, outcome=None, source=None):
                                        FROM plays p LEFT JOIN videos v ON v.id = p.video_id LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = p.video_id
                                        LEFT JOIN channels dc ON p.source = ? AND dc.id = p.detail LEFT JOIN videos dv ON p.source = ? AND dv.id = p.detail
                                        WHERE {" AND ".join(where)} ORDER BY p.at DESC, p.id DESC LIMIT ?""",
-                ["link", "none", "channel", "up_next"] + args + [limit + 1],
+                ["link", "none", "channel", "up_next", *args, limit + 1],
             )
         )
     return dict(items=rows[:limit], has_more=len(rows) > limit)
@@ -253,7 +253,7 @@ def channel_visits(limit=PAGE, after=None):
                 f"""SELECT w.id, w.channel_id, c.title, c.thumbnail, w.at, COALESCE(w.source, ?) AS source, w.detail, dv.title AS detail_title
                                        FROM channel_views w LEFT JOIN channels c ON c.id = w.channel_id LEFT JOIN videos dv ON w.source = ? AND dv.id = w.detail
                                        WHERE {" AND ".join(where)} ORDER BY w.at DESC, w.id DESC LIMIT ?""",
-                ["link", "watch"] + args + [limit + 1],
+                ["link", "watch", *args, limit + 1],
             )
         )
     return dict(items=rows[:limit], has_more=len(rows) > limit)

@@ -52,7 +52,7 @@ def test_save_normalises_and_resets(tmp_path):
 
 
 @pytest.mark.parametrize(
-    "key, value, message",
+    ("key", "value", "message"),
     [
         ("cache_limit_gb", "lots", "must be a number"),
         ("cache_limit_gb", 0, "must be more than 0"),

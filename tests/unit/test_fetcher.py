@@ -129,7 +129,7 @@ def test_a_probe_without_usable_streams_is_tried_once_more(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "probe, pipeline_result, error",
+    ("probe", "pipeline_result", "error"),
     [
         (ytdlp.YtdlpError("Sign in to confirm you are not a bot"), None, "Sign in to confirm you are not a bot"),
         (dict(formats=[]), None, "No video stream at or under 1080p in a codec Chrome plays (AV1, VP9 or H.264)."),
@@ -365,12 +365,12 @@ def test_pipeline_wires_two_downloads_into_ffmpeg(monkeypatch):
     ]
     assert isinstance(v.kw["stdout"], int) and isinstance(a.kw["stdout"], int)
     for fd in (*fds, v.kw["stdout"], a.kw["stdout"]):
-        with pytest.raises(OSError):
+        with pytest.raises(OSError, match="Bad file descriptor"):
             os.fstat(fd)  # every pipe end is closed in this process
 
 
 @pytest.mark.parametrize(
-    "kw, reason",
+    ("kw", "reason"),
     [
         (
             dict(codes=(0, 1, 0), log=b"ERROR: [youtube] x: HTTP Error 403: Forbidden\n"),
@@ -874,7 +874,7 @@ def test_a_prefix_whose_formats_are_gone_is_fetched_from_scratch(monkeypatch):
         ytdlp,
         "probe",
         lambda url, signed_in=False, auto_client=False: dict(
-            INFO, formats=[dict(INFO["formats"][0], format_id="398")] + INFO["formats"][1:]
+            INFO, formats=[dict(INFO["formats"][0], format_id="398"), *INFO["formats"][1:]]
         ),
     )
     begun = []
@@ -970,7 +970,7 @@ def test_signed_in_wins_when_only_it_offers_the_prefixes_formats(monkeypatch):
         ytdlp,
         "probe",
         lambda url, signed_in=False, auto_client=False: (
-            dict(out, formats=out["formats"][:1] + [dict(out["formats"][1], format_id="140")])
+            dict(out, formats=[*out["formats"][:1], dict(out["formats"][1], format_id="140")])
             if not signed_in
             else dict(inn, formats=[dict(INFO["formats"][0], format_id="401", available_at=100), INFO["formats"][1]])
         ),

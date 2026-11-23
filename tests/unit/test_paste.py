@@ -11,7 +11,7 @@ NOW = "2026-11-12T05:00:00+00:00"
 
 
 @pytest.mark.parametrize(
-    "text, expected",
+    ("text", "expected"),
     [
         ("one\n\n  two  \none\n", ["one", "two"]),
         (
@@ -210,7 +210,7 @@ def test_a_film_or_a_category_link_suggests_the_category(fake_iplayer):
 
 
 @pytest.mark.parametrize(
-    "text, expected",
+    ("text", "expected"),
     [
         ("https://www.youtube.com/playlist?list=PLabc123", "PLabc123"),
         ("youtube.com/playlist?list=PLabc123&si=x", "PLabc123"),

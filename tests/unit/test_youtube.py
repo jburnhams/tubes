@@ -7,7 +7,7 @@ from tubes import youtube
 
 
 @pytest.mark.parametrize(
-    "text, want",
+    ("text", "want"),
     [
         ("https://www.youtube.com/watch?v=Ab1-Cd2_Ef3&t=10", ("video", "Ab1-Cd2_Ef3")),
         ("youtu.be/Ab1-Cd2_Ef3", ("video", "Ab1-Cd2_Ef3")),
@@ -28,7 +28,7 @@ def test_parse_reads_links_ids_and_handles(text, want):
 
 
 @pytest.mark.parametrize(
-    "text, message",
+    ("text", "message"),
     [
         ("", "Enter a channel or video"),
         ("https://example.com/watch", "not to a YouTube channel or video"),
@@ -179,7 +179,7 @@ def test_call_sends_the_key_and_referer(monkeypatch, fake_urlopen):
 
 
 @pytest.mark.parametrize(
-    "reply, message",
+    ("reply", "message"),
     [
         (
             http_error(
@@ -215,7 +215,7 @@ def test_the_three_calls_against_the_stand_in(fake_youtube):
     ids, token = youtube.uploads_page("UUaaaaaaaaaaaaaaaaaaaaaa")
     assert len(ids) == 50 and token == "P50" and ids[0] == "aaaa0000119"
     assert youtube.uploads_page("UUaaaaaaaaaaaaaaaaaaaaaa", "P100") == (
-        ["aaaa%07d" % n for n in range(19, -1, -1)],
+        [f"aaaa{n:07d}" for n in range(19, -1, -1)],
         None,
     )
     got = youtube.videos(ids + ids[:10] + ["missingxxxx"])  # 61 ids: two calls; YouTube leaves out what it lacks
@@ -301,7 +301,7 @@ def test_video_metadata():
 
 
 @pytest.mark.parametrize(
-    "description, n",
+    ("description", "n"),
     [
         ("0:00 a\n0:10 b\n0:20 c", 3),
         ("0:05 a\n0:10 b\n0:20 c", 0),  # the first is not at 0:00

@@ -77,7 +77,7 @@ def test_play_streams_while_it_fetches_then_plays_from_the_cache(client, fake_yt
     )
     playlist = client.get(f"/api/media/{V}/index.m3u8").text
     assert '#EXT-X-MAP:URI="init.mp4"' in playlist and "#EXT-X-ENDLIST" in playlist
-    for name in ["init.mp4"] + re.findall(r"^seg_\d{5}\.m4s$", playlist, re.M):
+    for name in ["init.mp4", *re.findall(r"^seg_\d{5}\.m4s$", playlist, re.M)]:
         r = client.get(f"/api/media/{V}/{name}")
         assert r.status_code == 200 and len(r.content) > 100
     assert client.post(f"/api/videos/{V}/play").json()["state"] == "ready"  # the second play is from the cache

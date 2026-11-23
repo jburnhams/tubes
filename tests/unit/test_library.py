@@ -1,3 +1,4 @@
+import pytest
 from library import CHANNELS, VIDEOS, seed
 
 from tubes import cache, catalogue, db, library
@@ -160,11 +161,9 @@ def test_filters_refuse_what_cannot_be_used_and_save_nothing():
         (dict(unknown_language="maybe"), "unknown_language must be one of show, hide."),
         (dict(captions="some"), "captions must be one of any, only."),
     ]:
-        try:
+        with pytest.raises(catalogue.FilterError) as e:
             catalogue.save_filters(bad)
-            raise AssertionError(bad)
-        except catalogue.FilterError as e:
-            assert str(e) == why
+        assert str(e.value) == why
     assert library.filters() == library.FILTERS
     catalogue.save_filters(dict(max_seconds=90.5))
     assert library.filters()["max_seconds"] == 90.5

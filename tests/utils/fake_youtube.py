@@ -209,9 +209,9 @@ class FakeYoutube:
                     kind="youtube#channelSection",
                     id=f"{q.get('channelId')}.s",
                     snippet=dict(type="singlePlaylist", title="Popular uploads"),
-                )
-            ]
-            + self.sections.get(q.get("channelId"), []),
+                ),
+                *self.sections.get(q.get("channelId"), []),
+            ],
         )
 
     def answer_next(self, video):
@@ -251,7 +251,7 @@ class FakeYoutube:
             contents=dict(
                 twoColumnWatchNextResults=dict(
                     results={},
-                    secondaryResults=dict(secondaryResults=dict(results=results + [dict(continuationItemRenderer={})])),
+                    secondaryResults=dict(secondaryResults=dict(results=[*results, dict(continuationItemRenderer={})])),
                 )
             )
         )

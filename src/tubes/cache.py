@@ -16,6 +16,7 @@ under the same names, byte for byte (measured on the home server, 2026-11-13: th
 Until that playlist is longer than the prefix's, the player is given the prefix's (`served_playlist`) and its init segment (`served_file`),
 so what it already plays never shrinks or changes."""
 
+import contextlib
 import hashlib
 import json
 import os
@@ -41,7 +42,11 @@ RECENT_PLAY = timedelta(days=1)
 
 def folder_name(video_id):
     """The video's folder name: its id when that is a plain file name, else a hash of it (ids from some sites carry `/` or `:`)."""
-    return video_id if SAFE_ID.match(video_id) else "h" + hashlib.sha1(video_id.encode()).hexdigest()[:16]
+    return (
+        video_id
+        if SAFE_ID.match(video_id)
+        else "h" + hashlib.sha1(video_id.encode(), usedforsecurity=False).hexdigest()[:16]
+    )
 
 
 def folder(video_id):
@@ -71,10 +76,8 @@ def folder_bytes(path):
     total = 0
     for root, _dirs, files in os.walk(path):
         for name in files:
-            try:
+            with contextlib.suppress(OSError):
                 total += os.path.getsize(os.path.join(root, name))
-            except OSError:
-                pass
     return total
 
 
@@ -253,10 +256,8 @@ def resume(video_id, now):
 def drop_prefix(video_id):
     """Forget a copy's prefix files (the whole fetch could not use its formats, or no longer needs them)."""
     for name in (PREFIX, PREFIX_INIT, PREFIX_INFO):
-        try:
+        with contextlib.suppress(OSError):
             os.remove(os.path.join(folder(video_id), name))
-        except OSError:
-            pass
 
 
 def finish(video_id, now, error=None):

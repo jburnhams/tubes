@@ -165,7 +165,7 @@ def sections():
             key=str(d["key"]),
             title=d.get("title"),
             type=d.get("type"),
-            locations=[l.get("path") for l in d.get("Location") or []],
+            locations=[loc.get("path") for loc in d.get("Location") or []],
         )
         for d in call("/library/sections").get("Directory") or []
         if d.get("type") in ("movie", "show")
@@ -611,7 +611,7 @@ def cached_image(path, width=640):
     w = next((x for x in WIDTHS if x >= int(width or 0)), WIDTHS[-1])
     folder = os.path.join(settings.data_dir(), IMAGES)
     os.makedirs(folder, exist_ok=True)
-    out = os.path.join(folder, f"{hashlib.sha1(path.encode()).hexdigest()[:20]}-{w}.jpg")
+    out = os.path.join(folder, f"{hashlib.sha1(path.encode(), usedforsecurity=False).hexdigest()[:20]}-{w}.jpg")
     if os.path.exists(out):
         return out
     data = image_bytes(path)

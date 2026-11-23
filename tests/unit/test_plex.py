@@ -184,7 +184,7 @@ def test_rows_carry_plexs_metadata(fake_plex):
 
 
 @pytest.mark.parametrize(
-    "text, key",
+    ("text", "key"),
     [
         ("plex:21394", "21394"),
         ("PLEX:7", "7"),

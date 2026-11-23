@@ -101,7 +101,7 @@ def test_offered_videos_go_first_latest_first(monkeypatch):
 
 def test_videos_that_cannot_or_need_not_be_prefetched_are_passed_over(monkeypatch):
     seed()
-    done = runs(monkeypatch)
+    runs(monkeypatch)
     p = prefetch.Prefetcher(clock=lambda: DAY)
     from tubes import db
 

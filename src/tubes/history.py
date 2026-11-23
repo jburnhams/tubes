@@ -374,7 +374,7 @@ def refresh(now=None, lookup=True):
     scores = {c: score(a, now) for c, a in per.items()}
     found = communities(sittings((s, a, c) for s, a, c, _t, _v in rows), counts)
     ids = match_groups(found, old, all_ids)
-    group_of = {c: gid for gid, members in zip(ids, found) for c in members}
+    group_of = {c: gid for gid, members in zip(ids, found, strict=True) for c in members}
     stats = [
         dict(
             channel_id=c,
@@ -389,7 +389,7 @@ def refresh(now=None, lookup=True):
         for c, a in per.items()
     ]
     groups = []
-    for gid, members in zip(ids, found):
+    for gid, members in zip(ids, found, strict=True):
         top = sorted(members, key=lambda c: (-scores[c], c))[:NAME_FROM]
         groups.append(
             dict(id=gid, name=named.get(gid) or ", ".join(title.get(c) or c for c in top), named=gid in named)
@@ -408,11 +408,11 @@ def refresh(now=None, lookup=True):
             part, marks = tuple(gone[i : i + 500]), ", ".join("?" * len(gone[i : i + 500]))
             con.execute(
                 f"DELETE FROM suggestions WHERE suggested_by = ? AND pasted IS NULL AND channel_id IN ({marks})",
-                (0,) + part,
+                (0, *part),
             )  # a pasted one stays too
             con.execute(
                 f"UPDATE suggestions SET watches = ?, videos = ?, first = NULL, last = NULL, score = ?, group_id = NULL WHERE channel_id IN ({marks})",
-                (0, 0, 0.0) + part,
+                (0, 0, 0.0, *part),
             )
         con.execute(
             "INSERT INTO meta (key, value) VALUES ('suggestions_refreshed', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -542,7 +542,7 @@ def suggestions(
         rows = db.rows(
             con.execute(
                 f"SELECT {COLUMNS} FROM suggestions s LEFT JOIN channels c ON c.id = s.channel_id WHERE {where} ORDER BY {PASTED_ORDER if pasted else ORDERS[order]} LIMIT ?",
-                tuple(args) + (limit,),
+                (*args, limit),
             )
         )
     by = related.pointers([r["channel_id"] for r in rows if r["suggested_by"] and r["platform"] == "youtube"])

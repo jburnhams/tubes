@@ -9,7 +9,7 @@ P = "b0000001"
 
 
 @pytest.mark.parametrize(
-    "text, expected",
+    ("text", "expected"),
     [
         ("https://www.bbc.co.uk/iplayer/episodes/b0000001/harbour-lights", ("programme", "b0000001")),
         ("https://www.bbc.co.uk/iplayer/episodes/b0000001?seriesId=m0000002", ("programme", "b0000001")),
@@ -58,7 +58,7 @@ def test_the_version_to_play_is_the_original():
 
 
 @pytest.mark.parametrize(
-    "episode, expected",
+    ("episode", "expected"),
     [
         (dict(id="m1", subtitle="Series 1: 2. The Deep", parent_position=2), ("The Deep", "Series 1", 2)),
         (dict(id="m1", subtitle="Series 3: 4. Night", parent_position=None), ("Night", "Series 3", 4)),
@@ -388,7 +388,7 @@ def test_richer_metadata(fake_iplayer):
 
 
 @pytest.mark.parametrize(
-    "series, n",
+    ("series", "n"),
     [("Series 4", 4), ("season 12", 12), ("Christmas Special", None), (None, None), ("Series 2: Part 1", None)],
 )
 def test_season(series, n):
