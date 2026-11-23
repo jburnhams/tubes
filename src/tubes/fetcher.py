@@ -42,12 +42,16 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from strata_python import oslib
 from strata_python.files import write_json_atomic
 
 from tubes import cache, catalogue, db, iplayer, plex, settings, ytdlp
+from tubes.db import Row
+from tubes.shape import Json, arr
 
 CAN_PASS_FDS = (
     not oslib.WIN
@@ -62,7 +66,8 @@ FAILED_LOGS = "failed-fetches"  # under the data folder: the last failed fetch's
 INFO = "probe.json"  # the probe yt-dlp's downloads reuse; never served (cache.FILE_NAME), deleted when the fetch ends
 
 _lock = threading.Lock()
-_running = {}  # video_id -> Job
+_running: dict[str, "Job"] = {}  # video_id -> Job
+Chosen = tuple[Json, Json, Json, bool]  # (probe, video format, audio format, signed in)
 
 
 class FetchError(RuntimeError):
@@ -70,8 +75,10 @@ class FetchError(RuntimeError):
 
 
 class Job:
-    def __init__(self, video_id, until=None, prefer=None):
-        self.video_id, self.procs, self.cancelled, self.thread = video_id, [], False, None
+    def __init__(self, video_id: str, until: float | None = None, prefer: Row | None = None) -> None:
+        self.video_id, self.cancelled = video_id, False
+        self.procs: list[subprocess.Popen[bytes]] = []
+        self.thread: threading.Thread | None = None
         self.log_from = (
             0  # where this attempt's lines start in fetch.log (attempts); its reason is read from there only
         )
@@ -87,14 +94,14 @@ class Job:
         )  # prefetches and prefix upgrades let yt-dlp choose the client; cold plays try player_client first
         self.ended = threading.Event()  # set once it has left `_running` (cancel waits for it: a prefetch runs in the prefetcher's thread, not its own)
 
-    def stop(self, cancel=True):
+    def stop(self, cancel: bool = True) -> None:
         self.cancelled = self.cancelled or cancel
         for p in self.procs:
             if p.poll() is None:
                 oslib.kill_tree(p.pid)
 
 
-def hls_command(out_name=cache.PLAYLIST, video_fd=3, audio_fd=4):
+def hls_command(out_name: str = cache.PLAYLIST, video_fd: int = 3, audio_fd: int = 4) -> list[str]:
     """ffmpeg reading video from fd `video_fd` and audio from fd `audio_fd`, copying both into growing fMP4 HLS in the working folder."""
     return [
         settings.get("ffmpeg"),
@@ -131,7 +138,7 @@ def hls_command(out_name=cache.PLAYLIST, video_fd=3, audio_fd=4):
     ]
 
 
-def direct_command(url, out_name=cache.PLAYLIST):
+def direct_command(url: str, out_name: str = cache.PLAYLIST) -> list[str]:
     """ffmpeg reading one muxed HLS stream itself (an iPlayer episode), copying it into growing fMP4 HLS in the working folder."""
     return [
         settings.get("ffmpeg"),
@@ -168,7 +175,7 @@ def direct_command(url, out_name=cache.PLAYLIST):
     ]
 
 
-def stream_command(fmt_id, info_path, signed_in=False, auto_client=False):
+def stream_command(fmt_id: object, info_path: str, signed_in: bool = False, auto_client: bool = False) -> list[str]:
     return [
         *ytdlp.base_command(signed_in, auto_client),
         "--no-part",
@@ -181,23 +188,23 @@ def stream_command(fmt_id, info_path, signed_in=False, auto_client=False):
     ]
 
 
-def choose_once(url, signed_in=False, prefer=None, auto_client=False):
+def choose_once(url: str, signed_in: bool = False, prefer: Row | None = None, auto_client: bool = False) -> Chosen:
     """One probe and its streams: (info, video format, audio format, signed_in). With `prefer` ({video, audio} format ids, a kept prefix's),
     those formats when the probe offers both, whatever would be chosen otherwise."""
     info = ytdlp.probe(url, signed_in, auto_client=True) if auto_client else ytdlp.probe(url, signed_in)
     if prefer:
-        ids = {f.get("format_id"): f for f in info.get("formats") or []}
+        ids = {f.get("format_id"): f for f in arr(info.get("formats"))}
         if prefer["video"] in ids and prefer["audio"] in ids:
             return info, ids[prefer["video"]], ids[prefer["audio"]], signed_in
-    return (info, *ytdlp.choose_formats(info.get("formats") or [], settings.get_int("max_height")), signed_in)
+    return (info, *ytdlp.choose_formats(arr(info.get("formats")), settings.get_int("max_height")), signed_in)
 
 
-def same(chosen, prefer):
+def same(chosen: Sequence[Any], prefer: Row | None) -> bool:
     """Whether a choice is a kept prefix's formats (True when there is none to match)."""
     return not prefer or (chosen[1].get("format_id"), chosen[2].get("format_id")) == (prefer["video"], prefer["audio"])
 
 
-def choose_both(url, prefer=None, auto_client=False):
+def choose_both(url: str, prefer: Row | None = None, auto_client: bool = False) -> Chosen:
     """With a signed-in browser set: probe signed out (the fast `visionos` client) and signed in at once. The signed-out answer wins when its
     streams have no ad wait (visionos played; about 1.3 s sooner); else the signed-in one; else, when the session cannot be read (browser
     signed out, keyring locked), the signed-out one with its wait. Running both costs neither any time (measured). With `prefer`, an answer
@@ -225,23 +232,24 @@ def choose_both(url, prefer=None, auto_client=False):
         pool.shutdown(wait=False)  # a probe that lost is left to finish on its own
 
 
-def _choose(url, prefer=None, auto_client=False):
+def _choose(url: str, prefer: Row | None = None, auto_client: bool = False) -> tuple[Json, Json, Json, bool, bool]:
     """Probe the video and choose its streams: (info, video, audio, signed_in, auto_client). A failed probe tries once more letting yt-dlp choose."""
-    for attempt in (1, 2):
-        use_auto = auto_client or attempt == 2
-        try:
-            res = (
-                choose_both(url, prefer, use_auto)
-                if ytdlp.signed_in_available()
-                else choose_once(url, prefer=prefer, auto_client=use_auto)
-            )
-            return (*res, use_auto)
-        except ytdlp.YtdlpError:
-            if attempt == 2:
-                raise
+
+    def once(use_auto: bool) -> tuple[Json, Json, Json, bool, bool]:
+        res = (
+            choose_both(url, prefer, use_auto)
+            if ytdlp.signed_in_available()
+            else choose_once(url, prefer=prefer, auto_client=use_auto)
+        )
+        return (*res, use_auto)
+
+    try:
+        return once(auto_client)
+    except ytdlp.YtdlpError:
+        return once(True)
 
 
-def choose(url, prefer=None, auto_client=False):
+def choose(url: str, prefer: Row | None = None, auto_client: bool = False) -> Chosen:
     """Probe the video and choose its streams: (info, video format, audio format, signed_in). A probe without usable streams is tried once more letting yt-dlp choose."""
     return _choose(url, prefer, auto_client)[:4]
 
@@ -249,25 +257,25 @@ def choose(url, prefer=None, auto_client=False):
 NATIVE = "~native"  # a Plex copy kept as the file has it (its HEVC, AV1, HDR), for a browser that decodes that; without it, one any browser plays (H.264)
 
 
-def base_id(copy_id):
+def base_id(copy_id: str) -> str:
     """The library video a copy is of: a Plex video's native copy is `<id>~native` (see `plex_copy`)."""
     return copy_id[: -len(NATIVE)] if (copy_id or "").endswith(NATIVE) else copy_id
 
 
-def platform(video_id):
+def platform(video_id: str) -> str:
     """Where a library video comes from (`youtube` when the library does not have it, as before there was a choice)."""
     with db.connect() as con:
         r = con.execute("SELECT platform, duration FROM videos WHERE id = ?", (base_id(video_id),)).fetchone()
     return (r[0] if r else None) or "youtube"
 
 
-def browser_plays(codec, decodes):
+def browser_plays(codec: str | None, decodes: Iterable[str] | None) -> bool:
     """Whether a browser that says it decodes these (`decodes`: h264, hevc, av1, vp9, hdr...) plays a file's video as it is."""
     d = {x.lower() for x in decodes or []}
     return codec in d or (codec == "h264" and not d)
 
 
-def plex_copy(video_id, decodes=None):
+def plex_copy(video_id: str, decodes: Iterable[str] | None = None) -> str:
     """Which copy of a Plex video to fetch and play for a browser that decodes `decodes` (the player says, from MediaCapabilities): the
     native one (`<id>~native`, the file's own video, nothing converted but the sound) when the file's video is not H.264 and the browser
     decodes it, HDR included only when it says `hdr`; else the one any browser plays (`<id>`: H.264 as it is, or converted here). Each is
@@ -288,7 +296,9 @@ def plex_copy(video_id, decodes=None):
     return video_id
 
 
-def plex_command(url, codec, native, max_height, hdr=False, out_name=cache.PLAYLIST):
+def plex_command(
+    url: str, codec: str | None, native: bool, max_height: int, hdr: bool = False, out_name: str = cache.PLAYLIST
+) -> list[str]:
     """ffmpeg reading a Plex file (`url`, plex.file_url) into growing fMP4 HLS: its first video and first sound. The sound becomes stereo
     AAC unless it is already AAC (Chrome plays neither DTS nor AC-3); the video is copied when it is H.264 or the copy is `native` (HEVC is
     tagged `hvc1`, which Chrome needs in MP4), else converted here to H.264 no taller than `max_height` (an HDR file tone-mapped to SDR)."""
@@ -357,7 +367,7 @@ def plex_command(url, codec, native, max_height, hdr=False, out_name=cache.PLAYL
     ]
 
 
-def source_url(video_id):
+def source_url(video_id: str) -> tuple[str, str]:
     """(platform, the link to fetch from) for a library video, or FetchError when its id cannot be one (it goes on a command line)."""
     where = platform(video_id)
     if where == "plex":
@@ -377,7 +387,7 @@ def source_url(video_id):
         raise FetchError(str(e)) from None
 
 
-def iplayer_stream(video_id, url, max_height):
+def iplayer_stream(video_id: str, url: str, max_height: int) -> tuple[str, str]:
     """(stream URL, label) for an iPlayer episode: iplayer.stream, else yt-dlp's best muxed HLS stream (see the module's notes); raises
     IplayerError with iPlayer's reason when neither has one."""
     try:
@@ -393,7 +403,7 @@ def iplayer_stream(video_id, url, max_height):
         raise first from None
     muxed = [
         f
-        for f in info.get("formats") or []
+        for f in arr(info.get("formats"))
         if f.get("vcodec") not in (None, "none")
         and f.get("acodec") not in (None, "none")
         and (f.get("protocol") or "").startswith("m3u8")
@@ -406,13 +416,19 @@ def iplayer_stream(video_id, url, max_height):
     return best["url"], f"{best.get('height')}p H.264 + AAC (yt-dlp)"
 
 
-def running(prefetches=True):
+def running(prefetches: bool = True) -> list[str]:
     """The videos being fetched (without the prefetches of a start, unless asked)."""
     with _lock:
-        return sorted(v for v, j in _running.items() if prefetches or j is None or j.until is None)
+        return sorted(v for v, j in _running.items() if prefetches or j.until is None)
 
 
-def start(video_id, title=None, channel=None, background=True, until=None):
+def start(
+    video_id: str,
+    title: str | None = None,
+    channel: str | None = None,
+    background: bool = True,
+    until: float | None = None,
+) -> Row:
     """Make sure the video is fetched or being fetched; returns its cache status. Raises FetchError when it cannot start. `title` and `channel`
     are what the library calls it, kept with the copy for the Cache screen. With `until` (seconds), only the start is fetched and kept as a
     partial copy (a prefetch); without it, a partial copy is fetched whole from its prefix (see the module's notes)."""
@@ -420,7 +436,7 @@ def start(video_id, title=None, channel=None, background=True, until=None):
     with _lock:
         if video_id in _running:
             job = _running[video_id]
-            if until is None and job is not None and job.until is not None:
+            if until is None and job.until is not None:
                 job.until = None
                 job.wanted = job.reached  # a play: carry on to the end
             return cache.status(video_id)
@@ -433,7 +449,7 @@ def start(video_id, title=None, channel=None, background=True, until=None):
             return st
         if where == "youtube" and not CAN_PASS_FDS:
             raise FetchError("Fetching needs Linux or macOS.")  # an iPlayer fetch passes no pipes
-        if until is None and sum(1 for j in _running.values() if j is None or j.until is None) >= MAX_RUNNING:
+        if until is None and sum(1 for j in _running.values() if j.until is None) >= MAX_RUNNING:
             raise FetchError(f"{MAX_RUNNING} videos are already being fetched; try again when one finishes.")
         prefer = cache.prefix(video_id) if st["state"] == "partial" and st["playable"] else None
         job = _running[video_id] = Job(video_id, until, prefer)
@@ -450,7 +466,7 @@ def start(video_id, title=None, channel=None, background=True, until=None):
     return cache.status(video_id)
 
 
-def cancel(video_ids):
+def cancel(video_ids: Iterable[str]) -> None:
     """Stop the fetches of these videos (used before their copies are deleted)."""
     with _lock:
         jobs = [_running[v] for v in video_ids if v in _running]
@@ -460,7 +476,7 @@ def cancel(video_ids):
         j.ended.wait(timeout=30)
 
 
-def _run(job, url):
+def _run(job: Job, url: str) -> None:
     """Probe, choose the streams, run the pipeline, record the result, then trim the cache. Never raises: a failure is recorded on the video's copy."""
     error = None
     kept = 0
@@ -509,15 +525,15 @@ def _run(job, url):
     whole_after(job)
 
 
-def keep_start(job, formats):
+def keep_start(job: Job, formats: Row) -> float:
     """A prefetch that stopped at its length: keep the start as a partial copy (cache.keep_prefix); returns non-zero, so the copy is not finished as well."""
     with _lock:
         if job.until is None:
             job.wanted = True  # a play came while it stopped
-    return cache.keep_prefix(job.video_id, job.length, cache.stamp(), formats) or -1
+    return cache.keep_prefix(job.video_id, job.length or 0.0, cache.stamp(), formats) or -1
 
 
-def whole_after(job):
+def whole_after(job: Job) -> None:
     """Played as the prefetch stopped: now fetch it whole."""
     if not job.wanted:
         return
@@ -527,7 +543,7 @@ def whole_after(job):
         print(f"tubes: fetching {job.video_id} after its start was kept failed: {e}", file=sys.stderr, flush=True)
 
 
-def _run_iplayer(job, url):
+def _run_iplayer(job: Job, url: str) -> None:
     """As `_run`, for an iPlayer episode: choose its stream, then ffmpeg alone (see the module's notes). Its stream's label stands for the
     formats a kept start was cut from: the same episode's same variant cuts the same segments (measured, 2026-11-13)."""
     error = None
@@ -568,7 +584,7 @@ def _run_iplayer(job, url):
     whole_after(job)
 
 
-def _run_plex(job, url):
+def _run_plex(job: Job, url: str) -> None:
     """As `_run`, for a Plex file: ffmpeg alone, reading it from Plex (see `plex_command`); what it does to the file is the copy's formats."""
     error = None
     try:
@@ -606,7 +622,7 @@ def _run_plex(job, url):
         cache.evict(cache.utcnow())
 
 
-def attempts(job, run):
+def attempts(job: Job, run: Callable[[], str | None]) -> str | None:
     """Run one download (`pipeline` or `direct_pipeline`) up to ATTEMPTS times, until it completes or is stopped; returns the last one's reason.
     A retry reuses the probe and the same streams, so ffmpeg cuts the same segments under the same names: it rewrites the playlist and
     overwrites the files in place while the player keeps playing what had arrived. Both runs write to the one fetch.log, the failure noted."""
@@ -624,7 +640,7 @@ def attempts(job, run):
         attempt += 1
 
 
-def retryable(job, error):
+def retryable(job: Job, error: str | None) -> bool:
     """Whether a failed download is worth one more run: not stopped, not stalled (that already waited two minutes), not YouTube saying no."""
     return (
         bool(error)
@@ -635,7 +651,7 @@ def retryable(job, error):
     )
 
 
-def note(video_id, line):
+def note(video_id: str, line: str) -> None:
     """Add a line of our own to the fetch's log, between one run's output and the next."""
     try:
         with open(os.path.join(cache.folder(video_id), LOG), "a", encoding="utf8") as f:
@@ -644,7 +660,7 @@ def note(video_id, line):
         pass
 
 
-def keep_log(video_id, error):
+def keep_log(video_id: str, error: str) -> None:
     """Before a failed copy's folder is deleted (cache.finish), keep its log as `failed-fetches/<id>.log` and say why in the server's log."""
     print(f"tubes: fetching {video_id} failed: {error}", file=sys.stderr, flush=True)
     path = os.path.join(cache.folder(video_id), LOG)
@@ -659,7 +675,7 @@ def keep_log(video_id, error):
         pass
 
 
-def direct_pipeline(job, url, duration=None, command=None):
+def direct_pipeline(job: Job, url: str, duration: float | None = None, command: list[str] | None = None) -> str | None:
     """Run ffmpeg on one stream (`direct_command`, or this `command`) until it ends; returns None when the playlist is complete, else the reason it is not (as `pipeline`)."""
     out = cache.folder(job.video_id)
     with open(os.path.join(out, LOG), "ab") as log:
@@ -674,7 +690,14 @@ def direct_pipeline(job, url, duration=None, command=None):
     return outcome(job, [p.wait() for p in job.procs], stalled, duration)
 
 
-def pipeline(job, info_path, video_fmt, audio_fmt, duration=None, signed_in=False):
+def pipeline(
+    job: Job,
+    info_path: str,
+    video_fmt: object,
+    audio_fmt: object,
+    duration: float | None = None,
+    signed_in: bool = False,
+) -> str | None:
     """Run yt-dlp x2 into ffmpeg until all three end; returns None when the playlist is complete, else the reason it is not."""
     out = cache.folder(job.video_id)
     rv, wv = os.pipe()
@@ -720,7 +743,7 @@ def pipeline(job, info_path, video_fmt, audio_fmt, duration=None, signed_in=Fals
     return outcome(job, [p.wait() for p in job.procs], stalled, duration)
 
 
-def outcome(job, codes, stalled, duration):
+def outcome(job: Job, codes: list[int], stalled: bool, duration: float | None) -> str | None:
     """Why the copy the processes made is not complete (None when it is, or when it stopped on purpose at `until`), from their exit codes, the log and the playlist."""
     out = cache.folder(job.video_id)
     if job.reached:
@@ -744,7 +767,7 @@ def outcome(job, codes, stalled, duration):
     return None
 
 
-def watch(job, clock=time.monotonic, sleep=time.sleep):
+def watch(job: Job, clock: Callable[[], float] = time.monotonic, sleep: Callable[[float], None] = time.sleep) -> bool:
     """Wait for the processes to end; stop them if the playlist stops growing for STALL_SECONDS. Returns True when it stalled."""
     last_size, last_change = -1, clock()
     while any(p.poll() is None for p in job.procs):
@@ -771,7 +794,7 @@ def watch(job, clock=time.monotonic, sleep=time.sleep):
     return False
 
 
-def ffmpeg_version():
+def ffmpeg_version() -> str | None:
     """ffmpeg's version line, or None when it cannot be run."""
     try:
         p = subprocess.run([settings.get("ffmpeg"), "-version"], capture_output=True, text=True, timeout=30)

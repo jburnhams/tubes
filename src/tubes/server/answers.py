@@ -8,10 +8,15 @@ and no model names is allowed, and invisible to the web app's types until it is 
 
 Written from the types the web app had by hand (web/src/api.ts before 2026-11-15), which were what the pages read."""
 
-from typing import Literal
+from collections.abc import Callable, Coroutine
+from typing import Any, Literal
 
+from fastapi import Request, Response
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic.config import JsonDict
+
+from tubes.shape import obj
 
 CHECK = False  # tests/conftest.py turns it on: every answer of a route with a model is validated against it
 
@@ -22,7 +27,7 @@ SkipMode = Literal["off", "ask", "auto"]
 Outcome = Literal["none", "short", "partial", "full"]
 
 
-def _closed(schema: dict[str, object]) -> None:
+def _closed(schema: JsonDict) -> None:
     # Extra fields pass the check (an answer may carry more than its model says, such as a source's metadata), but the
     # schema does not say so: openapi-typescript would give every type an index signature, and a typo would type check.
     schema.pop("additionalProperties", None)
@@ -35,23 +40,23 @@ class Answer(BaseModel):
 class CheckedRoute(APIRoute):
     """A route that, while `CHECK` is on, validates each 200 JSON answer against the model its `responses` declare (a mismatch raises)."""
 
-    def get_route_handler(self):
+    def get_route_handler(self) -> Callable[[Request], Coroutine[Any, Any, Response]]:
         handler = super().get_route_handler()
-        model = (self.responses.get(200) or {}).get("model")
+        model = obj(self.responses.get(200)).get("model")
         if model is None:
             return handler
-        adapter = TypeAdapter(model)
+        adapter: TypeAdapter[Any] = TypeAdapter(model)
 
-        async def checked(request):
+        async def checked(request: Request) -> Response:
             response = await handler(request)
             if CHECK and response.status_code == 200 and response.media_type == "application/json":
-                adapter.validate_json(response.body)
+                adapter.validate_json(bytes(response.body))
             return response
 
         return checked
 
 
-def answer(model, description="OK"):
+def answer(model: Any, description: str = "OK") -> dict[int | str, dict[str, Any]]:
     """A route's `responses=`: its 200 answer is `model` (a class, or `list[Model]`), for the schema and the tests' check."""
     return {200: {"model": model, "description": description}}
 

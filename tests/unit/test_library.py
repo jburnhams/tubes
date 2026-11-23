@@ -231,3 +231,10 @@ def test_a_video_refused_in_this_country_is_hidden_whatever_the_filters():
         assert con.execute("SELECT blocked FROM videos WHERE id = 'aaaaaaaaaaa'").fetchone()[0] == "then"
     catalogue.mark_found("aaaaaaaaaaa")
     assert len(library.videos()["videos"]) == 4
+
+
+def test_an_api_row_has_booleans_and_its_colours_read():
+    assert library.api_row(dict(kids=1, hdr=0, captions=None, colours='{"accent": "#123456"}')) == dict(
+        kids=True, hdr=False, captions=None, colours={"accent": "#123456"}
+    )
+    assert library.api_row(dict(colours="not json"))["colours"] is None  # a broken value reads as none

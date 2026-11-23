@@ -72,3 +72,10 @@ def test_threads_asking_at_once_migrate_once_and_one_at_a_time(monkeypatch, tmp_
     for t in threads:
         t.join()
     assert ran == [1] and overlapped == []
+
+
+def test_one_is_an_aggregate_row_and_refuses_none():
+    with db.connect() as con:
+        assert db.one(con.execute("SELECT COUNT(*) AS n FROM meta")) == dict(n=0)
+        with pytest.raises(sqlalchemy.exc.NoResultFound):
+            db.one(con.execute("SELECT key FROM meta"))

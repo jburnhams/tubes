@@ -16,6 +16,8 @@ import datetime
 import re
 
 from tubes import cache, db, iplayer, quota, youtube
+from tubes.db import Row
+from tubes.shape import Json, arr, obj
 
 MAX_LINES = 100
 NAME_SEARCHES = 20
@@ -23,10 +25,10 @@ PLAYLIST_VIDEOS = 200  # 4 pages of the playlist and 4 calls for its videos: abo
 BULLET = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+")
 
 
-def lines(text):
+def lines(text: str | None) -> list[str]:
     """The entries in what was pasted: one a line (bullets and numbering taken off; several links on one line are several entries), blanks
     and repeats left out, at most MAX_LINES."""
-    out = []
+    out: list[str] = []
     for raw in (text or "").splitlines():
         line = BULLET.sub("", raw).strip().strip(",;")
         if not line:
@@ -39,14 +41,14 @@ def lines(text):
     return out[:MAX_LINES]
 
 
-def _same(a, b):
-    def squash(t):
+def _same(a: str | None, b: str | None) -> bool:
+    def squash(t: str | None) -> str:
         return re.sub(r"[^0-9a-z]+", "", (t or "").lower())
 
     return squash(a) == squash(b) and squash(a) != ""
 
 
-def _youtube(item):
+def _youtube(item: Json) -> Row:
     row = youtube.lookup_row(item)
     return dict(
         platform="youtube",
@@ -61,7 +63,7 @@ def _youtube(item):
     )
 
 
-def _iplayer(prog):
+def _iplayer(prog: Json) -> Row:
     row = iplayer.channel_row(prog, None)
     return dict(
         platform="iplayer",
@@ -73,32 +75,32 @@ def _iplayer(prog):
     )
 
 
-def _category(cat):
+def _category(cat: Json) -> Row:
     row = iplayer.category_row(cat, None)
     return dict(
         platform="iplayer", channel_id=row["id"], title=row["title"], handle=None, thumbnail=None, total_videos=None
     )
 
 
-def _youtube_channel(kind, value):
+def _youtube_channel(kind: str, value: str) -> Json | None:
     """A Data API channel resource (with the parts suggestions keep) for an id, a handle or a video's id; None when YouTube has none."""
     if kind == "video":
         items = youtube.videos([value])
         if not items:
             return None
-        kind, value = "channel", (items[0].get("snippet") or {}).get("channelId")
-    items = (
+        kind, value = "channel", str(obj(items[0].get("snippet")).get("channelId") or "")
+    items = arr(
         youtube.call(
             "channels", part=youtube.LOOKUP_PARTS, **({"id": value} if kind == "channel" else {"forHandle": value})
         ).get("items")
-        or []
     )
-    return items[0] if items else None
+    return obj(items[0]) if items else None
 
 
-def _playlist(pid):
+def _playlist(pid: str) -> tuple[list[Row], str | None]:
     """The channels of a playlist's videos (the first PLAYLIST_VIDEOS), most videos first, then by where each first comes in it."""
-    ids, token = [], None
+    ids: list[str] = []
+    token: str | None = None
     try:
         while len(ids) < PLAYLIST_VIDEOS:
             page, token = youtube.uploads_page(pid, token)
@@ -110,9 +112,9 @@ def _playlist(pid):
             return [], "YouTube has no such playlist, or it is private."
         raise
     owners = [
-        (v.get("snippet") or {}).get("channelId") for v in youtube.videos(ids[:PLAYLIST_VIDEOS])
+        obj(v.get("snippet")).get("channelId") for v in youtube.videos(ids[:PLAYLIST_VIDEOS])
     ]  # private and removed videos are left out
-    counts = {}
+    counts: dict[str, int] = {}
     for c in owners:
         if c:
             counts[c] = counts.get(c, 0) + 1
@@ -123,7 +125,7 @@ def _playlist(pid):
     return [_youtube(held[c]) for c in order if c in held], None
 
 
-def resolve(text, searches):
+def resolve(text: str, searches: list[int]) -> tuple[list[Row], str | None]:
     """What one entry names: `([found], problem or None)`. `searches` is a one-item list counting the YouTube searches left (shared over a paste)."""
     try:
         bbc = iplayer.parse(text)
@@ -146,9 +148,9 @@ def resolve(text, searches):
         prog = iplayer.programme(tleo) if tleo and tleo != pid else None
         if prog is None:
             cat = iplayer.category_id(iplayer.channel_of(ep))
-            found = iplayer.category(cat) if cat else None
-            if found:
-                return [_category(found)], None  # a film: following Films brings it, and every other film
+            known = iplayer.category(cat) if cat else None
+            if known:
+                return [_category(known)], None  # a film: following Films brings it, and every other film
             return [], "That is a one-off with no programme or category to follow; add it in Library instead."
         return [_iplayer(prog)], None
     playlist = youtube.playlist_id(text)
@@ -170,7 +172,8 @@ def resolve(text, searches):
             return [], "YouTube cannot be asked without YOUTUBE_API_KEY in the server’s environment."
         item = _youtube_channel(kind, value)
         return ([_youtube(item)], None) if item else ([], "YouTube has no such channel or video.")
-    found, problems = [], []
+    found: list[Row] = []
+    problems: list[str] = []
     try:
         found += [
             _iplayer(p)
@@ -186,7 +189,7 @@ def resolve(text, searches):
     if youtube.configured():
         try:
             item = _youtube_channel("handle", "@" + re.sub(r"[^0-9A-Za-z_.-]+", "", text))
-            if not (item and _same((item.get("snippet") or {}).get("title"), text)):
+            if not (item and _same(obj(item.get("snippet")).get("title"), text)):
                 item = None
                 if searches[0] > 0:
                     searches[0] -= 1
@@ -205,17 +208,18 @@ FIELDS = ("platform", "title", "handle", "thumbnail", "subscribers", "total_vide
 
 
 @quota.purpose("paste")
-def paste(text, now=None):
+def paste(text: str | None, now: str | None = None) -> dict[str, list[Row]]:
     """Read a pasted list (see the module's notes) into the suggestions. Returns `{found: [{input, platform, channel_id, title}], already:
     [{input, title}], problems: [{input, error}]}`: `found` are now suggested (pasted now, and no longer dismissed), `already` are followed."""
     now = now or cache.stamp()
     entries = lines(text)
     if not entries:
         raise ValueError("Paste at least one link, @handle or name, one a line.")
-    searches, out = [NAME_SEARCHES], dict(found=[], already=[], problems=[])
+    searches = [NAME_SEARCHES]
+    out: dict[str, list[Row]] = dict(found=[], already=[], problems=[])
     with db.connect() as con:
         followed = {r[0]: r[1] for r in con.execute("SELECT id, title FROM channels WHERE follow = ?", (True,))}
-    rows = {}
+    rows: dict[str, Row] = {}
     for entry in entries:
         try:
             found, problem = resolve(entry, searches)

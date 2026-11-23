@@ -9,23 +9,26 @@ ends and rolled back on an error; its `execute` takes `?` placeholders with a tu
 
 import contextlib
 import threading
+from collections.abc import Generator, Iterable, Mapping, Sequence
+from typing import Any
 
-from sqlalchemy import text
+from sqlalchemy import Connection as SaConnection
+from sqlalchemy import CursorResult, Engine, Result, text
 from strata_python.db import Project, url_for
 from strata_python.db import connect as connect_engine
 
 APP = "tubes"
-_engines = {}  # url -> migrated engine
+_engines: dict[str, Engine] = {}  # url -> migrated engine
 # Alembic keeps the running migration in module globals, so two threads migrating at once (a request and a background prefetch on a
 # fresh database, or a test's leftover thread) break each other (KeyError: 'script'): one migration at a time, and once per URL.
 _migrating = threading.Lock()
 
 
-def url():
+def url() -> str:
     return url_for(APP)
 
 
-def engine():
+def engine() -> Engine:
     """The engine for the current URL, migrated to head the first time it is asked for in this process."""
     u = url()
     if u not in _engines:
@@ -37,17 +40,23 @@ def engine():
     return _engines[u]
 
 
-def reset():
+def reset() -> None:
     """Forget every engine (tests point the URL somewhere new for each test)."""
     for e in _engines.values():
         e.dispose()
     _engines.clear()
 
 
-def _named(sql, params):
+Params = Mapping[str, Any] | Sequence[Any] | None
+Row = dict[str, Any]  # a row as the API sends it: column name -> value
+
+
+def _named(sql: str, params: Params) -> tuple[str, Mapping[str, Any]]:
     """`?` placeholders and a tuple, as named ones and a dict (SQLAlchemy's text() takes named only)."""
-    if isinstance(params, dict) or params is None:
-        return sql, params or {}
+    if params is None:
+        return sql, {}
+    if isinstance(params, Mapping):
+        return sql, params
     parts = sql.split("?")
     if len(parts) - 1 != len(params):
         raise ValueError(f"{len(parts) - 1} placeholders but {len(params)} values")
@@ -57,28 +66,33 @@ def _named(sql, params):
 
 
 class Connection:
-    def __init__(self, con):
+    def __init__(self, con: SaConnection) -> None:
         self.con = con
 
-    def execute(self, sql, params=None):
-        sql, params = _named(sql, params)
-        return self.con.execute(text(sql), params)
+    def execute(self, sql: str, params: Params = None) -> CursorResult[*tuple[Any, ...]]:
+        sql, named = _named(sql, params)
+        return self.con.execute(text(sql), named)
 
-    def executemany(self, sql, rows):
-        rows = list(rows)
-        return self.con.execute(text(sql), rows) if rows else None
+    def executemany(self, sql: str, rows: Iterable[Mapping[str, Any]]) -> CursorResult[*tuple[Any, ...]] | None:
+        many = list(rows)
+        return self.con.execute(text(sql), many) if many else None
 
 
 @contextlib.contextmanager
-def connect():
+def connect() -> Generator[Connection]:
     with engine().begin() as con:
         yield Connection(con)
 
 
-def rows(result):
-    return [dict(r._mapping) for r in result]
+def rows(result: Result[*tuple[Any, ...]]) -> list[Row]:
+    return [dict(m) for m in result.mappings()]
 
 
-def row(result):
-    r = result.first()
-    return dict(r._mapping) if r is not None else None
+def row(result: Result[*tuple[Any, ...]]) -> Row | None:
+    m = result.mappings().first()
+    return dict(m) if m is not None else None
+
+
+def one(result: Result[*tuple[Any, ...]]) -> Row:
+    """The one row a query always has (an aggregate's); raises if it has none or several."""
+    return dict(result.mappings().one())

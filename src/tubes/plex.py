@@ -28,10 +28,14 @@ import json
 import os
 import re
 import urllib.parse
+from collections.abc import Mapping
+from typing import Any
 
 from strata_python.http import Http
 
 from tubes import USER_AGENT
+from tubes.db import Row
+from tubes.shape import Json, arr, first, obj, objs
 
 TIMEOUT = 30
 # A server on the home network: no gap between requests, and no retries (a Plex that is down or refuses says so at once).
@@ -79,17 +83,17 @@ class PlexError(RuntimeError):
     """A call to Plex failed; the message says why, in a sentence."""
 
 
-def configured():
+def configured() -> bool:
     return bool(os.environ.get("PLEX_URL") and os.environ.get("PLEX_TOKEN"))
 
 
-def base():
+def base() -> str:
     if not configured():
         raise PlexError("Plex is not set up: the server needs PLEX_URL and PLEX_TOKEN in its environment.")
     return os.environ["PLEX_URL"].rstrip("/")
 
 
-def _get(path, params=None, accept="application/json"):
+def _get(path: str, params: Mapping[str, object] | None = None, accept: str = "application/json") -> bytes:
     """The body of a GET on the server, or PlexError saying why there is none."""
     url = base() + path + (("&" if "?" in path else "?") + urllib.parse.urlencode(params, doseq=True) if params else "")
     reply = HTTP.get(
@@ -112,23 +116,23 @@ def _get(path, params=None, accept="application/json"):
     return reply.body
 
 
-def call(path, **params):
+def call(path: str, **params: object) -> Json:
     """One GET on the server; returns its MediaContainer."""
     body = _get(path, params)
     try:
-        return json.loads(body).get("MediaContainer") or {}
+        return obj(obj(json.loads(body)).get("MediaContainer"))
     except ValueError:
         raise PlexError("Plex did not answer with JSON.") from None
 
 
-def image_bytes(path):
+def image_bytes(path: str) -> bytes:
     """A picture's bytes from Plex (`path` as image_path gives it)."""
     if not IMAGE.match(path or ""):
         raise PlexError("That is not a Plex picture.")
     return _get(path, accept="image/*")
 
 
-def file_url(part_key):
+def file_url(part_key: str | None) -> str:
     """The address ffmpeg reads a file from: its part key on the server, without the token, which ffmpeg sends as a header (`headers`), so
     no error message or log that names the address carries it."""
     if not PART.match(part_key or ""):
@@ -136,18 +140,18 @@ def file_url(part_key):
     return f"{base()}{part_key}"
 
 
-def headers():
+def headers() -> str:
     """The HTTP headers ffmpeg sends with a Plex file request (its -headers option)."""
     return f"X-Plex-Token: {os.environ.get('PLEX_TOKEN', '')}\r\n"
 
 
-def redact(text):
+def redact(text: str | None) -> str | None:
     """Text with the token taken out, should anything have put it there (an error kept on a copy is shown to browsers)."""
     token = os.environ.get("PLEX_TOKEN")
     return text.replace(token, "***") if text and token else text
 
 
-def reachable():
+def reachable() -> tuple[bool, str | None]:
     """(ok, version or why not), for the System screen."""
     try:
         return True, call("/identity").get("version")
@@ -158,41 +162,41 @@ def reachable():
 # What Plex holds.
 
 
-def sections():
+def sections() -> list[Row]:
     """The server's film and TV libraries: [{key, title, type (movie or show), locations}]."""
     return [
         dict(
             key=str(d["key"]),
             title=d.get("title"),
             type=d.get("type"),
-            locations=[loc.get("path") for loc in d.get("Location") or []],
+            locations=[loc.get("path") for loc in arr(d.get("Location"))],
         )
-        for d in call("/library/sections").get("Directory") or []
+        for d in arr(call("/library/sections").get("Directory"))
         if d.get("type") in ("movie", "show")
     ]
 
 
-def filters(section):
+def filters(section: str | int) -> list[Row]:
     """The filters a library offers, as Plex's browser does: [{filter, title, type}] (a `tag` filter takes one of `choices(section, filter)`)."""
     return [
         dict(filter=d.get("filter"), title=d.get("title"), type=d.get("filterType"))
-        for d in call(f"/library/sections/{int(section)}/filters").get("Directory") or []
+        for d in arr(call(f"/library/sections/{int(section)}/filters").get("Directory"))
     ]
 
 
-def choices(section, name):
+def choices(section: str | int, name: str) -> list[Row]:
     """The values one filter can take in a library (`genre`: Action, Animation...): [{key, title}]."""
     if name not in FILTER_KEYS:
         raise PlexError(f"{name} is not a filter Tubes knows.")
     return [
         dict(key=str(d.get("key")), title=d.get("title"))
-        for d in call(f"/library/sections/{int(section)}/{name}").get("Directory") or []
+        for d in arr(call(f"/library/sections/{int(section)}/{name}").get("Directory"))
     ]
 
 
-def clean(params):
+def clean(params: Mapping[str, object] | None) -> dict[str, str]:
     """Only the filters Tubes passes on (FILTER_KEYS, plus Plex's `>>=` and `<<=` forms of them), as strings."""
-    out = {}
+    out: dict[str, str] = {}
     for k, v in (params or {}).items():
         name = re.sub(r"(>>|<<)?=?$", "", str(k)).rstrip("!")
         if name in FILTER_KEYS and v is not None and str(v).strip() != "":
@@ -200,46 +204,48 @@ def clean(params):
     return out
 
 
-def browse(section, params=None, start=0, size=50):
+def browse(section: str | int, params: Mapping[str, object] | None = None, start: int = 0, size: int = 50) -> Row:
     """One page of a library with filters: ({items, total}) where each item is `summary`'s."""
     c = call(
         f"/library/sections/{int(section)}/all",
         **clean(params),
         **{"X-Plex-Container-Start": int(start), "X-Plex-Container-Size": int(size)},
     )
-    return dict(items=[summary(m) for m in c.get("Metadata") or []], total=c.get("totalSize", c.get("size", 0)))
+    return dict(items=[summary(m) for m in arr(c.get("Metadata"))], total=c.get("totalSize", c.get("size", 0)))
 
 
-def everything(section, params=None):
+def everything(section: str | int, params: Mapping[str, object] | None = None) -> list[Json]:
     """Every item a library listing with these filters gives, page after page (a filter's whole list, for its sync)."""
-    out, start = [], 0
+    out: list[Json] = []
+    start = 0
     while True:
         c = call(
             f"/library/sections/{int(section)}/all",
             **clean(params),
             **{"X-Plex-Container-Start": start, "X-Plex-Container-Size": PAGE},
         )
-        items = c.get("Metadata") or []
+        items = objs(c.get("Metadata"))
         out += items
         start += len(items)
         if not items or start >= c.get("totalSize", start):
             return out
 
 
-def search(text, limit=20):
+def search(text: str, limit: int = 20) -> list[Row]:
     """Films and shows whose title matches, across the libraries: [summary]."""
-    hubs = call("/hubs/search", query=text, limit=limit).get("Hub") or []
-    return [summary(m) for h in hubs if h.get("type") in ("movie", "show") for m in h.get("Metadata") or []]
+    hubs = arr(call("/hubs/search", query=text, limit=limit).get("Hub"))
+    return [summary(m) for h in hubs if h.get("type") in ("movie", "show") for m in arr(h.get("Metadata"))]
 
 
-def item(rating_key, details=True):
+def item(rating_key: str | int | None, details: bool = True) -> Json | None:
     """One film, show or episode with everything Plex has on it (markers and chapters too), or None when Plex has no such item."""
+    if rating_key is None:
+        return None  # not a Plex id
     try:
-        items = (
+        items = objs(
             call(
                 f"/library/metadata/{int(rating_key)}", **(dict(includeChapters=1, includeMarkers=1) if details else {})
             ).get("Metadata")
-            or []
         )
     except PlexError as e:
         if "404" in str(e):
@@ -248,12 +254,12 @@ def item(rating_key, details=True):
     return items[0] if items else None
 
 
-def episodes(show_key):
+def episodes(show_key: str | int) -> list[Json]:
     """Every episode of a show, in order."""
-    return call(f"/library/metadata/{int(show_key)}/allLeaves").get("Metadata") or []
+    return objs(call(f"/library/metadata/{int(show_key)}/allLeaves").get("Metadata"))
 
 
-def summary(m):
+def summary(m: Json) -> Row:
     """What a browser shows of an item: {key, type, title, year, thumb (a Tubes image address), summary, rating, episodes}."""
     return dict(
         key=str(m.get("ratingKey")),
@@ -271,23 +277,23 @@ def summary(m):
 # As Tubes' rows.
 
 
-def image_path(path, width=640):
+def image_path(path: str | None, width: int = 640) -> str | None:
     """A Plex picture as the address Tubes serves it at (relative, so it works behind the reverse proxy), or None."""
     if not path or not IMAGE.match(path):
         return None
     return "api/plex/image?" + urllib.parse.urlencode(dict(path=path, w=int(width)))
 
 
-def video_id(rating_key):
+def video_id(rating_key: str | int) -> str:
     return f"{PREFIX}{int(rating_key)}"
 
 
-def rating_key(vid):
+def rating_key(vid: str | None) -> str | None:
     m = VIDEO_ID.match(vid or "")
     return m[1] if m else None
 
 
-def _stamp(seconds):
+def _stamp(seconds: Any) -> str | None:
     import datetime
 
     try:
@@ -296,15 +302,15 @@ def _stamp(seconds):
         return None
 
 
-def _date(text):
+def _date(text: str | None) -> str | None:
     return f"{text}T00:00:00+00:00" if re.match(r"^\d{4}-\d{2}-\d{2}$", text or "") else None
 
 
-def picture(media):
+def picture(media: object) -> tuple[int | None, int | None, bool | None]:
     """(width, height, hdr) of an item's first file."""
-    md = (media or [{}])[0]
-    streams = [s for p in md.get("Part") or [] for s in p.get("Stream") or [] if s.get("streamType") == 1]
-    v = streams[0] if streams else {}
+    md = first(media)
+    streams = [s for p in arr(md.get("Part")) for s in arr(p.get("Stream")) if s.get("streamType") == 1]
+    v = first(streams)
     hdr = None
     if v:
         hdr = v.get("colorTrc") in ("smpte2084", "arib-std-b67") or bool(v.get("DOVIPresent"))
@@ -313,17 +319,17 @@ def picture(media):
     return md.get("width"), md.get("height"), hdr
 
 
-def part(media):
+def part(media: object) -> Json | None:
     """The first file's part: {key, size, container, duration}."""
-    p = ((media or [{}])[0].get("Part") or [{}])[0]
+    p = first(first(media).get("Part"))
     return p if p.get("key") else None
 
 
-def codecs(media):
+def codecs(media: object) -> Row:
     """{video, audio, container, profile, bit_depth} of an item's first file, as Plex read them (what the fetch decides by)."""
-    md = (media or [{}])[0]
-    streams = [s for p in md.get("Part") or [] for s in p.get("Stream") or []]
-    v = next((s for s in streams if s.get("streamType") == 1), {})
+    md = first(media)
+    streams = [s for p in arr(md.get("Part")) for s in arr(p.get("Stream"))]
+    v = first([s for s in streams if s.get("streamType") == 1])
     return dict(
         video=md.get("videoCodec"),
         audio=md.get("audioCodec"),
@@ -333,11 +339,12 @@ def codecs(media):
     )
 
 
-def images(m, thumb_from="art"):
+def images(m: Json, thumb_from: str = "art") -> list[Row]:
     """An item's pictures as `images` rows: Plex's Image list (poster, backdrop, logo, square, an episode's frame) as Tubes addresses, and
     the 16:9 one to show on a card as `thumb` (an episode's own frame, else the backdrop)."""
-    out, seen = [], set()
-    for im in m.get("Image") or []:
+    out: list[Row] = []
+    seen: set[str] = set()
+    for im in arr(m.get("Image")):
         kind = IMAGE_KINDS.get(im.get("type"))
         url = image_path(im.get("url"), 1280 if kind in ("backdrop", "thumb") else 640)
         if kind and url and kind not in seen:
@@ -354,10 +361,10 @@ def images(m, thumb_from="art"):
     return out
 
 
-def credits(m):
-    out = []
+def credits(m: Json) -> list[Row]:
+    out: list[Row] = []
     for key, role in CREDIT_ROLES:
-        for i, c in enumerate(m.get(key) or []):
+        for i, c in enumerate(arr(m.get(key))):
             if c.get("tag"):
                 out.append(
                     dict(
@@ -371,10 +378,10 @@ def credits(m):
     return out
 
 
-def ratings(m):
+def ratings(m: Json) -> list[Row]:
     """IMDb, Rotten Tomatoes (critics and audience) and TMDB scores out of 10, from Plex's Rating list."""
-    out = {}
-    for r in m.get("Rating") or []:
+    out: dict[str, float] = {}
+    for r in arr(m.get("Rating")):
         src = RATING_SOURCES.get(str(r.get("image") or "").split("://")[0])
         if not src or not isinstance(r.get("value"), (int, float)):
             continue
@@ -384,10 +391,10 @@ def ratings(m):
     return [dict(source=k, value=v) for k, v in out.items()]
 
 
-def external_ids(m):
+def external_ids(m: Json) -> list[Row]:
     out = [
         dict(source=g["id"].split("://")[0], value=g["id"].split("://", 1)[1])
-        for g in m.get("Guid") or []
+        for g in arr(m.get("Guid"))
         if "://" in str(g.get("id"))
     ]
     if str(m.get("guid") or "").startswith("plex://"):
@@ -395,9 +402,9 @@ def external_ids(m):
     return out
 
 
-def chapters(m):
-    out = []
-    for c in m.get("Chapter") or []:
+def chapters(m: Json) -> list[Row]:
+    out: list[Row] = []
+    for c in arr(m.get("Chapter")):
         if not isinstance(c.get("startTimeOffset"), int):
             continue
         out.append(
@@ -411,10 +418,11 @@ def chapters(m):
     return out
 
 
-def tracks(m):
+def tracks(m: Json) -> list[Row]:
     """The first file's audio and subtitle streams as `tracks` rows (`ref` the stream's index in the file, for ffmpeg's -map)."""
-    out, rank = [], {"audio": 0, "subtitle": 0}
-    for s in [s for p in ((m.get("Media") or [{}])[0].get("Part") or [])[:1] for s in p.get("Stream") or []]:
+    out: list[Row] = []
+    rank = {"audio": 0, "subtitle": 0}
+    for s in [s for p in arr(first(m.get("Media")).get("Part"))[:1] for s in arr(p.get("Stream"))]:
         kind = {2: "audio", 3: "subtitle"}.get(s.get("streamType"))
         if not kind:
             continue
@@ -434,21 +442,21 @@ def tracks(m):
     return out
 
 
-def tags(m):
-    return [dict(kind="genre", value=g["tag"]) for g in m.get("Genre") or [] if g.get("tag")] + [
-        dict(kind="country", value=c["tag"]) for c in m.get("Country") or [] if c.get("tag")
+def tags(m: Json) -> list[Row]:
+    return [dict(kind="genre", value=g["tag"]) for g in arr(m.get("Genre")) if g.get("tag")] + [
+        dict(kind="country", value=c["tag"]) for c in arr(m.get("Country")) if c.get("tag")
     ]
 
 
-def meta(m, details=True):
+def meta(m: Json, details: bool = True) -> Row:
     """An item's `meta` (metadata.py). Without `details` (a list's thin answer), only what that carries: pictures, genres, countries."""
-    out = dict(images=images(m), tags=tags(m))
+    out: Row = dict(images=images(m), tags=tags(m))
     if details:
         out.update(credits=credits(m), ratings=ratings(m), external_ids=external_ids(m))
     return out
 
 
-def _rated(m):
+def _rated(m: Json) -> Row:
     age = m.get("contentRatingAge")
     return dict(
         content_rating=m.get("contentRating") or None,
@@ -457,7 +465,7 @@ def _rated(m):
     )
 
 
-def channel_row(m, now):
+def channel_row(m: Json, now: str) -> Row:
     """A show as a `channels` row."""
     from tubes import metadata
 
@@ -486,7 +494,7 @@ def channel_row(m, now):
     )
 
 
-def films_row(now):
+def films_row(now: str) -> Row:
     return dict(
         id=FILMS,
         platform="plex",
@@ -506,7 +514,7 @@ def films_row(now):
     )
 
 
-def filter_row(cid, title, section, params, now):
+def filter_row(cid: str, title: str, section: str | int, params: Mapping[str, object] | None, now: str) -> Row:
     """A followed filter as a `channels` row; its filters are kept in `source`."""
     return dict(
         id=cid,
@@ -528,12 +536,12 @@ def filter_row(cid, title, section, params, now):
     )
 
 
-def version(m):
+def version(m: Json) -> str | None:
     """What says an item changed: Plex's updatedAt (an episode often has none, then when it was added)."""
     return str(m.get("updatedAt") or m.get("addedAt") or "") or None
 
 
-def video_row(m, channel_id, now, details=True):
+def video_row(m: Json, channel_id: str, now: str, details: bool = True) -> Row:
     """A film or an episode as a `videos` row (`details`: `m` came from `item`, with its credits, chapters and tracks)."""
     from tubes import metadata
 
@@ -542,7 +550,7 @@ def video_row(m, channel_id, now, details=True):
     episode = m.get("type") == "episode"
     published = _date(m.get("originallyAvailableAt")) or _stamp(m.get("addedAt")) or now
     lang = next((t["language"] for t in tracks(m) if t["kind"] == "audio" and t["language"]), None)
-    row = dict(
+    row: Row = dict(
         id=video_id(m["ratingKey"]),
         platform="plex",
         channel_id=channel_id,
@@ -582,7 +590,7 @@ def video_row(m, channel_id, now, details=True):
     return row
 
 
-def parse(text):
+def parse(text: str | None) -> str | None:
     """A Plex item's ratingKey from what a person pastes: `plex:21394`, or a Plex Web address (`.../details?key=%2Flibrary%2Fmetadata%2F21394`); else None."""
     t = (text or "").strip()
     m = re.match(r"^plex:(\d{1,12})$", t, re.I)
@@ -599,7 +607,7 @@ WIDTHS = (160, 320, 480, 640, 960, 1280, 1920)
 IMAGES = "plex-images"  # under the data folder: Plex's pictures as served, one file per picture and width
 
 
-def cached_image(path, width=640):
+def cached_image(path: str, width: int | str | None = 640) -> str:
     """The file of a Plex picture scaled to (the nearest of WIDTHS at or above) `width`, fetched from Plex and scaled by ffmpeg the first time:
     Plex's own resizing takes about 0.4 s a picture on a small server, and its originals are up to 4K. A picture Plex later changes gets a
     new path (its address ends in when it changed), so a kept one is never stale."""

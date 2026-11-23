@@ -42,8 +42,14 @@ import os
 import re
 import threading
 import time
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from typing import Any, cast
 
 from tubes import cache, db, iplayer, library, metadata, plex, quota, youtube
+from tubes.db import Row
+from tubes.shape import Json, obj
+
+Progress = Callable[[int], None]  # called with how many videos a sync has added so far
 
 RECHECK = 2500  # videos per recheck: 50 quota units of the 10,000 a day
 LIVE_GAP = datetime.timedelta(days=1)  # a past stream is asked about again after this (see the notes)
@@ -115,7 +121,9 @@ class NotFound(LookupError):
     """YouTube or iPlayer, or the library, has no such channel or video; the message says which."""
 
 
-def _upsert(con, table, fields, rows, keep=()):
+def _upsert(
+    con: db.Connection, table: str, fields: Sequence[str], rows: Iterable[Mapping[str, Any]], keep: Sequence[str] = ()
+) -> None:
     """Insert rows, or update every field of the ones already there; a `keep` field (such as when it was added) is only filled if empty."""
     cols = ("id", *fields, *keep)
     rows = [
@@ -128,14 +136,14 @@ def _upsert(con, table, fields, rows, keep=()):
     )
 
 
-def save_channel(con, row, follow=None):
+def save_channel(con: db.Connection, row: Row, follow: bool | None = None) -> None:
     _upsert(con, "channels", CHANNEL_FIELDS, [row], keep=("added",))
     metadata.save(con, "channel", [row])
     if follow is not None:
         con.execute("UPDATE channels SET follow = ? WHERE id = ?", (follow, row["id"]))
 
 
-def update_channel(con, row):
+def update_channel(con: db.Connection, row: Row) -> int:
     """Refresh a channel already in the library, and its metadata; returns 0 when it is not there (it was removed meanwhile), and then writes nothing."""
     held = con.execute(
         f"UPDATE channels SET {', '.join(f'{f} = :{f}' for f in CHANNEL_FIELDS)} WHERE id = :id",
@@ -146,12 +154,12 @@ def update_channel(con, row):
     return held
 
 
-def save_videos(con, rows):
+def save_videos(con: db.Connection, rows: list[Row]) -> None:
     _upsert(con, "videos", VIDEO_FIELDS, rows, keep=("added",))
     metadata.save(con, "video", rows)
 
 
-def _channel(kind, value):
+def _channel(kind: str, value: str) -> Json:
     item = youtube.channel(kind, value)
     if item is None:
         raise NotFound(f"YouTube has no channel {value}.")
@@ -159,7 +167,7 @@ def _channel(kind, value):
 
 
 @quota.purpose("add")
-def add(text, now=None):
+def add(text: str, now: str | None = None) -> Row:
     """Add what a person pasted: a channel (followed, and synced by the caller) or one video. Returns `{kind, channel}` or `{kind, video}`;
     adding something already there refreshes it (and follows a channel that was only there for one of its videos)."""
     now = now or cache.stamp()
@@ -191,7 +199,7 @@ def add(text, now=None):
     return dict(kind="channel", channel=library.channel(row["id"]))
 
 
-def add_plex(key, now=None):
+def add_plex(key: str | int, now: str | None = None) -> Row:
     """Add a Plex show (followed: its episodes come with the sync) or film (under the Plex Films channel), by its ratingKey, as `add`.
     An episode given on its own brings its show in, followed."""
     now = now or cache.stamp()
@@ -214,14 +222,16 @@ def add_plex(key, now=None):
     return dict(kind="video", video=library.video(plex.video_id(key)))
 
 
-def add_plex_filter(section, params, title, now=None):
+def add_plex_filter(
+    section: str | int, params: Mapping[str, Any] | None, title: str | None, now: str | None = None
+) -> Row:
     """Follow a Plex library listing with filters as a channel of its own (plex.py's notes); returns `{kind, channel}`. The same filters
     again refresh the one already followed (and rename it)."""
     now = now or cache.stamp()
     sec = next((s for s in plex.sections() if s["key"] == str(section)), None)
     if sec is None:
         raise NotFound(f"Plex has no film or TV library {section}.")
-    title = (title or "").strip() or sec["title"]
+    name = (title or "").strip() or sec["title"]
     src = json.dumps(dict(section=str(int(section)), params=plex.clean(params)), sort_keys=True)
     with db.connect() as con:
         same = con.execute("SELECT id FROM channels WHERE platform = 'plex' AND source = ?", (src,)).fetchone()
@@ -231,11 +241,11 @@ def add_plex_filter(section, params, title, now=None):
             if r[0][len(plex.FILTER) :].isdigit()
         ]
         cid = same[0] if same else f"{plex.FILTER}{max(n, default=0) + 1}"
-        save_channel(con, plex.filter_row(cid, title, section, params, now), follow=True)
+        save_channel(con, plex.filter_row(cid, name, section, params, now), follow=True)
     return dict(kind="channel", channel=library.channel(cid))
 
 
-def _save_plex(channel_id, rows, now=None):
+def _save_plex(channel_id: str, rows: list[Row], now: str | None = None) -> int | None:
     """Save Plex videos under a channel, holding it as _store does. One already kept under another Plex channel (a show also matched by a
     filter, a film in two filters) belongs to that one: it is left as it is, and only its own channel's sync changes it or hides it.
     `gone` and `checked` come from the rows (Plex's deletedAt and updatedAt). Returns how many were new, or None when the channel was
@@ -262,7 +272,7 @@ def _save_plex(channel_id, rows, now=None):
     return sum(1 for i in ids if i not in have)
 
 
-def _plex_rows(items, channel_id, now):
+def _plex_rows(items: list[Json], channel_id: str, now: str) -> tuple[list[Row], dict[str, Any]]:
     """(rows to save, {id: gone} of the rest) for these list items: an item Plex changed since it was last read (its `updatedAt`, kept as
     `checked`) or not yet kept is read in full; one unchanged only has its `gone` brought up to date (Plex's deletedAt)."""
     keys = [plex.video_id(m["ratingKey"]) for m in items]
@@ -277,7 +287,8 @@ def _plex_rows(items, channel_id, now):
             if keys
             else {}
         )
-    rows, same = [], {}
+    rows: list[Row] = []
+    same: dict[str, Any] = {}
     for m in items:
         vid = plex.video_id(m["ratingKey"])
         if checked.get(vid) and checked[vid] == plex.version(m):
@@ -288,12 +299,12 @@ def _plex_rows(items, channel_id, now):
     return rows, same
 
 
-def sync_plex(channel_id, now=None, progress=None):
+def sync_plex(channel_id: str, now: str | None = None, progress: Progress | None = None) -> Row:
     """Bring a Plex show, the Films channel or a followed filter up to date (plex.py's notes); returns what `sync_channel` does."""
     now = now or cache.stamp()
     with db.connect() as con:
-        c = db.row(con.execute("SELECT id, kind, source FROM channels WHERE id = ?", (channel_id,)))
-    if c["kind"] == "filter":
+        c = obj(db.row(con.execute("SELECT id, kind, source FROM channels WHERE id = ?", (channel_id,))))
+    if c.get("kind") == "filter":
         src = json.loads(c["source"] or "{}")
         sec = next((s for s in plex.sections() if s["key"] == src.get("section")), None)
         if sec is None:
@@ -301,7 +312,7 @@ def sync_plex(channel_id, now=None, progress=None):
         found = plex.everything(sec["key"], src.get("params"))
         items = found if sec["type"] == "movie" else [e for show in found for e in plex.episodes(show["ratingKey"])]
         title = None
-    elif c["kind"] == "category":
+    elif c.get("kind") == "category":
         with db.connect() as con:
             keys = [
                 plex.rating_key(r[0]) for r in con.execute("SELECT id FROM videos WHERE channel_id = ?", (channel_id,))
@@ -347,7 +358,7 @@ def sync_plex(channel_id, now=None, progress=None):
     )
 
 
-def add_iplayer(kind, pid, now=None):
+def add_iplayer(kind: str, pid: str, now: str | None = None) -> Row:
     """Add an iPlayer programme or category (followed) or one episode (its programme comes in unfollowed, or for a one-off its category's
     channel or its network), as `add`."""
     now = now or cache.stamp()
@@ -375,9 +386,8 @@ def add_iplayer(kind, pid, now=None):
         known = con.execute("SELECT 1 FROM channels WHERE id = ?", (row["channel_id"],)).fetchone()
     if not known:
         tleo = iplayer.programme(row["channel_id"]) if row["channel_id"] == ep.get("tleo_id") else None
-        cat = (
-            iplayer.category(iplayer.category_id(row["channel_id"])) if iplayer.category_id(row["channel_id"]) else None
-        )
+        cat_id = iplayer.category_id(row["channel_id"])
+        cat = iplayer.category(cat_id) if cat_id else None
         ch = (
             iplayer.channel_row(tleo, now)
             if tleo
@@ -394,7 +404,7 @@ def add_iplayer(kind, pid, now=None):
 
 
 @quota.purpose("add")
-def add_videos(ids, now=None):
+def add_videos(ids: Iterable[str], now: str | None = None) -> Row:
     """Add these videos (say, the ones of a channel watched before, from history.py) without following anything: each one's channel comes in
     unfollowed if the library does not have it. Returns `{added, already, missing}`: new to the library, held already (refreshed), and those
     YouTube no longer has (private or removed)."""
@@ -425,7 +435,7 @@ def add_videos(ids, now=None):
     )
 
 
-def remove(channel_id):
+def remove(channel_id: str) -> Row:
     """Remove a channel and its videos (their cached copies stay until evicted); returns how many videos went."""
     with db.connect() as con:
         if not con.execute("SELECT 1 FROM channels WHERE id = ?", (channel_id,)).fetchone():
@@ -440,7 +450,7 @@ def remove(channel_id):
     return dict(channel=channel_id, videos=gone)
 
 
-def restart(channel_id):
+def restart(channel_id: str) -> Row:
     """Forget a channel's videos and how far its sync got, so the next sync reads it again from the newest upload back (storage's Resync)."""
     with db.connect() as con:
         if not con.execute("SELECT 1 FROM channels WHERE id = ?", (channel_id,)).fetchone():
@@ -452,11 +462,11 @@ def restart(channel_id):
     return dict(channel=channel_id, videos=gone)
 
 
-def _gone(channel_id):
+def _gone(channel_id: str) -> NotFound:
     return NotFound(f"The channel {channel_id} was removed while it synced.")
 
 
-def _store(channel_id, ids, now):
+def _store(channel_id: str, ids: list[str], now: str) -> int:
     """Save the videos among `ids` that the library does not have yet; returns how many were new. The channel's row is touched in the same
     transaction first: on Postgres that holds it, so a removal (which deletes the channel before its videos) either waits for these videos and
     then deletes them, or has already gone and they are not saved. Either way no video outlives its channel."""
@@ -479,7 +489,7 @@ def _store(channel_id, ids, now):
 
 
 @quota.purpose("sync")
-def sync_channel(channel_id, now=None, progress=None):
+def sync_channel(channel_id: str, now: str | None = None, progress: Progress | None = None) -> Row:
     """Bring one channel up to date (see the module's notes); returns `{channel, title, added, pages, complete}`. `progress(added)` is
     called after each page."""
     now = now or cache.stamp()
@@ -500,7 +510,7 @@ def sync_channel(channel_id, now=None, progress=None):
         raise NotFound(f"YouTube gives no uploads for channel {channel_id}.")
     token, complete, added, pages = c["sync_token"], bool(c["complete"]), 0, 0
 
-    def mark(**kw):
+    def mark(**kw: Any) -> None:
         with db.connect() as con:
             con.execute(
                 f"UPDATE channels SET {', '.join(f'{k} = :{k}' for k in kw)} WHERE id = :id", dict(kw, id=channel_id)
@@ -535,31 +545,29 @@ def sync_channel(channel_id, now=None, progress=None):
     return dict(channel=channel_id, title=row["title"], added=added, pages=pages, complete=complete)
 
 
-def sync_programme(channel_id, now=None, progress=None):
+def sync_programme(channel_id: str, now: str | None = None, progress: Progress | None = None) -> Row:
     """Bring one iPlayer programme, or category (its one-offs), up to date (see the module's notes); returns what `sync_channel` does."""
     now = now or cache.stamp()
     cat = iplayer.category_id(channel_id)
+    pages: Callable[[int], tuple[list[Json], bool, int]]  # a page's (episodes, more to come, how many it listed)
     if cat:
         found = iplayer.category(cat)
         if found is None:
             raise NotFound(f"iPlayer has no category {cat} any more.")
-        row, pages = (
-            iplayer.category_row(found, now),
-            lambda page: iplayer.category_page(cat, page),
-        )  # (one-offs, more, programmes listed)
+        row = iplayer.category_row(found, now)
+        pages = lambda page: iplayer.category_page(cat, page)  # noqa: E731  (one-offs, more, programmes listed)
     else:
         prog = iplayer.programme(channel_id)
         if prog is None:
             raise NotFound(f"iPlayer has no programme {channel_id} any more.")
-        row, pages = (
-            iplayer.channel_row(prog, now),
-            lambda page: (*(r := iplayer.episodes_page(channel_id, page)), len(r[0])),
-        )
+        row = iplayer.channel_row(prog, now)
+        pages = lambda page: (*(r := iplayer.episodes_page(channel_id, page)), len(r[0]))  # noqa: E731
     with db.connect() as con:
         held = update_channel(con, row)
     if not held:
         raise _gone(channel_id)
-    seen, added, page, more, whole = [], 0, 0, True, False
+    seen: list[str] = []
+    added, page, more, whole = 0, 0, True, False
     while more:
         page += 1
         eps, more, listed = pages(page)
@@ -609,22 +617,25 @@ def sync_programme(channel_id, now=None, progress=None):
 
 
 @quota.purpose("recheck")
-def recheck(limit=None, now=None, ids=None, since=None):
+def recheck(
+    limit: int | None = None, now: str | None = None, ids: Iterable[str] | None = None, since: str | None = None
+) -> Row:
     """The rolling recheck (also the one a sync runs at its end), counted as `recheck` in the quota; see `_recheck`."""
     return _recheck(limit, now, ids, since)
 
 
 def _recheck(
-    limit=None, now=None, ids=None, since=None
-):  # undecorated: report and recheck_past keep their own quota purpose
+    limit: int | None = None, now: str | None = None, ids: Iterable[str] | None = None, since: str | None = None
+) -> Row:  # undecorated: report and recheck_past keep their own quota purpose
     """Ask YouTube about the `limit` (default RECHECK; 0 for every one) videos checked longest ago, after every stream not over, or about these `ids` (those the library holds, and not checked since `since`): refresh the ones it has (clearing `gone`), mark the rest `gone`. Returns `{checked, gone, back}`:
     how many were asked about, newly hidden, and found again."""
     now = now or cache.stamp()
     limit = RECHECK if limit is None else limit
+    was: dict[str, Any]
     with db.connect() as con:
         if ids is not None:
             ids = list(dict.fromkeys(ids))
-            rows = (
+            rows: Iterable[Any] = (
                 con.execute(
                     f"SELECT id, gone, checked FROM videos WHERE platform = 'youtube' AND id IN ({', '.join('?' * len(ids))})",
                     tuple(ids),
@@ -671,12 +682,12 @@ def _recheck(
 
 
 @quota.purpose("reported")
-def report(ids, now=None, gap=REPORT_GAP):
+def report(ids: Iterable[str], now: str | None = None, gap: datetime.timedelta = REPORT_GAP) -> Row:
     """The watching side found these videos missing, counted as `reported` in the quota; see `_report`."""
     return _report(ids, now, gap)
 
 
-def _report(ids, now=None, gap=REPORT_GAP):
+def _report(ids: Iterable[str], now: str | None = None, gap: datetime.timedelta = REPORT_GAP) -> Row:
     """The watching side found these videos missing: recheck those not asked about in `gap` (see the module's notes). Returns the
     recheck's counts and `hidden`, the ids among them that are hidden now, so the page can drop them at once."""
     now = now or cache.stamp()
@@ -684,7 +695,7 @@ def _report(ids, now=None, gap=REPORT_GAP):
     since = (datetime.datetime.fromisoformat(now) - gap).isoformat(timespec="seconds")
     r = _recheck(now=now, ids=ids, since=since)
     with db.connect() as con:
-        gone = (
+        gone: set[str] = (
             {
                 row[0]
                 for row in con.execute(
@@ -698,7 +709,7 @@ def _report(ids, now=None, gap=REPORT_GAP):
 
 
 @quota.purpose("past")
-def recheck_past(videos, now=None):
+def recheck_past(videos: Iterable[Row], now: str | None = None) -> set[str]:
     """Of these video rows a page is about to show, ask YouTube again about the past streams not asked about in LIVE_GAP, and return the ids
     it no longer has (now hidden), for the caller to leave out. Without a key, or when YouTube refuses, nothing is asked and the page shows
     them as they are: the next read tries again, and a fetch that fails still hides one."""
@@ -711,13 +722,13 @@ def recheck_past(videos, now=None):
         return set()
 
 
-def mark_gone(video_id, now=None):
+def mark_gone(video_id: str, now: str | None = None) -> None:
     """Hide a video that playing found unavailable, until a recheck or a fetch finds it again."""
     with db.connect() as con:
         con.execute("UPDATE videos SET gone = COALESCE(gone, ?) WHERE id = ?", (now or cache.stamp(), video_id))
 
 
-def mark_blocked(video_id, now=None):
+def mark_blocked(video_id: str, now: str | None = None) -> None:
     """Hide a video whose fetch YouTube refused as not available in this server's country (a block the Data API's regionRestriction does
     not always list, such as a rights holder's claim). A recheck leaves the mark, since YouTube still has the video; only a fetch that
     succeeds clears it."""
@@ -725,7 +736,7 @@ def mark_blocked(video_id, now=None):
         con.execute("UPDATE videos SET blocked = COALESCE(blocked, ?) WHERE id = ?", (now or cache.stamp(), video_id))
 
 
-def mark_found(video_id):
+def mark_found(video_id: str) -> None:
     with db.connect() as con:
         con.execute(
             "UPDATE videos SET gone = NULL, blocked = NULL WHERE id = ? AND (gone IS NOT NULL OR blocked IS NOT NULL)",
@@ -737,7 +748,7 @@ class FilterError(ValueError):
     """Raised when a filter for what the watching side shows cannot be used; the message says why, for the person who set it."""
 
 
-def save_filters(changes):
+def save_filters(changes: Mapping[str, Any]) -> Row:
     """Merge `changes` into which videos the watching side shows (library.filters: `min_seconds`, `max_seconds`, None for no limit;
     `streams`, 'current' or 'all'; `region`, a country code or None; `languages`, language codes, empty for every one; `unknown_language`,
     'show' or 'hide'; `captions`, 'any' or 'only'), after checking every value (nothing is saved if one is wrong); returns the filters now in force."""
@@ -753,11 +764,12 @@ def save_filters(changes):
                 raise FilterError("The country must be a two-letter code, such as GB, or empty.")
             v = v.strip().upper() if v else None
         elif k == "languages":
+            codes = cast(list[Any], v) if isinstance(v, list) else []
             if not isinstance(v, list) or not all(
-                isinstance(x, str) and re.match(r"^[A-Za-z]{2,3}$", x.strip()) for x in v
+                isinstance(x, str) and re.match(r"^[A-Za-z]{2,3}$", x.strip()) for x in codes
             ):
                 raise FilterError("Languages must be a list of two- or three-letter codes, such as en.")
-            v = sorted({x.strip().lower() for x in v})
+            v = sorted({str(x).strip().lower() for x in codes})
         elif v is not None:
             if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v < 0:
                 raise FilterError(
@@ -775,7 +787,7 @@ def save_filters(changes):
     return f
 
 
-def needs_youtube(channel_ids=None):
+def needs_youtube(channel_ids: Iterable[str] | None = None) -> bool:
     """Whether a sync of these channels (default: every followed one) asks YouTube, so needs its key: iPlayer programmes sync without one."""
     with db.connect() as con:
         if channel_ids is None:
@@ -796,7 +808,7 @@ def needs_youtube(channel_ids=None):
     return bool(rows)
 
 
-def followed():
+def followed() -> list[tuple[str, str]]:
     with db.connect() as con:
         return [
             tuple(r)
@@ -805,7 +817,13 @@ def followed():
 
 
 @quota.purpose("sync")
-def sync(channel_ids=None, now=None, on_channel=None, progress=None, sleep=time.sleep):
+def sync(
+    channel_ids: Iterable[str] | None = None,
+    now: str | None = None,
+    on_channel: Callable[[str, str], None] | None = None,
+    progress: Progress | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+) -> Row:
     """Sync these channels (default: every followed one) in turn; returns `{channels: [...], errors: [...], recovered: [...], added, synced}`.
     A failure on one channel is noted (with the videos it had added before it failed, which are kept and counted) and the next goes on,
     except running out of quota, which stops the rest. The channels that failed (but not one that is gone, nor a quota stop) are tried once
@@ -821,15 +839,17 @@ def sync(channel_ids=None, now=None, on_channel=None, progress=None, sleep=time.
         with db.connect() as con:
             titles = dict(tuple(r) for r in con.execute("SELECT id, title FROM channels"))
         todo = [(i, titles.get(i, i)) for i in channel_ids]
-    done, errors, recovered = [], [], []
+    done: list[Row] = []
+    errors: list[Row] = []
+    recovered: list[Row] = []
 
-    def one(cid, title):
+    def one(cid: str, title: str) -> Row | None:
         """Sync one channel; returns its error row, or None when it went through (added to `done`)."""
         if on_channel:
             on_channel(cid, title)
         so_far = [0]
 
-        def counted(added, so_far=so_far):
+        def counted(added: int, so_far: list[int] = so_far) -> None:
             so_far[0] = added
             if progress:
                 progress(added)
@@ -888,7 +908,7 @@ def sync(channel_ids=None, now=None, on_channel=None, progress=None, sleep=time.
     )
 
 
-def failed(result, limit=2):
+def failed(result: Row, limit: int = 2) -> bool:
     """Whether a sync went badly enough to say so (`tubes sync` exits non-zero, so the timer's alert fires): `limit` or more channels still
     failing after their second try, or the quota running out. One channel failing twice is noted in the log and left for the next sync."""
     return sum(1 for e in result["errors"] if e["channel"]) >= limit or any(
@@ -904,17 +924,19 @@ class Job:
     class Busy(RuntimeError):
         pass
 
-    def __init__(self):
-        self.lock, self.thread, self.queued = threading.Lock(), None, []
-        self.s = dict(
+    def __init__(self) -> None:
+        self.lock = threading.Lock()
+        self.thread: threading.Thread | None = None
+        self.queued: list[str] = []
+        self.s: Row = dict(
             running=False, total=0, done=0, current=None, added=0, gone=0, errors=[], started=None, finished=None
         )
 
-    def state(self):
+    def state(self) -> Row:
         with self.lock:
             return dict(self.s, errors=list(self.s["errors"]))
 
-    def start(self, channel_ids=None):
+    def start(self, channel_ids: list[str] | None = None) -> Row:
         with self.lock:
             if self.s["running"]:
                 raise Job.Busy("A sync is already running; it says how far it has got.")
@@ -934,7 +956,7 @@ class Job:
         self.thread.start()
         return self.state()
 
-    def follow_up(self, channel_ids):
+    def follow_up(self, channel_ids: Iterable[str]) -> Row:
         """Sync these channels after the running sync's own, or start a sync of them if none runs."""
         with self.lock:
             if self.s["running"]:
@@ -944,17 +966,17 @@ class Job:
                 return dict(self.s, errors=list(self.s["errors"]))
         return self.start(list(channel_ids))
 
-    def _run(self, channel_ids):
+    def _run(self, channel_ids: list[str] | None) -> None:
         base = [0]
 
-        def on_channel(cid, title):
+        def on_channel(cid: str, title: str) -> None:
             with self.lock:
                 if self.s["current"]:
                     self.s["done"] += 1
                 self.s["current"] = title
                 base[0] = self.s["added"]
 
-        def progress(added):
+        def progress(added: int) -> None:
             with self.lock:
                 self.s["added"] = base[0] + added
 
@@ -967,7 +989,7 @@ class Job:
                     self.s.update(
                         errors=self.s["errors"] + r["errors"],
                         added=before + r["added"],
-                        gone=self.s["gone"] + (r["recheck"] or {}).get("gone", 0),
+                        gone=self.s["gone"] + obj(r["recheck"]).get("gone", 0),
                     )
                     channel_ids, self.queued = self.queued, []
                 if not channel_ids:
@@ -980,6 +1002,6 @@ class Job:
                 self.queued = []
                 self.s.update(running=False, current=None, done=self.s["total"], finished=cache.stamp())
 
-    def wait(self, timeout=None):
+    def wait(self, timeout: float | None = None) -> None:
         if self.thread:
             self.thread.join(timeout)

@@ -29,6 +29,8 @@ import urllib.parse
 from strata_python.http import Http
 
 from tubes import USER_AGENT
+from tubes.db import Row
+from tubes.shape import Json, arr, obj
 
 IBL = "https://ibl.api.bbc.co.uk/ibl/v1"
 MEDIASELECTOR = "https://open.live.bbc.co.uk/mediaselector/6/select/version/2.0"
@@ -59,7 +61,7 @@ class IplayerError(RuntimeError):
     """A call to iPlayer failed, or it cannot play this; the message says why, in a sentence."""
 
 
-def _get(url, accept="application/json", error_body=False):
+def _get(url: str, accept: str = "application/json", error_body: bool = False) -> bytes:
     """The body of a GET. `error_body`: an error status's body is returned too (the mediaselector says why it will not play in a JSON body with 403 or 404)."""
     reply = HTTP.get(url, headers={"Accept": accept})
     if reply.status == 0:
@@ -69,18 +71,18 @@ def _get(url, accept="application/json", error_body=False):
     raise IplayerError(f"iPlayer refused the request ({reply.status}).")
 
 
-def call(path, **params):
+def call(path: str, **params: object) -> Json:
     """One GET on ibl; returns its JSON."""
     url = f"{os.environ.get('TUBES_IPLAYER_API', IBL)}/{path}" + (
         f"?{urllib.parse.urlencode(params)}" if params else ""
     )
     try:
-        return json.loads(_get(url))
+        return obj(json.loads(_get(url)))
     except ValueError:
         raise IplayerError("iPlayer did not answer with JSON.") from None
 
 
-def parse(text):
+def parse(text: str | None) -> tuple[str, str] | None:
     """('programme', pid), ('episode', pid), ('pid', pid) (a bbc.co.uk/programmes link, which may be either) or ('category', id) (an
     iPlayer category page: /iplayer/categories/films/..., /iplayer/browse/films) for an iPlayer or BBC programmes link; None when it is not one (so YouTube can read it); ValueError for a BBC link that names no programme."""
     t = (text or "").strip()
@@ -99,11 +101,11 @@ def parse(text):
     raise ValueError("That BBC link is not to an iPlayer programme, episode or category.")
 
 
-def image(template, recipe=THUMB):
+def image(template: str | None, recipe: str = THUMB) -> str | None:
     return template.replace("{recipe}", recipe) if template else None
 
 
-def stamp(value):
+def stamp(value: str | None) -> str | None:
     """A BBC time (`2026-11-11T19:30:00.000Z`) as the ISO string the database keeps (`2026-11-11T19:30:00+00:00`); None when unreadable."""
     try:
         t = datetime.datetime.fromisoformat((value or "").replace("Z", "+00:00"))
@@ -117,7 +119,7 @@ def stamp(value):
 DURATION = re.compile(r"^PT(?:(\d+)H)?(?:(\d+)M)?(?:([\d.]+)S)?$")
 
 
-def seconds(duration):
+def seconds(duration: str | None) -> float | None:
     """`PT29M0.117333S` in seconds (29.0 min); None when it cannot be read."""
     m = DURATION.match(duration or "")
     if not m or not any(m.groups()):
@@ -126,16 +128,16 @@ def seconds(duration):
     return round(int(h or 0) * 3600 + int(mi or 0) * 60 + float(s or 0), 3)
 
 
-def version(episode):
+def version(episode: Json) -> Json | None:
     """The version to show and play: the original (or the broadcast edit) rather than the audio-described or signed one; None when it has none."""
-    vs = [v for v in episode.get("versions") or [] if v.get("id")]
+    vs = [v for v in arr(episode.get("versions")) if v.get("id")]
     plain = [v for v in vs if v.get("kind") not in SKIP_KINDS] or vs
     if not plain:
         return None
     return min(plain, key=lambda v: KIND_ORDER.index(v["kind"]) if v.get("kind") in KIND_ORDER else len(KIND_ORDER))
 
 
-def names(episode):
+def names(episode: Json) -> tuple[str, str | None, int | None]:
     """(title, series, number) from an episode: `Series 1: 2. Name` is ('Name', 'Series 1', 2); a dated one (`11/11/2026`) keeps the date as its title."""
     sub, number = (episode.get("subtitle") or "").strip(), episode.get("parent_position")
     number = number if isinstance(number, int) else None
@@ -149,26 +151,26 @@ def names(episode):
     return sub or (episode.get("original_title") or "").strip() or episode.get("title") or episode["id"], None, number
 
 
-def network_name(item):
-    mb = item.get("master_brand") or {}
-    return (mb.get("titles") or {}).get("large") or mb.get("id") or None
+def network_name(item: Json) -> str | None:
+    mb = obj(item.get("master_brand"))
+    return obj(mb.get("titles")).get("large") or mb.get("id") or None
 
 
-def tagline(syn):
+def tagline(syn: Json) -> str | None:
     """The short synopsis, when there is a longer one to be the description."""
     short = (syn.get("small") or "").strip()
     return short if short and short != (syn.get("large") or syn.get("medium") or "").strip() else None
 
 
-def tags(item):
+def tags(item: Json) -> list[Row]:
     """An ibl programme's or episode's categories (`childrens-cartoons`) and its label (`CBeebies`, `Crime Drama`) as `tags` rows."""
-    label = (item.get("labels") or {}).get("category")
-    return [dict(kind="category", value=c) for c in item.get("categories") or [] if isinstance(c, str)] + (
+    label = obj(item.get("labels")).get("category")
+    return [dict(kind="category", value=c) for c in arr(item.get("categories")) if isinstance(c, str)] + (
         [dict(kind="label", value=label)] if label else []
     )
 
 
-def images(im, wide):
+def images(im: Json, wide: str) -> list[Row]:
     """An ibl images dict as `images` rows: the wide one as `wide` (thumb for an episode, avatar for a programme), a backdrop and a portrait."""
     std = im.get("standard") or im.get("promotional")
     out = (
@@ -189,9 +191,9 @@ def images(im, wide):
     return out
 
 
-def channel_row(programme, now):
+def channel_row(programme: Json, now: str | None) -> Row:
     """An ibl programme as a `channels` row."""
-    im, syn = programme.get("images") or {}, programme.get("synopses") or {}
+    im, syn = obj(programme.get("images")), obj(programme.get("synopses"))
     return dict(
         id=programme["id"],
         platform="iplayer",
@@ -214,10 +216,10 @@ def channel_row(programme, now):
     )
 
 
-def network_row(episode, now):
+def network_row(episode: Json, now: str) -> Row:
     """The channel a one-off is kept under: its network (`bbc_one`, BBC One)."""
-    mb = episode.get("master_brand") or {}
-    title = (mb.get("titles") or {}).get("large") or mb.get("id") or "BBC"
+    mb = obj(episode.get("master_brand"))
+    title = obj(mb.get("titles")).get("large") or mb.get("id") or "BBC"
     return dict(
         id=mb.get("id") or "bbc",
         platform="iplayer",
@@ -238,31 +240,31 @@ def network_row(episode, now):
     )
 
 
-def one_off(episode):
+def one_off(episode: Json) -> bool:
     return (
         episode.get("tleo_type") == "episode" or not episode.get("tleo_id") or episode.get("tleo_id") == episode["id"]
     )
 
 
-def channel_of(episode):
+def channel_of(episode: Json) -> str:
     """The id of the channel an episode is kept under: its programme; for a one-off, its category's channel when it is a film, else its network."""
     if not one_off(episode):
         return episode["tleo_id"]
-    filed = next((c for c in FILED_UNDER if c in (episode.get("categories") or [])), None)
-    return PREFIX + filed if filed else (episode.get("master_brand") or {}).get("id") or "bbc"
+    filed = next((c for c in FILED_UNDER if c in arr(episode.get("categories"))), None)
+    return PREFIX + filed if filed else obj(episode.get("master_brand")).get("id") or "bbc"
 
 
-def category_id(channel_id):
+def category_id(channel_id: str | None) -> str | None:
     """The category a channel follows (`films` for `iplayer-films`), or None for any other channel."""
-    return channel_id[len(PREFIX) :] if (channel_id or "").startswith(PREFIX) else None
+    return channel_id[len(PREFIX) :] if channel_id and channel_id.startswith(PREFIX) else None
 
 
-def category(cat):
+def category(cat: str) -> Json | None:
     """iPlayer's category with this id (`{id, title}`), or None when it has none."""
-    return next((c for c in call("categories").get("categories") or [] if c.get("id") == cat), None)
+    return next((c for c in arr(call("categories").get("categories")) if c.get("id") == cat), None)
 
 
-def category_row(cat, now):
+def category_row(cat: Json, now: str | None) -> Row:
     """A category (`{id, title}`) as a `channels` row, id `iplayer-<id>`."""
     return dict(
         id=PREFIX + cat["id"],
@@ -283,27 +285,23 @@ def category_row(cat, now):
     )
 
 
-def category_page(cat, page=1):
+def category_page(cat: str, page: int = 1) -> tuple[list[Json], bool, int]:
     """One page (up to PAGE) of a category's programmes, as iPlayer orders them: (its one-offs, as whole episodes; whether there are more;
     how many programmes the page listed). Its series are left out (they are followed as programmes), so a page can list programmes and
     hold no one-offs; `count` is every programme in it."""
-    r = call(f"categories/{cat}/programmes", per_page=PAGE, page=page).get("category_programmes") or {}
-    items = r.get("elements") or []
+    r = obj(call(f"categories/{cat}/programmes", per_page=PAGE, page=page).get("category_programmes"))
+    items = arr(r.get("elements"))
     eps = [
-        c
-        for p in items
-        if p.get("tleo_type") == "episode"
-        for c in (p.get("initial_children") or [])[:1]
-        if c.get("id")
+        c for p in items if p.get("tleo_type") == "episode" for c in arr(p.get("initial_children"))[:1] if c.get("id")
     ]
     return eps, page * PAGE < (r.get("count") or 0) and bool(items), len(items)
 
 
-def video_row(episode, now):
+def video_row(episode: Json, now: str) -> Row:
     """An ibl episode as a `videos` row."""
-    v, im, syn = version(episode) or {}, episode.get("images") or {}, episode.get("synopses") or {}
+    v, im, syn = version(episode) or {}, obj(episode.get("images")), obj(episode.get("synopses"))
     title, series, number = names(episode)
-    avail = v.get("availability") or {}
+    avail = obj(v.get("availability"))
     published = (
         stamp(v.get("first_broadcast_date_time"))
         or stamp(episode.get("release_date_time"))
@@ -316,7 +314,7 @@ def video_row(episode, now):
         channel_id=channel_of(episode),
         title=title,
         published=published,
-        duration=seconds((v.get("duration") or {}).get("value")),
+        duration=seconds(obj(v.get("duration")).get("value")),
         thumbnail=image(im.get("standard")),
         views=None,
         description=syn.get("large") or syn.get("medium") or syn.get("small") or syn.get("editorial"),
@@ -333,7 +331,7 @@ def video_row(episode, now):
         regions_blocked=None,
         added=now,  # iPlayer plays only in the UK; nearly every programme is subtitled, but ibl does not say
         kind="film"
-        if one_off(episode) and any(c in (episode.get("categories") or []) for c in FILED_UNDER)
+        if one_off(episode) and any(c in arr(episode.get("categories")) for c in FILED_UNDER)
         else "episode",
         tagline=tagline(syn),
         year=int(published[:4]) if re.match(r"^\d{4}", published or "") else None,
@@ -345,40 +343,41 @@ def video_row(episode, now):
     )
 
 
-def season(series):
+def season(series: str | None) -> int | None:
     """The number of a series title (`Series 4` is 4, `Season 2` is 2), or None."""
     m = re.match(r"^\s*(?:series|season)\s+(\d+)\s*$", series or "", re.I)
     return int(m[1]) if m else None
 
 
-def picture(v):
+def picture(v: Json) -> Row:
     """A version's best picture as {width, height, hdr}: UHD 2160p, HD 1080p (fhd_url), else not said."""
     size = (3840, 2160) if v.get("uhd") else (1920, 1080) if v.get("hd") else (None, None)
     return dict(width=size[0], height=size[1], hdr=v.get("hdr") if isinstance(v.get("hdr"), bool) else None)
 
 
-def versions(episode):
+def versions(episode: Json) -> list[Row]:
     """An episode's other versions (audio-described, signed) as `tracks` rows of kind `version`, `ref` the version's id."""
     names = {"audio-described": "Audio described", "signed": "Signed"}
     return [
         dict(kind="version", label=names[x["kind"]], ref=x["id"], language="en")
-        for x in episode.get("versions") or []
+        for x in arr(episode.get("versions"))
         if x.get("id") and x.get("kind") in names
     ]
 
 
-def programme(pid):
+def programme(pid: str) -> Json | None:
     """The ibl programme for this id, or None when iPlayer has no such programme (an episode's id answers None too)."""
-    items = call(f"programmes/{pid}").get("programmes") or []
+    items = arr(call(f"programmes/{pid}").get("programmes"))
     return items[0] if items and items[0].get("id") == pid else None
 
 
-def search(text):
+def search(text: str) -> list[Row]:
     """What iPlayer finds for some words (`new-search`, the only search ibl answers; measured 2026-11-12): programmes and episodes, fuzzy and
     unpaged, so callers match titles themselves. Returns `[{id, title, kind, thumbnail}]` with `id` the followable programme: a programme's
     own id, an episode's `tleo_id` when it belongs to one (`tleo_type` brand or series); one-offs, which have no programme, are left out."""
-    out, seen = [], set()
-    for r in (call("new-search", q=text, rights="web").get("new_search") or {}).get("results") or []:
+    out: list[Row] = []
+    seen: set[str] = set()
+    for r in arr(obj(call("new-search", q=text, rights="web").get("new_search")).get("results")):
         if r.get("type") == "programme":
             pid = r.get("id")
         elif (
@@ -390,7 +389,7 @@ def search(text):
         if not pid or pid in seen:
             continue
         seen.add(pid)
-        im = r.get("images") or {}
+        im = obj(r.get("images"))
         out.append(
             dict(
                 id=pid,
@@ -402,7 +401,7 @@ def search(text):
     return out
 
 
-def programme_url(pid):
+def programme_url(pid: str) -> str:
     cat = category_id(pid)
     return (
         f"https://www.bbc.co.uk/iplayer/categories/{cat}/featured"
@@ -411,38 +410,38 @@ def programme_url(pid):
     )
 
 
-def episode(pid):
+def episode(pid: str) -> Json | None:
     """The ibl episode for this id, or None when iPlayer does not offer it."""
-    items = call(f"episodes/{pid}").get("episodes") or []
+    items = arr(call(f"episodes/{pid}").get("episodes"))
     return items[0] if items and items[0].get("id") == pid else None
 
 
-def episodes_page(pid, page=1):
+def episodes_page(pid: str, page: int = 1) -> tuple[list[Json], bool]:
     """One page (up to PAGE) of a programme's episodes, newest first: (episodes, whether there are more)."""
-    r = call(f"programmes/{pid}/episodes", per_page=PAGE, page=page).get("programme_episodes") or {}
-    items = [e for e in r.get("elements") or [] if e.get("type") == "episode" and e.get("id")]
+    r = obj(call(f"programmes/{pid}/episodes", per_page=PAGE, page=page).get("programme_episodes"))
+    items = [e for e in arr(r.get("elements")) if e.get("type") == "episode" and e.get("id")]
     return items, page * PAGE < (r.get("count") or 0) and bool(items)
 
 
-def atoz_page(letter, page=1):
+def atoz_page(letter: str, page: int = 1) -> tuple[list[Json], bool]:
     """One page (up to PAGE) of iPlayer's A to Z for a letter (`a`-`z`, `0-9`): (programmes, whether there are more)."""
-    r = call(f"atoz/{letter}/programmes", per_page=PAGE, page=page).get("atoz_programmes") or {}
-    items = [p for p in r.get("elements") or [] if p.get("id")]
+    r = obj(call(f"atoz/{letter}/programmes", per_page=PAGE, page=page).get("atoz_programmes"))
+    items = [p for p in arr(r.get("elements")) if p.get("id")]
     return items, page * PAGE < (r.get("count") or 0) and bool(items)
 
 
-def episode_url(pid):
+def episode_url(pid: str) -> str:
     return f"https://www.bbc.co.uk/iplayer/episode/{pid}"
 
 
 # Streams.
 
 
-def mediaselector(vpid):
+def mediaselector(vpid: str) -> list[str]:
     """The mediaselector's answer for a version: its HLS master playlists (one per CDN). Raises IplayerError saying why there are none."""
     url = f"{os.environ.get('TUBES_MEDIASELECTOR', MEDIASELECTOR)}/mediaset/{MEDIASET}/vpid/{vpid}/format/json"
     try:
-        d = json.loads(_get(url, error_body=True))
+        d = obj(json.loads(_get(url, error_body=True)))
     except ValueError:
         raise IplayerError("iPlayer did not answer with JSON.") from None
     if d.get("result"):
@@ -453,9 +452,9 @@ def mediaselector(vpid):
         raise IplayerError(why or f"iPlayer would not play this episode ({d['result']}).")
     masters = [
         c["href"]
-        for m in d.get("media") or []
+        for m in arr(d.get("media"))
         if m.get("kind") == "video"
-        for c in m.get("connection") or []
+        for c in arr(m.get("connection"))
         if c.get("transferFormat") == "hls" and c.get("href")
     ]
     if not masters:
@@ -466,9 +465,10 @@ def mediaselector(vpid):
 ATTR = re.compile(r'([A-Z0-9-]+)=("[^"]*"|[^,]*)')
 
 
-def variants(master_url, text):
+def variants(master_url: str, text: str) -> list[Row]:
     """The variants of an HLS master playlist: [{url, height, fps, bandwidth, codecs}], addresses made absolute."""
-    out, attrs = [], None
+    out: list[Row] = []
+    attrs: dict[str, str] | None = None
     for line in text.splitlines():
         line = line.strip()
         if line.startswith("#EXT-X-STREAM-INF:"):
@@ -488,13 +488,13 @@ def variants(master_url, text):
     return out
 
 
-def fhd_url(url):
+def fhd_url(url: str) -> str | None:
     """The 1080p50 sibling of a 720p50 variant's address (see the module's notes), or None when the address names no video bitrate."""
     new = re.sub(r"video=\d+", f"video={FHD_BITRATE}", url)
     return new if new != url else None
 
 
-def _answers(url):
+def _answers(url: str) -> bool:
     """True when a variant playlist answers with segments of its own bitrate (an asked-for 1080p variant that does not exist answers 403 or 404)."""
     try:
         text = _get(url, accept="*/*").decode("utf8", "replace")
@@ -503,7 +503,7 @@ def _answers(url):
     return "#EXTINF" in text and f"video={FHD_BITRATE}" in text
 
 
-def stream(episode_pid, max_height=1080):
+def stream(episode_pid: str, max_height: int = 1080) -> Row:
     """The stream to fetch for an episode: `{url, height, fps, label}`, the tallest within `max_height` (1080p50 when the episode is HD and
     has one, else the best listed variant). Raises IplayerError when iPlayer does not offer it or will not play it here."""
     ep = episode(episode_pid)
@@ -536,7 +536,7 @@ def stream(episode_pid, max_height=1080):
     raise error or IplayerError(f"iPlayer offered no stream at or under {max_height}p.")
 
 
-def reachable():
+def reachable() -> tuple[bool, str | None]:
     """Whether the mediaselector answers here as it does in the UK: (True, None), or (False, why). Asks about a version that does not exist,
     which a UK address is told is unavailable and any other is told is out of region."""
     try:

@@ -21,10 +21,13 @@ import re
 import sys
 import threading
 import time
+from collections.abc import Callable, Iterable
 
 from strata_python.tasks import Ticker
 
 from tubes import cache, fetcher, library, segments, settings, ytdlp
+from tubes.db import Row
+from tubes.shape import arr, obj
 
 HOME = 24  # Home's first page (web: useVideos reads 24 at a time)
 GAP_SECONDS = 5  # between two prefetches
@@ -40,16 +43,16 @@ SLOW_DOWN = re.compile(
 )
 
 
-def length(video_id):
+def length(video_id: str) -> float:
     """How many seconds of a video's start to prefetch: `prefetch_seconds`, after the parts at the very start that the player skips or offers to skip."""
     base = settings.get_float("prefetch_seconds")
     try:
         found = segments.for_video(video_id)
     except Exception:
         return base  # SponsorBlock's answer is a bonus, never a reason not to prefetch
-    modes = {c["id"]: c["mode"] for c in found.get("categories") or []}
+    modes = {c["id"]: c["mode"] for c in arr(found.get("categories"))}
     reach = 0.0
-    for s in sorted(found.get("segments") or [], key=lambda s: s["start"]):
+    for s in sorted(arr(found.get("segments")), key=lambda s: s["start"]):
         if s["action"] != "skip" or modes.get(s["category"], "off") == "off":
             continue
         if s["start"] > reach + 1:
@@ -61,16 +64,20 @@ def length(video_id):
 class Prefetcher:
     """The background prefetcher: `want(ids)` when the watching side offers videos, `start()` once when the server starts, `state()` for System."""
 
-    def __init__(self, clock=time.time):
+    def __init__(self, clock: Callable[[], float] = time.time) -> None:
         self.clock, self.lock = clock, threading.Lock()
         # strata-python's Ticker runs `tick` on a daemon thread: the wait after each step is the one `tick` returns (by why nothing was
         # prefetched), an error waits as long as a pause and never ends the loop (the database went away, say), and `want` pokes it.
         self.ticker = Ticker(WAITS["paused"], self.tick, name="tubes-prefetch", on_error=self.failed, immediately=True)
-        self.asked = collections.OrderedDict()  # recently offered video ids, latest last
-        self.tried = {}  # video id -> when its prefetch last ran
-        self.day, self.count, self.paused_until, self.last = None, 0, 0.0, None
+        self.asked: collections.OrderedDict[str, None] = (
+            collections.OrderedDict()
+        )  # recently offered video ids, latest last
+        self.tried: dict[str, float] = {}  # video id -> when its prefetch last ran
+        self.day: datetime.date | None = None
+        self.count, self.paused_until = 0, 0.0
+        self.last: Row | None = None
 
-    def want(self, video_ids):
+    def want(self, video_ids: Iterable[str]) -> None:
         """These videos were just offered (Up next, a channel's page): prefetch them first."""
         with self.lock:
             for v in video_ids:
@@ -80,7 +87,7 @@ class Prefetcher:
                 self.asked.popitem(last=False)
         self.ticker.poke()
 
-    def candidates(self):
+    def candidates(self) -> list[str]:
         """Video ids to consider, in order: the ones offered last first, then Home's first page."""
         with self.lock:
             ids = list(reversed(self.asked))
@@ -90,7 +97,7 @@ class Prefetcher:
             print(f"tubes: prefetch could not read Home: {e}", file=sys.stderr, flush=True)
         return list(dict.fromkeys(ids))
 
-    def eligible(self, video_id, now):
+    def eligible(self, video_id: str, now: float) -> bool:
         if now - self.tried.get(video_id, -1e12) < RETRY_HOURS * 3600:
             return False
         v = library.video(video_id)
@@ -103,7 +110,7 @@ class Prefetcher:
             return False
         return cache.entry(video_id) is None  # a copy of any kind (even failed, until it is played again) is left alone
 
-    def step(self):
+    def step(self) -> str:
         """Prefetch one video if one is due; returns its id, or why not: off, paused, busy, limit or none."""
         now = self.clock()
         if settings.get_float("prefetch_seconds") <= 0 or settings.get_int("prefetch_per_day") <= 0:
@@ -124,19 +131,20 @@ class Prefetcher:
         self.count += 1
         with self.lock:
             self.asked.pop(vid, None)
-        v = library.video(vid)
+        v = obj(library.video(vid))
         want = length(vid)
+        st: Row
         try:
-            st = fetcher.start(vid, v["title"], v["channel"], background=False, until=want)
+            st = fetcher.start(vid, v.get("title"), v.get("channel"), background=False, until=want)
         except fetcher.FetchError as e:
             st = dict(state="failed", error=str(e), seconds=0)
-        error = st.get("error") if st["state"] == "failed" else None
+        error: str | None = st.get("error") if st["state"] == "failed" else None
         if error and SLOW_DOWN.search(error):
             self.paused_until = now + PAUSE_SECONDS
         if (
             error
             and not (ytdlp.says_gone(error) or ytdlp.says_blocked(error))
-            and (cache.entry(vid) or {}).get("state") == "failed"
+            and obj(cache.entry(vid)).get("state") == "failed"
         ):
             cache.forget([vid])  # nothing to show for it; tried again after RETRY_HOURS
         self.last = dict(
@@ -144,20 +152,20 @@ class Prefetcher:
         )
         return vid
 
-    def tick(self):
+    def tick(self) -> float:
         """One step; the seconds to wait before the next."""
         return WAITS.get(self.step(), GAP_SECONDS)
 
-    def failed(self, e):
+    def failed(self, e: BaseException) -> None:
         print(f"tubes: prefetch failed: {e}", file=sys.stderr, flush=True)
 
-    def start(self):
+    def start(self) -> None:
         self.ticker.start()
 
-    def stop(self):
+    def stop(self) -> None:
         self.ticker.stop(30)
 
-    def state(self):
+    def state(self) -> Row:
         """For the System page: `{enabled, seconds, today, per_day, paused_until, last}`."""
         paused = (
             datetime.datetime.fromtimestamp(self.paused_until, datetime.UTC).isoformat(timespec="seconds")

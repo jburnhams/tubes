@@ -66,8 +66,10 @@ Errors are raised, not caught in routes: web.add_error_handlers answers them as 
 import os
 import platform
 import shutil
+from collections.abc import Sequence
+from typing import Any
 
-from fastapi import HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from strata_python import web
@@ -91,6 +93,7 @@ from tubes import (
     youtube,
     ytdlp,
 )
+from tubes.db import Row
 
 from . import answers as A
 from .answers import answer
@@ -98,7 +101,7 @@ from .answers import answer
 # The app's own exceptions as HTTP statuses, on top of strata-python's (ValueError 400, KeyError 404, ...). A KeyError here is a request
 # naming a filter or setting there is none of, so 400 as before. YouTube, Plex and a history import choose by what went wrong: a service
 # not set up here (503) is not one that failed (502), and a history file that is not a history (400) is not a page that could not be read (502).
-ERRORS = {
+ERRORS: web.ErrorMap = {
     fetcher.FetchError: 400,
     KeyError: 400,
     catalogue.NotFound: 404,
@@ -157,27 +160,27 @@ class CheckIn(BaseModel):
 class FromIn(BaseModel):
     """Where a play or a channel visit was started from (viewing.py): all optional, so an old page or a typed address still works."""
 
-    source: str | None = Field(None, max_length=32)
-    detail: str | None = Field(None, max_length=500)
-    rank: int | None = Field(None, ge=0)
+    source: str | None = Field(default=None, max_length=32)
+    detail: str | None = Field(default=None, max_length=500)
+    rank: int | None = Field(default=None, ge=0)
     decodes: list[str] | None = Field(
-        None, max_length=20
+        default=None, max_length=20
     )  # what the browser plays as it is (h264, hevc, av1, vp9, hdr): which copy of a Plex video to fetch
 
 
 class FollowIn(BaseModel):
     """A Plex show or film by its ratingKey, or a library listing with filters to follow as a channel."""
 
-    key: str | None = Field(None, max_length=12)
-    section: str | None = Field(None, max_length=12)
+    key: str | None = Field(default=None, max_length=12)
+    section: str | None = Field(default=None, max_length=12)
     params: dict[str, str] | None = None
-    title: str | None = Field(None, max_length=200)
+    title: str | None = Field(default=None, max_length=200)
 
 
 class ProgressIn(BaseModel):
-    position: float | None = Field(None, ge=0)
-    watched: float | None = Field(None, ge=0)
-    length: float | None = Field(None, ge=0)
+    position: float | None = Field(default=None, ge=0)
+    watched: float | None = Field(default=None, ge=0)
+    length: float | None = Field(default=None, ge=0)
 
 
 def system_status():
@@ -199,7 +202,7 @@ def system_status():
     )
 
 
-def create_app(recover=True):
+def create_app(recover: bool = True) -> FastAPI:
     """The app. `recover=False` builds it without touching the database or the cache (what `tubes openapi` needs to write the schema).
     strata-python's base_app gives /api/health (with the commit the server runs), /api/settings (typed from settings.SETTINGS) and the docs."""
     app = web.base_app("tubes", __version__, settings.SETTINGS, commit=web.source_commit(__file__))
@@ -214,14 +217,14 @@ def create_app(recover=True):
         prefetch.Prefetcher()
     )  # its thread is started by main(), so tests and other hosts of the app start none
 
-    def stream(video_id):
+    def stream(video_id: str) -> Row:
         return dict(cache.status(video_id), **cache.plays(video_id))
 
     @app.get("/api/system", responses=answer(A.SystemStatus))
     def get_system():
         return dict(system_status(), prefetch=ahead.state())
 
-    def video_or_404(video_id, meta=False):
+    def video_or_404(video_id: str, meta: bool = False) -> Row:
         v = library.video(video_id, meta=meta)
         if v is None:
             raise HTTPException(404, f"There is no video {video_id} in the library.")
@@ -245,7 +248,7 @@ def create_app(recover=True):
         return dict(library.filters(), filtered=library.status()["filtered"], language_counts=library.languages())
 
     @app.put("/api/library/shown", responses=answer(A.ShownFilters))
-    def put_shown(changes: dict):
+    def put_shown(changes: dict[str, Any]):
         catalogue.save_filters(changes)
         return get_shown()
 
@@ -378,7 +381,7 @@ def create_app(recover=True):
     def get_plex_choices(section: str, name: str):
         return plex.choices(section, name)
 
-    def followed(items):
+    def followed(items: list[Row]) -> list[Row]:
         ids = [plex.video_id(i["key"]) for i in items if i.get("key", "").isdigit()]
         if not ids:
             return items
@@ -572,7 +575,7 @@ def create_app(recover=True):
     return app
 
 
-def main(argv=None):
+def main(argv: Sequence[str] | None = None) -> None:
     app = create_app()
     app.state.prefetch.start()
     web.serve(

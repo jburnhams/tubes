@@ -6,6 +6,8 @@ import argparse
 import json
 import os
 import sys
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from strata_python import cli as strata_cli
 
@@ -25,27 +27,35 @@ from tubes import (
     youtube,
     ytdlp,
 )
+from tubes.db import Row
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
 
 IMPORTS = ("fastapi", "uvicorn", "pydantic", "sqlalchemy", ("networkx (suggestion groups)", "networkx"))
 HINT = "pip install -r requirements.txt"
 
 
-def _tool(version, fix):
-    return lambda: ("ok", version()) if version() else ("missing", fix)
+def _tool(version: Callable[[], str | None], fix: str) -> Callable[[], tuple[strata_cli.Status, str]]:
+    def check() -> tuple[strata_cli.Status, str]:
+        found = version()
+        return ("ok", found) if found else ("missing", fix)
+
+    return check
 
 
-def _youtube():
+def _youtube() -> tuple[strata_cli.Status, str]:
     if youtube.configured():
         return "ok", "YOUTUBE_API_KEY set" + (" (sent with a Referer)" if os.environ.get("YOUTUBE_API_REFERER") else "")
     return "missing", "YOUTUBE_API_KEY is not in the environment, so nothing can be added or synced"
 
 
-def _iplayer():
+def _iplayer() -> tuple[strata_cli.Status, str]:
     here, why = iplayer.reachable()  # optional: without it only iPlayer episodes cannot be added or played
-    return ("ok", "answers as in the UK") if here else ("missing", why)
+    return ("ok", "answers as in the UK") if here else ("missing", why or "iPlayer cannot be reached")
 
 
-def _library():
+def _library() -> tuple[strata_cli.Status, str]:
     lib = library.status()
     return "ok", f"{lib['channels']} channel(s), {lib['videos']} video(s), synced {lib['synced'] or 'never'}"
 
@@ -70,16 +80,16 @@ CHECKS = (
 )
 
 
-def out(args, data, text):
+def out(args: argparse.Namespace, data: object, text: str) -> int:
     print(json.dumps(data, indent=1) if args.json else text)
     return 0
 
 
-def gb(n):
+def gb(n: float) -> str:
     return f"{n / 1e9:.2f} GB"
 
 
-def cmd_sync(args):
+def cmd_sync(args: argparse.Namespace) -> int:
     """Sync the named channels, or every followed one; a channel that fails is tried once more after the rest. Exits non-zero only when two
     or more channels still fail, or the quota ran out (catalogue.failed), so one passing hiccup does not set off the timer's alert."""
     if not youtube.configured() and catalogue.needs_youtube(args.channel or None):
@@ -102,7 +112,7 @@ def cmd_sync(args):
     return 1 if catalogue.failed(r) else 0
 
 
-def cmd_recheck(args):
+def cmd_recheck(args: argparse.Namespace) -> int:
     """Ask YouTube about the videos checked longest ago (or every one): hides the ones it no longer has and marks live streams, which the
     rolling recheck after each sync would otherwise reach over a few days."""
     if not youtube.configured():
@@ -112,7 +122,7 @@ def cmd_recheck(args):
     return 0
 
 
-def cmd_add(args):
+def cmd_add(args: argparse.Namespace) -> int:
     try:
         r = catalogue.add(args.input)
     except (ValueError, catalogue.NotFound, *catalogue.ERRORS) as e:
@@ -126,7 +136,7 @@ def cmd_add(args):
     return cmd_sync(argparse.Namespace(channel=[c["id"]], json=args.json))
 
 
-def cmd_remove(args):
+def cmd_remove(args: argparse.Namespace) -> int:
     try:
         r = catalogue.remove(args.channel)
     except catalogue.NotFound as e:
@@ -134,13 +144,13 @@ def cmd_remove(args):
     return out(args, r, f"  removed {r['channel']} and {r['videos']} video(s)")
 
 
-def cmd_channels(args):
+def cmd_channels(args: argparse.Namespace) -> int:
     items = library.channels()
     if not items and not args.json:
         print("  (no channels yet: ./tubes add <channel link or @handle>)")
         return 0
 
-    def state(c):
+    def state(c: Row) -> str:
         return "complete" if c["complete"] else "backfilling" if c["follow"] else "not followed"
 
     return out(
@@ -150,7 +160,7 @@ def cmd_channels(args):
     )
 
 
-def cmd_quota(args):
+def cmd_quota(args: argparse.Namespace) -> int:
     u = quota.usage()
     lines = [
         f"  {u['used']:,} of {u['limit']:,} units used on {u['day']} (Pacific), {u['remaining']:,} left; resets {u['resets']}"
@@ -164,14 +174,14 @@ def cmd_quota(args):
     return out(args, u, "\n".join(lines))
 
 
-def describe_refresh(r):
+def describe_refresh(r: Row) -> str:
     s = f"  {r['channels']} channel(s) in the history, {r['grouped']} in {r['groups']} group(s)"
     if r["looked_up"]:
         s += f"; YouTube asked about {r['looked_up']} ({r['missing']} no longer there)"
     return s + (f"\n  YouTube could not be asked: {r['error']}" if r["error"] else "")
 
 
-def cmd_history(args):
+def cmd_history(args: argparse.Namespace) -> int:
     """Import a Takeout watch history, list or forget the imported ones, or remake the suggestions."""
     try:
         if args.action == "import":
@@ -217,11 +227,11 @@ def cmd_history(args):
     )
 
 
-def cmd_related(args):
+def cmd_related(args: argparse.Namespace) -> int:
     """Ask YouTube about the channels that are due (all with --all), count up what they point at, then look up the new ones' details.
     Exits non-zero only when every one asked failed (YouTube changed its page, or cannot be reached)."""
 
-    def say(n, total, cid, got):
+    def say(n: int, total: int, cid: str, got: Row) -> None:
         what = got["error"] or f"{len(got['links'])} channel(s) from {got['videos']} page(s)"
         print(f"  {n:>4}/{total} {cid:26} {what}", flush=True)
 
@@ -248,7 +258,8 @@ def cmd_related(args):
         lines.append(f"  YouTube asked about {r['looked_up']} channel(s)")
     if r["lookup_error"]:
         lines.append(f"  YouTube could not be asked about the channels: {r['lookup_error']}")
-    ip = r["iplayer"]
+    ip: Row = r["iplayer"]
+    cat: Row
     if ip.get("error"):
         lines.append(f"  iPlayer's catalogue could not be read: {ip['error']}")
     else:
@@ -265,7 +276,7 @@ def cmd_related(args):
     return 1 if r["asked"] and r["failed"] == r["asked"] else 0
 
 
-def cmd_fetch(args):
+def cmd_fetch(args: argparse.Namespace) -> int:
     v = library.video(args.video)
     if v is None:
         sys.exit(f"{args.video} is not in the library (./tubes add {args.video} first?)")
@@ -278,7 +289,7 @@ def cmd_fetch(args):
     return out(args, st, f"{args.video}: ready, {st['segments']} segments, {st['seconds']:.0f} s, {st['formats']}")
 
 
-def cmd_cache(args):
+def cmd_cache(args: argparse.Namespace) -> int:
     now = cache.utcnow()
     u = cache.usage(now)
     items = cache.entries(now)
@@ -292,7 +303,7 @@ def cmd_cache(args):
     return out(args, dict(u, items=items), "\n".join(lines))
 
 
-def cmd_evict(args):
+def cmd_evict(args: argparse.Namespace) -> int:
     r = cache.evict(cache.utcnow(), dry_run=args.dry_run)
     verb = "would free" if args.dry_run else "freed"
     return out(
@@ -308,11 +319,11 @@ def cmd_evict(args):
     )
 
 
-def cmd_plays(args):
+def cmd_plays(args: argparse.Namespace) -> int:
     """The latest plays (where each was started from, how much was seen, how it went), then the last 30 days in numbers."""
     items, s = viewing.recent(args.limit)["items"], viewing.summary(args.days)
 
-    def seen(p):
+    def seen(p: Row) -> str:
         return f"{p['watched'] / p['length']:.0%}" if p["watched"] is not None and p["length"] else "–"
 
     lines = [
@@ -330,19 +341,19 @@ def cmd_plays(args):
     return out(args, dict(items=items, summary=s), "\n".join(lines))
 
 
-def create_schema_app():
+def create_schema_app() -> "FastAPI":
     from .server.app import create_app
 
     return create_app(recover=False)  # the schema only: no database or cache touched
 
 
-def serve(host, port):
+def serve(host: str, port: int) -> None:
     from tubes.server import app as server_app
 
     server_app.main(["--host", host, "--port", str(port)])
 
 
-def main(argv=None):
+def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="tubes")
     sub = p.add_subparsers(dest="cmd", required=True)
     strata_cli.add_doctor(sub, "tubes", __version__, IMPORTS, checks=CHECKS, hint=HINT)

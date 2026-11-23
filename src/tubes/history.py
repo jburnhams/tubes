@@ -34,8 +34,12 @@ import itertools
 import json
 import math
 import re
+from collections.abc import Iterable, Mapping
+from typing import Any, cast
 
 from tubes import cache, db, iplayer, iplayer_suggest, quota, related, settings, youtube
+from tubes.db import Row
+from tubes.shape import arr, first, obj, objs
 
 HALF_LIFE_DAYS = 365.0
 SITTING_GAP = datetime.timedelta(minutes=30)
@@ -89,7 +93,7 @@ class ImportProblem(ValueError):
     """The file is not a watch history that can be read; the message says why."""
 
 
-def when(text):
+def when(text: str | None) -> str | None:
     """A Takeout HTML time (`9 Oct 2026, 21:57:37 BST`, `Oct 9, 2026, 9:57:37 PM EDT`) as an ISO time in UTC, or None. A zone it does not know counts as UTC."""
     t = html.unescape(text or "").replace(" ", " ").replace("\xa0", " ").replace("Sept ", "Sep ").strip()
     m = re.match(r"^(.*\S)\s+([A-Z]{2,5}|UTC[+-]\d+(?::\d\d)?|GMT[+-]\d+(?::\d\d)?)$", t)
@@ -111,7 +115,9 @@ def when(text):
     return (local - datetime.timedelta(hours=hours)).replace(tzinfo=datetime.UTC).isoformat(timespec="seconds")
 
 
-def _row(at, url, title, channel_url, channel_title):
+def _row(
+    at: str | None, url: str | None, title: str | None, channel_url: str | None, channel_title: str | None
+) -> Row | None:
     v = VIDEO.search(url or "")
     if not v or not at:
         return None
@@ -126,15 +132,15 @@ def _row(at, url, title, channel_url, channel_title):
     )
 
 
-def parse_json(data):
+def parse_json(data: object) -> list[Row]:
     """Watches from a Takeout `watch-history.json` (a list of activity records)."""
     if not isinstance(data, list):
         raise ImportProblem("That JSON is not a watch history: Takeout writes a list of watches.")
-    out = []
-    for e in data:
-        if not isinstance(e, dict) or not str(e.get("title", "")).startswith("Watched "):
+    out: list[Row] = []
+    for e in objs(cast(list[Any], data)):
+        if not str(e.get("title", "")).startswith("Watched "):
             continue
-        if any((d or {}).get("name") == "From Google Ads" for d in e.get("details") or []):
+        if any(obj(d).get("name") == "From Google Ads" for d in arr(e.get("details"))):
             continue
         try:
             at = (
@@ -144,16 +150,16 @@ def parse_json(data):
             )
         except ValueError:
             continue
-        sub = (e.get("subtitles") or [{}])[0] or {}
+        sub = first(e.get("subtitles"))
         r = _row(at, e.get("titleUrl"), e["title"][len("Watched ") :], sub.get("url"), sub.get("name"))
         if r:
             out.append(r)
     return out
 
 
-def parse_html(text):
+def parse_html(text: str) -> list[Row]:
     """Watches from a Takeout `watch-history.html` (one card per activity)."""
-    out = []
+    out: list[Row] = []
     for cell in text.split('<div class="outer-cell')[1:]:
         if "From Google Ads" in cell:
             continue
@@ -172,7 +178,7 @@ def parse_html(text):
     return out
 
 
-def parse(text):
+def parse(text: str) -> list[Row]:
     """Watches from the text of a Takeout watch history, JSON or HTML (told apart by the first character)."""
     t = text.lstrip("﻿ \t\r\n")
     if t.startswith("["):
@@ -186,7 +192,7 @@ def parse(text):
     return parse_html(t)
 
 
-def import_text(text, source, now=None, lookup=True):
+def import_text(text: str, source: str | None, now: str | None = None, lookup: bool = True) -> Row:
     """Replace what `source` held with the watches in this Takeout file's text, then `refresh`. Returns `{source, watches, first, last, refresh}`."""
     source = (source or "").strip()
     if not source or len(source) > 64:
@@ -199,7 +205,7 @@ def import_text(text, source, now=None, lookup=True):
     return dict(source=source, watches=len(rows), first=ats[0], last=ats[-1], refresh=refresh(now, lookup=lookup))
 
 
-def _replace(source, rows):
+def _replace(source: str, rows: list[Row]) -> None:
     with db.connect() as con:
         con.execute("DELETE FROM watches WHERE source = ?", (source,))
         con.executemany(
@@ -211,7 +217,7 @@ def _replace(source, rows):
 TABLE = re.compile(r"^[A-Za-z_]\w*(\.[A-Za-z_]\w*)?$")
 
 
-def _utc(v):
+def _utc(v: object) -> str | None:
     if isinstance(v, datetime.datetime):
         t = v if v.tzinfo else v.replace(tzinfo=datetime.UTC)
     else:
@@ -223,13 +229,14 @@ def _utc(v):
     return t.astimezone(datetime.UTC).isoformat(timespec="seconds")
 
 
-def database_configured():
+def database_configured() -> bool:
     return bool(settings.get("history_url") and settings.get("history_table"))
 
 
-def sync_database(url=None, table=None, now=None, lookup=True):
+def sync_database(url: str | None = None, table: str | None = None, now: str | None = None, lookup: bool = True) -> Row:
     """Copy the history kept in another database in (see the module's notes). Returns `{sources: {account: watches}, refresh}`."""
     import sqlalchemy
+    from sqlalchemy.exc import SQLAlchemyError
 
     url, table = url or settings.get("history_url"), table or settings.get("history_table")
     if not url or not table:
@@ -244,11 +251,11 @@ def sync_database(url=None, table=None, now=None, lookup=True):
                     f"SELECT account, at, video_id, title, channel_id, channel_name FROM {table} WHERE video_id IS NOT NULL"
                 )
             ).fetchall()
-    except sqlalchemy.exc.SQLAlchemyError as e:
+    except SQLAlchemyError as e:
         raise ImportProblem(f"The history database could not be read: {str(e).splitlines()[0]}") from None
     finally:
         engine.dispose()
-    per = collections.defaultdict(list)
+    per: collections.defaultdict[str, list[Row]] = collections.defaultdict(list)
     for account, at, vid, title, cid, cname in got:
         at = _utc(at)
         if at and account:
@@ -266,12 +273,12 @@ def sync_database(url=None, table=None, now=None, lookup=True):
     return dict(sources={k: len(v) for k, v in sorted(per.items())}, refresh=refresh(now, lookup=lookup))
 
 
-def import_file(path, source, now=None, lookup=True):
+def import_file(path: str, source: str | None, now: str | None = None, lookup: bool = True) -> Row:
     with open(path, encoding="utf-8-sig", errors="replace") as f:
         return import_text(f.read(), source, now, lookup)
 
 
-def sources():
+def sources() -> list[Row]:
     """Each imported history: `{source, watches, channels, first, last}`, by name."""
     with db.connect() as con:
         return db.rows(
@@ -281,7 +288,7 @@ def sources():
         )
 
 
-def remove_source(source, now=None):
+def remove_source(source: str, now: str | None = None) -> Row:
     """Forget an imported history and refresh the suggestions without it (YouTube is not asked again)."""
     with db.connect() as con:
         if not con.execute("DELETE FROM watches WHERE source = ?", (source,)).rowcount:
@@ -289,7 +296,7 @@ def remove_source(source, now=None):
     return dict(source=source, refresh=refresh(now, lookup=False))
 
 
-def score(ats, now, half_life=HALF_LIFE_DAYS):
+def score(ats: Iterable[str], now: str, half_life: float = HALF_LIFE_DAYS) -> float:
     """Each watch counts 1 when new and half as much every `half_life` days after."""
     t = datetime.datetime.fromisoformat(now)
     return sum(
@@ -297,9 +304,11 @@ def score(ats, now, half_life=HALF_LIFE_DAYS):
     )
 
 
-def sittings(rows):
+def sittings(rows: Iterable[tuple[str, str, str]]) -> list[set[str]]:
     """The channels watched in each sitting: rows of (source, at, channel_id), in order, split where the source changes or watches are more than SITTING_GAP apart."""
-    out, cur, prev = [], set(), None
+    out: list[set[str]] = []
+    cur: set[str] = set()
+    prev: tuple[str, datetime.datetime] | None = None
     for source, at, cid in rows:
         t = datetime.datetime.fromisoformat(at)
         if prev and (source != prev[0] or t - prev[1] > SITTING_GAP):
@@ -312,17 +321,17 @@ def sittings(rows):
     return out
 
 
-def communities(sits, counts, minimum=GROUP_MIN):
+def communities(sits: list[set[str]], counts: Mapping[str, int], minimum: int = GROUP_MIN) -> list[set[str]]:
     """Groups of channels watched in the same sittings (see the module's notes): a list of sets, largest first; channels watched fewer than
     `minimum` times, and those that share no two sittings with another, are in none."""
     import networkx as nx
 
     keep = {c for c, n in counts.items() if n >= minimum}
-    shared = collections.Counter()
+    shared: collections.Counter[tuple[str, str]] = collections.Counter()
     for s in sits:
         for a, b in itertools.combinations(sorted(s & keep), 2):
             shared[a, b] += 1
-    g = nx.Graph()
+    g: nx.Graph[str] = nx.Graph()  # ty: ignore[invalid-type-form]  (pyright reads typeshed's networkx stubs, ty the untyped package)
     g.add_weighted_edges_from((a, b, n / math.sqrt(counts[a] * counts[b])) for (a, b), n in shared.items() if n >= 2)
     if not g.number_of_edges():
         return []
@@ -330,10 +339,12 @@ def communities(sits, counts, minimum=GROUP_MIN):
     return sorted((set(c) for c in found if len(c) >= 2), key=lambda c: (-sum(counts[x] for x in c), min(c)))
 
 
-def match_groups(found, old, taken_ids=()):
+def match_groups(found: list[set[str]], old: Mapping[str, int], taken_ids: Iterable[int] = ()) -> list[int]:
     """Give each new group (largest first) the id of the old group (`{channel: id}`) it shares most channels with, if not given already; a new
     id otherwise. Returns a list of ids in the order of `found`."""
-    used, ids, nxt = set(), [], max([0, *old.values(), *taken_ids]) + 1
+    used: set[int] = set()
+    ids: list[int] = []
+    nxt = max([0, *old.values(), *taken_ids]) + 1
     for members in found:
         overlap = collections.Counter(old[c] for c in members if c in old)
         best = next((g for g, _ in sorted(overlap.items(), key=lambda x: (-x[1], x[0])) if g not in used), None)
@@ -344,7 +355,7 @@ def match_groups(found, old, taken_ids=()):
     return ids
 
 
-def refresh(now=None, lookup=True):
+def refresh(now: str | None = None, lookup: bool = True) -> Row:
     """Remake the suggestions from the history (see the module's notes), then ask YouTube about channels it has not been asked about lately
     (`lookup`; only with a key). Returns `{channels, groups, grouped, looked_up, missing, error}`."""
     now = now or cache.stamp()
@@ -363,8 +374,9 @@ def refresh(now=None, lookup=True):
         )  # an unwatched one's group is borrowed (related.py)
         named = {r[0]: r[1] for r in con.execute("SELECT id, name FROM suggestion_groups WHERE named = ?", (True,))}
         all_ids = [r[0] for r in con.execute("SELECT id FROM suggestion_groups")]
-    per = collections.defaultdict(list)
-    title, videos = {}, collections.defaultdict(set)
+    per: collections.defaultdict[str, list[str]] = collections.defaultdict(list)
+    title: dict[str, str] = {}
+    videos: collections.defaultdict[str, set[str]] = collections.defaultdict(set)
     for _source, at, cid, ctitle, vid in rows:
         per[cid].append(at)
         videos[cid].add(vid)
@@ -388,7 +400,7 @@ def refresh(now=None, lookup=True):
         )
         for c, a in per.items()
     ]
-    groups = []
+    groups: list[Row] = []
     for gid, members in zip(ids, found, strict=True):
         top = sorted(members, key=lambda c: (-scores[c], c))[:NAME_FROM]
         groups.append(
@@ -419,7 +431,7 @@ def refresh(now=None, lookup=True):
             (now,),
         )
     related.aggregate()  # groups moved, so the related channels' borrowed ones do too
-    out = dict(channels=len(stats), groups=len(groups), grouped=len(group_of), looked_up=0, missing=0, error=None)
+    out: Row = dict(channels=len(stats), groups=len(groups), grouped=len(group_of), looked_up=0, missing=0, error=None)
     if lookup and youtube.configured():
         try:
             out.update(look_up(now))
@@ -429,7 +441,7 @@ def refresh(now=None, lookup=True):
 
 
 @quota.purpose("suggestions")
-def look_up(now=None, limit=None):
+def look_up(now: str | None = None, limit: int | None = None) -> Row:
     """Ask YouTube about the channels watched at least LOOKUP_MIN times, or that a related channel points at, that it has not been asked about
     for LOOKUP_DAYS, most watched first (at most `limit`): see the module's notes. Returns `{looked_up, missing}`."""
     now = now or cache.stamp()
@@ -447,7 +459,7 @@ def look_up(now=None, limit=None):
         ]
     if not ids:
         return dict(looked_up=0, missing=0)
-    found = {}
+    found: dict[str, Row] = {}
     for i in range(0, len(ids), 50):  # saved a call at a time, so running out of quota keeps what came
         part = ids[i : i + 50]
         rows = {r["channel_id"]: r for r in (youtube.lookup_row(item) for item in youtube.channels(part))}
@@ -468,11 +480,11 @@ def look_up(now=None, limit=None):
     return dict(looked_up=len(ids), missing=len(ids) - len(found))
 
 
-def _topics(raw):
+def _topics(raw: str | None) -> list[str]:
     return [t for t in (raw or "").split("|") if t]
 
 
-def _item(r, by=None):
+def _item(r: Row, by: Mapping[str, list[str]] | None = None) -> Row:
     r = dict(r)
     r["topics"] = _topics(r["topics"])
     r["suggested_from"] = (by or {}).get(r["channel_id"], [])
@@ -496,11 +508,16 @@ ORDERS = {
 PASTED_ORDER = "s.pasted DESC, s.score DESC, s.related_score DESC, s.channel_id"  # the latest paste first
 
 
-def _where(group=None, topic=None, kids=None, q=None, dismissed=False, pasted=False):
-    where, args = (
-        ["s.missing = ?", "(c.id IS NULL OR c.follow = ?)"],
-        [False, False],
-    )  # following a channel is accepting it
+def _where(
+    group: str | int | None = None,
+    topic: str | None = None,
+    kids: bool | None = None,
+    q: str | None = None,
+    dismissed: bool = False,
+    pasted: bool = False,
+) -> tuple[str, list[Any]]:
+    where = ["s.missing = ?", "(c.id IS NULL OR c.follow = ?)"]  # following a channel is accepting it
+    args: list[Any] = [False, False]
     where.append("s.dismissed IS NOT NULL" if dismissed else "s.dismissed IS NULL")
     if pasted:
         where.append("s.pasted IS NOT NULL")
@@ -525,8 +542,15 @@ def _where(group=None, topic=None, kids=None, q=None, dismissed=False, pasted=Fa
 
 
 def suggestions(
-    group=None, topic=None, kids=None, q=None, dismissed=False, limit=LIST_LIMIT, order="watched", pasted=False
-):
+    group: str | int | None = None,
+    topic: str | None = None,
+    kids: bool | None = None,
+    q: str | None = None,
+    dismissed: bool = False,
+    limit: int = LIST_LIMIT,
+    order: str = "watched",
+    pasted: bool = False,
+) -> Row:
     """The channels to consider, best score first: `{items, total}` (`total` counts every match, `items` holds the first `limit`). `group` is a
     group's id or 'none' for the ungrouped; `topic` one of YouTube's topics; `kids` True or False for what the channel says of its audience
     (False includes channels that say nothing); `q` words in the title; `dismissed` lists the dismissed ones instead. `order` is 'watched'
@@ -538,7 +562,7 @@ def suggestions(
     with db.connect() as con:
         total = con.execute(
             f"SELECT COUNT(*) FROM suggestions s LEFT JOIN channels c ON c.id = s.channel_id WHERE {where}", tuple(args)
-        ).fetchone()[0]
+        ).scalar_one()
         rows = db.rows(
             con.execute(
                 f"SELECT {COLUMNS} FROM suggestions s LEFT JOIN channels c ON c.id = s.channel_id WHERE {where} ORDER BY {PASTED_ORDER if pasted else ORDERS[order]} LIMIT ?",
@@ -552,7 +576,7 @@ def suggestions(
     return dict(items=[_item(r, by) for r in rows], total=total)
 
 
-def summary():
+def summary() -> Row:
     """What the Suggestions page shows around its list: the imported histories, the groups and topics among the channels still to consider
     (with how many each holds), how many are open, dismissed and followed, and when the suggestions were last made; `suggested` counts the
     open ones a related channel points at, `unwatched` those with no watches, and `related` says how far asking about them has got (related.status)."""
@@ -590,7 +614,7 @@ def summary():
     )
 
 
-def suggestion(channel_id):
+def suggestion(channel_id: str) -> Row:
     with db.connect() as con:
         r = db.row(
             con.execute(
@@ -608,7 +632,7 @@ def suggestion(channel_id):
     )
 
 
-def dismiss(channel_id, dismissed=True, now=None):
+def dismiss(channel_id: str, dismissed: bool = True, now: str | None = None) -> Row:
     """Dismiss a suggestion (it leaves the list, and stays dismissed when the history is imported again), or bring it back."""
     with db.connect() as con:
         if not con.execute(
@@ -619,7 +643,7 @@ def dismiss(channel_id, dismissed=True, now=None):
     return suggestion(channel_id)
 
 
-def rename_group(group_id, name):
+def rename_group(group_id: int, name: str | None) -> Row:
     """Name a group (an empty name goes back to the one made from its channels at the next refresh)."""
     name = (name or "").strip()
     if len(name) > 80:
@@ -630,12 +654,12 @@ def rename_group(group_id, name):
             (name or None, bool(name), group_id),
         ).rowcount:
             raise NotFound(f"There is no group {group_id}.")
-        return db.row(con.execute("SELECT id, name, named FROM suggestion_groups WHERE id = ?", (group_id,))) | dict(
+        return db.one(con.execute("SELECT id, name, named FROM suggestion_groups WHERE id = ?", (group_id,))) | dict(
             named=bool(name)
         )
 
 
-def watched_videos(channel_id):
+def watched_videos(channel_id: str) -> list[str]:
     """The different videos of this channel in the history, most recently watched first."""
     with db.connect() as con:
         return [
@@ -650,13 +674,14 @@ def watched_videos(channel_id):
 TOP = 25
 
 
-def stats(start=None, end=None, source=None, top=TOP):
+def stats(start: str | None = None, end: str | None = None, source: str | None = None, top: int = TOP) -> Row:
     """What was watched between `start` and `end` (ISO times; either may be open), in one source or all: `{watches, videos, channels, first,
     last, by, periods, channels_top, videos_top}`. `periods` counts watches per month (`by` 'month'), or per day when the span is 92 days or
     less (`by` 'day'). Videos that have gone (no channel in the history) count as watches, but are left out of the top channels."""
 
-    def where(t=""):
-        parts, args = ["1 = 1"], []
+    def where(t: str = "") -> tuple[str, tuple[Any, ...]]:
+        parts: list[str] = ["1 = 1"]
+        args: list[Any] = []
         for sql, v in ((f"{t}at >= ?", start), (f"{t}at < ?", end), (f"{t}source = ?", source)):
             if v:
                 parts.append(sql)
@@ -665,7 +690,7 @@ def stats(start=None, end=None, source=None, top=TOP):
 
     w, args = where()
     with db.connect() as con:
-        n = db.row(
+        n = db.one(
             con.execute(
                 f"SELECT COUNT(*) AS watches, COUNT(DISTINCT video_id) AS videos, COUNT(DISTINCT channel_id) AS channels, MIN(at) AS first, MAX(at) AS last FROM watches WHERE {w}",
                 args,
@@ -704,7 +729,7 @@ def stats(start=None, end=None, source=None, top=TOP):
     return dict(n, by=by, periods=periods, channels_top=channels, videos_top=videos)
 
 
-def overview(channel_id, top=10):
+def overview(channel_id: str, top: int = 10) -> Row:
     """Everything known of one channel, for the detail panel every admin page opens: `{channel_id, title, thumbnail, handle, library,
     suggestion, group, history}`. `library` is the library's channel (None if not there), `suggestion` its suggestion (None if never in a
     history), `history` its watches: totals, per account, per month over all time, and the videos watched most. NotFound if nothing knows it."""
@@ -716,7 +741,7 @@ def overview(channel_id, top=10):
     except NotFound:
         sug = None
     with db.connect() as con:
-        n = db.row(
+        n = db.one(
             con.execute(
                 "SELECT COUNT(*) AS watches, COUNT(DISTINCT video_id) AS videos, MIN(at) AS first, MAX(at) AS last, MAX(channel_title) AS title FROM watches WHERE channel_id = ?",
                 (channel_id,),
@@ -754,12 +779,12 @@ def overview(channel_id, top=10):
         v["in_library"] = bool(v["in_library"])
     if group:
         group["named"] = bool(group["named"])
-    title = (lib or {}).get("title") or (sug or {}).get("title") or n["title"] or channel_id
+    title: str = obj(lib).get("title") or obj(sug).get("title") or n["title"] or channel_id
     return dict(
         channel_id=channel_id,
         title=title,
-        thumbnail=(lib or {}).get("thumbnail") or (sug or {}).get("thumbnail"),
-        handle=(lib or {}).get("handle") or (sug or {}).get("handle"),
+        thumbnail=obj(lib).get("thumbnail") or obj(sug).get("thumbnail"),
+        handle=obj(lib).get("handle") or obj(sug).get("handle"),
         library=lib,
         suggestion=sug,
         group=group,

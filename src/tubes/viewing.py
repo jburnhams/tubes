@@ -29,8 +29,10 @@ The imported histories (history.py) are kept apart: they say what was watched on
 suggestions, which list only channels the library does not follow yet."""
 
 import datetime
+from typing import Any
 
 from tubes import db, library
+from tubes.db import Row
 
 FULL = 0.9
 PARTIAL = 0.1
@@ -47,22 +49,22 @@ class NotFound(Exception):
     pass
 
 
-def _now(now=None):
+def _now(now: str | None = None) -> str:
     return now or datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")
 
 
-def _source(source):
+def _source(source: str | None) -> str:
     """A known source name, `link` when none was given, `other` for a name this server does not know (a newer page, say)."""
     if not source:
         return "link"
     return source if source in SOURCES else "other"
 
 
-def _detail(detail):
+def _detail(detail: object) -> str | None:
     return str(detail)[:DETAIL_MAX] if detail not in (None, "") else None
 
 
-def outcome(watched, length):
+def outcome(watched: float | None, length: float | None) -> str:
     """none, short, partial or full: how much of a video `watched` seconds of it is (see the module's notes)."""
     if not watched or watched <= 0:
         return "none"
@@ -72,7 +74,7 @@ def outcome(watched, length):
     return "full" if share >= FULL else "partial" if share >= PARTIAL else "short"
 
 
-def resume(video_id, now=None):
+def resume(video_id: str, now: str | None = None) -> float | None:
     """Where a new play of this video picks up: the last position of its latest play since a partial one in the last CONTINUE_DAYS, if no
     full play came after; None when it starts from the beginning (as it does when that position is under RESUME_MIN or in the last tenth)."""
     found = _unfinished(now, video_id=video_id)
@@ -84,7 +86,9 @@ def resume(video_id, now=None):
     return position
 
 
-def start(video_id, now=None, source=None, detail=None, rank=None):
+def start(
+    video_id: str, now: str | None = None, source: str | None = None, detail: object = None, rank: object = None
+) -> Row:
     """Record a play: `{play_id, resume}`, `resume` being where it picks up (None: from the start)."""
     now = _now(now)
     picks_up = resume(video_id, now)
@@ -97,7 +101,13 @@ def start(video_id, now=None, source=None, detail=None, rank=None):
     return dict(play_id=play_id, resume=picks_up)
 
 
-def report(play_id, position=None, watched=None, length=None, now=None):
+def report(
+    play_id: int,
+    position: float | None = None,
+    watched: float | None = None,
+    length: float | None = None,
+    now: str | None = None,
+) -> Row:
     """How a play is going, as its page sees it: `{play_id, video_id, watched, position, length, outcome}`. NotFound for no such play."""
     now = _now(now)
     with db.connect() as con:
@@ -124,20 +134,20 @@ def report(play_id, position=None, watched=None, length=None, now=None):
     return dict(play_id=play_id, video_id=r["video_id"], watched=seen, position=position, length=length, outcome=result)
 
 
-def _unfinished(now=None, video_id=None):
+def _unfinished(now: str | None = None, video_id: str | None = None) -> list[Row]:
     """`[{video_id, position, length, at}]`: what Continue watching offers (see the module's notes), most recently played first."""
     now = _now(now)
     since = (datetime.datetime.fromisoformat(now) - datetime.timedelta(days=CONTINUE_DAYS)).isoformat(
         timespec="seconds"
     )
     sql = "SELECT video_id, at, outcome, position, length FROM plays WHERE at >= ? AND outcome IS NOT NULL"
-    args = [since]
+    args: list[Any] = [since]
     if video_id:
         sql += " AND video_id = ?"
         args.append(video_id)
     with db.connect() as con:
         plays = con.execute(sql + " ORDER BY at, id", args).fetchall()
-    per = {}
+    per: dict[str, Row] = {}
     for vid, at, out, position, length in plays:  # oldest first, so the last word on each video wins
         if out == "full" or (position is not None and length and position >= length * FULL):
             per.pop(vid, None)  # finished, here or over several plays
@@ -150,7 +160,7 @@ def _unfinished(now=None, video_id=None):
     return sorted(per.values(), key=lambda p: p["at"], reverse=True)
 
 
-def unfinished(limit=CONTINUE_LIMIT, now=None):
+def unfinished(limit: int = CONTINUE_LIMIT, now: str | None = None) -> list[Row]:
     """Continue watching: the library's videos (as library.videos gives them) the watching side shows, each with `resume` (seconds) and
     `progress` (0-1, how far through it that is), most recently played first."""
     found = _unfinished(now)
@@ -169,7 +179,7 @@ def unfinished(limit=CONTINUE_LIMIT, now=None):
                 )
             )
         }
-    out = []
+    out: list[Row] = []
     for p in found:
         v = rows.get(p["video_id"])
         if v is None:
@@ -182,7 +192,7 @@ def unfinished(limit=CONTINUE_LIMIT, now=None):
     return out
 
 
-def channel_view(channel_id, now=None, source=None, detail=None):
+def channel_view(channel_id: str, now: str | None = None, source: str | None = None, detail: object = None) -> Row:
     """Record a visit to a channel's page: `{id}`."""
     with db.connect() as con:
         view_id = con.execute(
@@ -195,12 +205,12 @@ def channel_view(channel_id, now=None, source=None, detail=None):
 PAGE = 50
 
 
-def cursor(row):
+def cursor(row: Row) -> str:
     """The cursor that asks for the rows after this one (newest first): `<at>|<id>`."""
     return f"{row['at']}|{row['id']}"
 
 
-def _after(after, where, args, t):
+def _after(after: str | None, where: list[str], args: list[Any], t: str) -> None:
     """Adds `rows older than the cursor` to `where`; a cursor that does not parse is ignored (the first page)."""
     at, _, rid = (after or "").rpartition("|")
     if at and rid.isdigit():
@@ -208,12 +218,13 @@ def _after(after, where, args, t):
         args += [at, at, int(rid)]
 
 
-def recent(limit=PAGE, after=None, outcome=None, source=None):
+def recent(limit: int = PAGE, after: str | None = None, outcome: str | None = None, source: str | None = None) -> Row:
     """One page of plays, newest first: `{items, has_more}`. Each item: `{id, video_id, title, channel_id, channel, thumbnail, at, updated,
     source, detail, detail_title, rank, length, watched, position, outcome}`; the title and channel come from the library, or from the
     cached copy once the video has left it; `detail_title` names what `detail` points at (the channel a channel page was, the video Up next
     was beside). `outcome` none also finds plays from before outcomes were kept; `source` link also finds those with none. `after` is a cursor."""
-    where, args = ["1 = 1"], []
+    where: list[str] = ["1 = 1"]
+    args: list[Any] = []
     if outcome == "none":
         where.append("(p.outcome IS NULL OR p.outcome = ?)")
         args.append("none")
@@ -242,10 +253,11 @@ def recent(limit=PAGE, after=None, outcome=None, source=None):
     return dict(items=rows[:limit], has_more=len(rows) > limit)
 
 
-def channel_visits(limit=PAGE, after=None):
+def channel_visits(limit: int = PAGE, after: str | None = None) -> Row:
     """One page of channel page visits, newest first: `{items, has_more}`, each `{id, channel_id, title, thumbnail, at, source, detail,
     detail_title}` (`detail_title`: the video whose page it was opened from)."""
-    where, args = ["1 = 1"], []
+    where: list[str] = ["1 = 1"]
+    args: list[Any] = []
     _after(after, where, args, "w")
     with db.connect() as con:
         rows = db.rows(
@@ -259,7 +271,7 @@ def channel_visits(limit=PAGE, after=None):
     return dict(items=rows[:limit], has_more=len(rows) > limit)
 
 
-def summary(days=30, now=None):
+def summary(days: int = 30, now: str | None = None) -> Row:
     """The last `days` of viewing in numbers: `{since, days, plays, seconds, videos, outcomes: {none, short, partial, full}, sources: {source:
     {plays, full}}, channel_views: {source: views}}` (`seconds`: seen in all, `videos`: different videos played); plays from before outcomes
     were kept count under none."""
@@ -273,8 +285,10 @@ def summary(days=30, now=None):
         ).fetchall()  # default in GROUP BY fails on Postgres)
         seconds, videos = con.execute(
             "SELECT COALESCE(SUM(watched), 0), COUNT(DISTINCT video_id) FROM plays WHERE at >= ?", (since,)
-        ).fetchone()
-    outcomes, sources, viewed = dict.fromkeys(OUTCOMES, 0), {}, {}
+        ).one()
+    outcomes: dict[str, int] = dict.fromkeys(OUTCOMES, 0)
+    sources: dict[str, dict[str, int]] = {}
+    viewed: dict[str, int] = {}
     for source, out, n in plays:
         source, out = source or "link", out or "none"
         outcomes[out] = outcomes.get(out, 0) + n

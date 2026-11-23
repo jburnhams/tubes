@@ -1,5 +1,16 @@
 # Progress log
 
+## 2026-11-23: strata-python 0.2.10, the rest of it
+
+- Asked for: finish the move onto strata-python, now at 0.2.10 with the fixes Tubes asked for (#52 to #55): the HTTP client, the prefetch loop and the strata-check gate with its reformat, and anything else it offers that Tubes still did itself.
+- Settings: `positive()` replaces Tubes' `above_zero`, and strata-python reads the JSON numbers an older settings file holds (#52), so `OldFileStore` is gone. Saved values now stay numbers in the file.
+- Errors: a status in `ERRORS` may be a function of the exception (#55), so YouTube, Plex and a history import choose 502 or 503 (or 400) there and `_status_by_cause` is gone.
+- HTTP: every outside service is asked through `strata_python.http.Http` with `USER_AGENT` (the app and what it is for, never a person): YouTube (no retries, so a quota refusal is counted once), iPlayer (three tries, a tenth of a second apart), Plex (no retries, the token as a header), SponsorBlock (a fifth of a second apart, one try, as it is volunteer-run) and the watch pages related.py reads (a POST marked idempotent, two tries, half a second apart). The hand-written urllib calls, retries and sleeps are gone. `tests/conftest.py` takes the waits out for the tests.
+- Prefetch: its loop is `tasks.Ticker` (#54): `tick` returns the wait by why nothing was prefetched, `want` pokes it, an error is printed and waits as long as a pause.
+- Files: the copy's state and yt-dlp's probe are written with `files.write_text_atomic`/`write_json_atomic`.
+- Gate: `scripts/check` runs `strata-check` (ruff check with python-app-template's rules, ruff format at 120, pyright strict over `src/`, ty, then the unit tests with coverage); CI runs `--fast` once and the tests on every OS as before. The reformat is one commit, listed in `.git-blame-ignore-revs`. Strict typing found real gaps: `plex.item` could be called with None for an id that is not Plex's (a TypeError; now None), and `fetcher` treated a running job as possibly None. JSON from other services is read through `shape.py` (`obj`, `arr`, `objs`, `first`), which give the expected shape or an empty one; `db.one` reads an aggregate's row.
+- Not taken up: `web.add_system` (the System screen reads Tubes' own fields: cache, fetching, prefetch, library), `tasks.SingleFlight` for the library sync (its follow-up queue of channels added while a sync runs has no counterpart), and `media.ffmpeg` (it cannot take the app's `ffmpeg` setting: strata-python #60). networkx has no types of its own: pyright reads typeshed's stubs and ty is told to let the one annotation pass.
+
 ## 2026-11-23: strata-python 0.2.7, the shared server code
 
 - Asked for: update to the latest strata-python and make the most of its features. Tubes was not on strata-python at all yet (it carried its own oslib, settings, server plumbing and test doubles, and the database through the git-pinned omarchy-db), so this is the move onto 0.2.7 following its README's "Move an app onto it".

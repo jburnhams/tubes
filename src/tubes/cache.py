@@ -22,11 +22,15 @@ import json
 import os
 import re
 import shutil
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from strata_python.files import write_json_atomic, write_text_atomic
 
 from tubes import db, settings
+from tubes.db import Row
+from tubes.shape import obj
 
 PLAYLIST = "index.m3u8"
 PREFIX, PREFIX_INIT, PREFIX_INFO = (
@@ -40,7 +44,7 @@ HIGH, LOW = 0.95, 0.90
 RECENT_PLAY = timedelta(days=1)
 
 
-def folder_name(video_id):
+def folder_name(video_id: str) -> str:
     """The video's folder name: its id when that is a plain file name, else a hash of it (ids from some sites carry `/` or `:`)."""
     return (
         video_id
@@ -49,19 +53,19 @@ def folder_name(video_id):
     )
 
 
-def folder(video_id):
+def folder(video_id: str) -> str:
     return os.path.join(settings.cache_dir(), folder_name(video_id))
 
 
-def file_path(video_id, name):
+def file_path(video_id: str, name: str | None) -> str | None:
     """The path of one served file of a video, or None when the name is not one the cache writes (nothing else is ever served)."""
-    if not FILE_NAME.match(name or ""):
+    if name is None or not FILE_NAME.match(name):
         return None
     p = os.path.join(folder(video_id), name)
     return p if os.path.isfile(p) else None
 
 
-def served_file(video_id, name):
+def served_file(video_id: str, name: str) -> str | None:
     """The path to serve for one of a video's files, or None: as file_path, except that while a copy is fetched again from its prefix, its
     init segment is the prefix's (ffmpeg writes `init.mp4` again, identical, but not through a temporary name)."""
     p = file_path(video_id, name)
@@ -72,7 +76,7 @@ def served_file(video_id, name):
     return p
 
 
-def folder_bytes(path):
+def folder_bytes(path: str) -> int:
     total = 0
     for root, _dirs, files in os.walk(path):
         for name in files:
@@ -81,7 +85,7 @@ def folder_bytes(path):
     return total
 
 
-def read_playlist(video_id):
+def read_playlist(video_id: str) -> Row:
     """What the playlist says so far: `{segments, seconds, complete}` (zeros when there is none yet)."""
     try:
         with open(os.path.join(folder(video_id), PLAYLIST), encoding="utf8") as f:
@@ -91,13 +95,13 @@ def read_playlist(video_id):
     return summary(text)
 
 
-def summary(text):
+def summary(text: str | None) -> Row:
     """`{segments, seconds, complete}` of a playlist's text."""
     lengths = [float(m) for m in re.findall(r"^#EXTINF:([\d.]+)", text or "", re.M)]
     return dict(segments=len(lengths), seconds=round(sum(lengths), 3), complete="#EXT-X-ENDLIST" in (text or ""))
 
 
-def served_playlist(video_id, e=None):
+def served_playlist(video_id: str, e: Row | None = None) -> str | None:
     """The playlist as the player is given it, or None when there is none: while the copy is fetching, without `#EXT-X-ENDLIST` (nor the segment before it). A download
     that ends short also ends its playlist, and the fetcher then runs it again (fetcher.attempts) into the same names; a player that read the
     end would stop following and never see the rest."""
@@ -120,7 +124,7 @@ def served_playlist(video_id, e=None):
     )  # a fetch from a prefix: never less than the player was given
 
 
-def _held_back(text):
+def _held_back(text: str) -> str:
     """A fetching copy's playlist without an ended attempt's end and last segment (see served_playlist)."""
     if "#EXT-X-ENDLIST" not in text:
         return text
@@ -135,12 +139,12 @@ def _held_back(text):
     return "".join(lines)
 
 
-def entry(video_id):
+def entry(video_id: str) -> Row | None:
     with db.connect() as con:
         return db.row(con.execute("SELECT * FROM copies WHERE video_id = ?", (video_id,)))
 
 
-def status(video_id):
+def status(video_id: str) -> Row:
     """The state of a video's copy for the player: `{state, segments, seconds, complete, playable, error, formats}`. `state` is none, fetching, partial (the first seconds only), ready or failed."""
     e = entry(video_id)
     if e is None:
@@ -156,7 +160,7 @@ def status(video_id):
     return dict(state=e["state"], **p, playable=p["segments"] > 0, error=e["error"], formats=e["formats"])
 
 
-def begin(video_id, now, title=None, channel=None):
+def begin(video_id: str, now: str, title: str | None = None, channel: str | None = None) -> None:
     """Mark a fetch as started, with an empty folder (a failed copy's files are cleared first). A title or channel already known is kept when none is given."""
     shutil.rmtree(folder(video_id), ignore_errors=True)
     os.makedirs(folder(video_id), exist_ok=True)
@@ -169,14 +173,15 @@ def begin(video_id, now, title=None, channel=None):
         )
 
 
-def set_formats(video_id, formats):
+def set_formats(video_id: str, formats: str | None) -> None:
     with db.connect() as con:
         con.execute("UPDATE copies SET formats = ? WHERE video_id = ?", (formats, video_id))
 
 
-def lengths(text):
+def lengths(text: str | None) -> list[tuple[float, str]]:
     """(seconds, segment name) of each segment a playlist's text lists, in order."""
-    out, length = [], None
+    out: list[tuple[float, str]] = []
+    length: float | None = None
     for ln in (text or "").splitlines():
         ln = ln.strip()
         if ln.startswith("#EXTINF:"):
@@ -187,7 +192,7 @@ def lengths(text):
     return out
 
 
-def covered(video_id):
+def covered(video_id: str) -> float:
     """Seconds the playlist lists so far, not counting its last segment (cut short when the fetch is stopped there)."""
     try:
         with open(os.path.join(folder(video_id), PLAYLIST), encoding="utf8") as f:
@@ -197,7 +202,7 @@ def covered(video_id):
     return sum(n for n, _ in segs[:-1])
 
 
-def keep_prefix(video_id, until, now, formats):
+def keep_prefix(video_id: str, until: float, now: str, formats: Mapping[str, Any]) -> float:
     """After a fetch stopped on purpose once `until` seconds were listed: keep the segments that reach it, never the last listed one (a
     stop can cut it short, and a later fetch cuts it whole, so they would differ), drop the rest, and mark the copy partial. `formats` is
     {video, audio}: the format ids it was cut from, which the whole fetch must use too. Returns the seconds kept (0: nothing worth keeping,
@@ -208,7 +213,7 @@ def keep_prefix(video_id, until, now, formats):
             text = f.read()
     except OSError:
         text = ""
-    segs, kept = lengths(text)[:-1], []
+    segs, kept = lengths(text)[:-1], list[tuple[float, str]]()
     for length, name in segs:
         if sum(n for n, _ in kept) >= until:
             break
@@ -234,17 +239,18 @@ def keep_prefix(video_id, until, now, formats):
     return round(sum(n for n, _ in kept), 3)
 
 
-def prefix(video_id):
+def prefix(video_id: str) -> Row | None:
     """A partial copy's `{video, audio, seconds}` (the format ids it was cut from), or None when the copy has no prefix."""
     try:
         with open(os.path.join(folder(video_id), PREFIX_INFO), encoding="utf8") as f:
             d = json.load(f)
     except (OSError, ValueError):
         return None
-    return d if isinstance(d, dict) and d.get("video") and d.get("audio") else None
+    d = obj(d)
+    return d if d.get("video") and d.get("audio") else None
 
 
-def resume(video_id, now):
+def resume(video_id: str, now: str) -> None:
     """Mark a partial copy as fetching again, keeping its files: the whole video is fetched into the same folder (see the module's notes)."""
     with db.connect() as con:
         con.execute(
@@ -253,14 +259,14 @@ def resume(video_id, now):
         )
 
 
-def drop_prefix(video_id):
+def drop_prefix(video_id: str) -> None:
     """Forget a copy's prefix files (the whole fetch could not use its formats, or no longer needs them)."""
     for name in (PREFIX, PREFIX_INIT, PREFIX_INFO):
         with contextlib.suppress(OSError):
             os.remove(os.path.join(folder(video_id), name))
 
 
-def finish(video_id, now, error=None):
+def finish(video_id: str, now: str, error: str | None = None) -> None:
     """Record how a fetch ended. A failed fetch keeps its row (so the player can say why) but not its files."""
     if error:
         shutil.rmtree(folder(video_id), ignore_errors=True)
@@ -274,12 +280,12 @@ def finish(video_id, now, error=None):
         )
 
 
-def pin(video_id, pinned):
+def pin(video_id: str, pinned: bool) -> bool:
     with db.connect() as con:
         return con.execute("UPDATE copies SET pinned = ? WHERE video_id = ?", (bool(pinned), video_id)).rowcount > 0
 
 
-def forget(video_ids):
+def forget(video_ids: Iterable[str]) -> int:
     """Delete the copies (files and rows) of these videos; returns how many bytes that freed."""
     freed = 0
     for vid in video_ids:
@@ -291,10 +297,10 @@ def forget(video_ids):
     return freed
 
 
-def recover(now):
+def recover(now: str) -> list[str]:
     """After a restart: a fetch that was running when the server stopped cannot be resumed, so it is marked failed and its files removed."""
     with db.connect() as con:
-        stale = [r[0] for r in con.execute("SELECT video_id FROM copies WHERE state = 'fetching'")]
+        stale: list[str] = [r[0] for r in con.execute("SELECT video_id FROM copies WHERE state = 'fetching'")]
     for vid in stale:
         if prefix(vid) and back_to_prefix(vid, now):
             continue  # a whole fetch from a prefix: the prefix is still good
@@ -302,7 +308,7 @@ def recover(now):
     return stale
 
 
-def back_to_prefix(video_id, now):
+def back_to_prefix(video_id: str, now: str) -> bool:
     """Make a copy partial again from its kept prefix (the whole fetch from it stopped): its playlist, and only the files that lists."""
     d = folder(video_id)
     try:
@@ -324,35 +330,37 @@ def back_to_prefix(video_id, now):
     return True
 
 
-def record_play(video_id, now):
+def record_play(video_id: str, now: str) -> None:
     with db.connect() as con:
         con.execute("INSERT INTO plays (video_id, at) VALUES (?, ?)", (video_id, now))
 
 
-def plays(video_id):
+def plays(video_id: str) -> Row:
     """How often a video has been played and when last: `{plays, last_played}`."""
     with db.connect() as con:
-        n, last = con.execute("SELECT COUNT(*), MAX(at) FROM plays WHERE video_id = ?", (video_id,)).fetchone()
+        n, last = con.execute("SELECT COUNT(*), MAX(at) FROM plays WHERE video_id = ?", (video_id,)).one()
     return dict(plays=n, last_played=last)
 
 
-def parse_time(s):
+def parse_time(s: str | None) -> datetime | None:
     return datetime.fromisoformat(s) if s else None
 
 
-def score(play_times, now, half_life_days):
+def score(play_times: Iterable[datetime], now: datetime, half_life_days: float) -> float:
     """Every play counts, and counts half as much for every `half_life_days` since it happened."""
     return sum(0.5 ** (max((now - t).total_seconds(), 0) / 86400 / half_life_days) for t in play_times)
 
 
-def entries(now):
+def entries(now: datetime) -> list[Row]:
     """Every cached video with its size (a running fetch's folder is measured), plays, last play, title and score, highest score first."""
     hl = settings.get_float("half_life_days")
     with db.connect() as con:
         rows = db.rows(con.execute("SELECT * FROM copies"))
-        plays = {}
+        plays: dict[str, list[datetime]] = {}
         for vid, at in con.execute("SELECT video_id, at FROM plays"):
-            plays.setdefault(vid, []).append(parse_time(at))
+            t = parse_time(at)
+            if t:
+                plays.setdefault(vid, []).append(t)
     for r in rows:
         if r["state"] == "fetching":
             r["bytes"] = folder_bytes(folder(r["video_id"]))
@@ -367,7 +375,7 @@ def entries(now):
     return sorted(rows, key=lambda r: (-r["score"], r["video_id"]))
 
 
-def protected(e, now, protect_days):
+def protected(e: Row, now: datetime, protect_days: float) -> str | None:
     """Why an entry may not be evicted now, or None."""
     if e["state"] == "fetching":
         return "fetching"
@@ -387,7 +395,7 @@ def protected(e, now, protect_days):
     return None
 
 
-def plan(items, limit_bytes, now, protect_days):
+def plan(items: list[Row], limit_bytes: float, now: datetime, protect_days: float) -> list[Row]:
     """Which entries to evict: none while the total is at or under 95% of the limit; else failed copies first, then the lowest scores (the
     least recently played first among equals), until the total is under 90%. Protected entries are skipped even if the target is then missed."""
     total = sum(e["bytes"] for e in items)
@@ -397,7 +405,7 @@ def plan(items, limit_bytes, now, protect_days):
     candidates.sort(
         key=lambda e: (e["state"] != "failed", e["score"], e["last_played"] or "", e["finished"] or e["started"] or "")
     )
-    out = []
+    out: list[Row] = []
     for e in candidates:
         if total < LOW * limit_bytes:
             break
@@ -406,7 +414,7 @@ def plan(items, limit_bytes, now, protect_days):
     return out
 
 
-def usage(now):
+def usage(now: datetime) -> Row:
     """`{used, limit, high, low, count, by_state, bytes_by_state}` for the Cache screen: how many copies, and how many bytes, are whole (ready), only a start (partial), fetching or failed. Sizes are bytes."""
     items = entries(now)
     limit = settings.cache_limit_bytes()
@@ -424,7 +432,7 @@ def usage(now):
     )
 
 
-def evict(now, dry_run=False):
+def evict(now: datetime, dry_run: bool = False) -> Row:
     """Run eviction; returns `{evicted: [{video_id, title, bytes, score}], freed}`."""
     items = entries(now)
     victims = plan(items, settings.cache_limit_bytes(), now, settings.get_float("protect_days"))
@@ -433,10 +441,10 @@ def evict(now, dry_run=False):
     return dict(evicted=gone, freed=freed, dry_run=dry_run)
 
 
-def utcnow():
+def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-def stamp():
+def stamp() -> str:
     """Now, as the ISO string the database keeps."""
     return utcnow().isoformat(timespec="seconds")

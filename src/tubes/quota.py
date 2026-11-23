@@ -20,10 +20,15 @@ import contextvars
 import datetime
 import logging
 import os
+from collections.abc import Generator
+from typing import Any
 
 from sqlalchemy.exc import IntegrityError
 
 from tubes import db
+from tubes.db import Row
+
+Now = datetime.datetime | str | None  # a moment: an aware datetime, an ISO 8601 string, or None for now
 
 DEFAULT_LIMIT = 10_000
 COSTS = {"search": 100}  # units per call by endpoint; any other list call is 1
@@ -34,7 +39,7 @@ log = logging.getLogger(__name__)
 _purpose = contextvars.ContextVar("youtube_purpose", default="other")
 
 
-def limit():
+def limit() -> int:
     """The key's daily quota in units: YOUTUBE_API_QUOTA, else Google's default."""
     try:
         n = int(os.environ.get("YOUTUBE_API_QUOTA") or DEFAULT_LIMIT)
@@ -44,7 +49,7 @@ def limit():
 
 
 @contextlib.contextmanager
-def purpose(name):
+def purpose(name: str) -> Generator[None]:
     """Count the YouTube calls made inside this block (or decorated function) under `name`."""
     token = _purpose.set(name)
     try:
@@ -53,11 +58,11 @@ def purpose(name):
         _purpose.reset(token)
 
 
-def current():
+def current() -> str:
     return _purpose.get()
 
 
-def _utc(now):
+def _utc(now: Now) -> datetime.datetime:
     if now is None:
         return datetime.datetime.now(datetime.UTC)
     if isinstance(now, str):
@@ -65,12 +70,12 @@ def _utc(now):
     return now if now.tzinfo else now.replace(tzinfo=datetime.UTC)
 
 
-def _nth_sunday(year, month, n):
+def _nth_sunday(year: int, month: int, n: int) -> datetime.date:
     first = datetime.date(year, month, 1)
     return first + datetime.timedelta(days=(6 - first.weekday()) % 7 + 7 * (n - 1))
 
 
-def pacific(now=None):
+def pacific(now: Now = None) -> datetime.datetime:
     """`now` as Pacific wall-clock time (naive), by the US rule: daylight time from 2 am on March's second Sunday to 2 am on November's
     first. Worked out here rather than with zoneinfo, which on Windows needs the tzdata package installed."""
     u = _utc(now).replace(tzinfo=None)
@@ -79,12 +84,12 @@ def pacific(now=None):
     return u - datetime.timedelta(hours=7 if start <= u < end else 8)
 
 
-def day(now=None):
+def day(now: Now = None) -> str:
     """The quota day `now` falls in, as YYYY-MM-DD (Pacific)."""
     return pacific(now).date().isoformat()
 
 
-def resets(now=None):
+def resets(now: Now = None) -> str:
     """When the quota next resets: the coming midnight Pacific, in UTC (ISO 8601)."""
     u, local = _utc(now), pacific(now)
     midnight = datetime.datetime.combine(local.date() + datetime.timedelta(days=1), datetime.time())
@@ -93,11 +98,11 @@ def resets(now=None):
     return at.replace(tzinfo=datetime.UTC).isoformat(timespec="seconds")
 
 
-def cost(endpoint):
+def cost(endpoint: str) -> int:
     return COSTS.get(endpoint, 1)
 
 
-def record(endpoint, failed=False, refused=False, now=None):
+def record(endpoint: str, failed: bool = False, refused: bool = False, now: Now = None) -> None:
     """Count one call that reached YouTube. Never raises: a call that worked is not turned into a failure by its bookkeeping."""
     try:
         _record(endpoint, failed, refused, now)
@@ -105,7 +110,7 @@ def record(endpoint, failed=False, refused=False, now=None):
         log.warning("could not count a YouTube call (%s): %s", endpoint, e)
 
 
-def _record(endpoint, failed, refused, now):
+def _record(endpoint: str, failed: bool, refused: bool, now: Now) -> None:
     local = pacific(now)
     key = dict(day=local.date().isoformat(), hour=local.hour, purpose=current()[:32], endpoint=endpoint[:32])
     add = dict(key, units=cost(endpoint), failed=int(bool(failed)), refused=int(bool(refused)))
@@ -134,7 +139,7 @@ def _record(endpoint, failed, refused, now):
                 con.execute("INSERT INTO meta (key, value) VALUES (?, ?)", (REFUSED_KEY, stamp))
 
 
-def usage(now=None, days=HISTORY_DAYS):
+def usage(now: Now = None, days: int = HISTORY_DAYS) -> dict[str, Any]:
     """Today's use against the limit, what it went on (by purpose, by endpoint, by hour), and the last `days` days, newest first."""
     today, lim = day(now), limit()
     first = (datetime.date.fromisoformat(today) - datetime.timedelta(days=days - 1)).isoformat()
@@ -145,12 +150,12 @@ def usage(now=None, days=HISTORY_DAYS):
                 (first,),
             )
         )
-        refused_at = db.row(con.execute("SELECT value FROM meta WHERE key = ?", (REFUSED_KEY,)))
-    refused_at = refused_at and refused_at["value"]
+        refused_row = db.row(con.execute("SELECT value FROM meta WHERE key = ?", (REFUSED_KEY,)))
+    refused_at: str | None = refused_row["value"] if refused_row else None
     if refused_at and day(refused_at) != today:
         refused_at = None  # spent yesterday: the reset has given it back
 
-    def total(rs):
+    def total(rs: list[Row]) -> dict[str, int]:
         return dict(
             calls=sum(r["calls"] for r in rs),
             units=sum(r["units"] for r in rs),
@@ -158,7 +163,7 @@ def usage(now=None, days=HISTORY_DAYS):
             refused=sum(r["refused"] for r in rs),
         )
 
-    def by(rs, field):
+    def by(rs: list[Row], field: str) -> list[dict[str, Any]]:
         return sorted(
             ({field: k, **total([r for r in rs if r[field] == k])} for k in {r[field] for r in rs}),
             key=lambda g: (-g["units"], g[field]),
@@ -167,7 +172,7 @@ def usage(now=None, days=HISTORY_DAYS):
     now_rows = [r for r in rows if r["day"] == today]
     used = sum(r["units"] for r in now_rows)
     hours = {r["hour"] for r in now_rows}
-    by_day = []
+    by_day: list[dict[str, Any]] = []
     for i in range(days):
         d = (datetime.date.fromisoformat(today) - datetime.timedelta(days=i)).isoformat()
         rs = [r for r in rows if r["day"] == d]

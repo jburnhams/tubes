@@ -13,10 +13,14 @@ Google gives no way to ask how much of the quota is left.
 import os
 import re
 import urllib.parse
+from collections.abc import Iterable
+from typing import Any
 
 from strata_python.http import Http
 
 from tubes import USER_AGENT, quota
+from tubes.db import Row
+from tubes.shape import Json, arr, obj, objs
 
 API = "https://www.googleapis.com/youtube/v3"
 TIMEOUT = 30
@@ -58,16 +62,16 @@ CHAPTER = re.compile(r"^\s*(?:[-*•▶►]\s*)?\(?((?:\d{1,2}:)?\d{1,2}:\d{2})\
 class YoutubeError(RuntimeError):
     """A call to the Data API failed; the message says why, in a sentence. `status` is the HTTP status when there was one."""
 
-    def __init__(self, message, status=None):
+    def __init__(self, message: str, status: int | None = None) -> None:
         super().__init__(message)
         self.status = status
 
 
-def configured():
+def configured() -> bool:
     return bool(os.environ.get("YOUTUBE_API_KEY"))
 
 
-def call(endpoint, **params):
+def call(endpoint: str, **params: object) -> Json:
     """One GET on the Data API; returns its JSON."""
     key = os.environ.get("YOUTUBE_API_KEY", "")
     if not key:
@@ -81,10 +85,10 @@ def call(endpoint, **params):
         raise YoutubeError(f"YouTube could not be reached: {reply.error}.")
     if not reply.ok:
         try:
-            err = reply.json().get("error") or {}
-        except (ValueError, AttributeError):
+            err = obj(obj(reply.json()).get("error"))
+        except ValueError:
             err = {}
-        reason = next((x.get("reason") for x in err.get("errors") or [] if x.get("reason")), None)
+        reason = next((x.get("reason") for x in objs(err.get("errors")) if x.get("reason")), None)
         quota.record(
             endpoint, failed=True, refused=reason in ("quotaExceeded", "dailyLimitExceeded")
         )  # Google charges an answered error too
@@ -94,12 +98,12 @@ def call(endpoint, **params):
         raise YoutubeError(f"YouTube refused the request ({reply.status}{': ' + why if why else ''}).", reply.status)
     quota.record(endpoint)
     try:
-        return reply.json()
+        return obj(reply.json())
     except ValueError:
         raise YoutubeError("YouTube did not answer with JSON.") from None
 
 
-def parse(text):
+def parse(text: str | None) -> tuple[str, str]:
     """('video', id), ('channel', id) or ('handle', '@name') for what a person typed or pasted, or ValueError saying what was expected."""
     t = (text or "").strip()
     if not t:
@@ -132,7 +136,7 @@ def parse(text):
     raise ValueError("That is not a channel or video: paste its link, or type its id or @handle.")
 
 
-def playlist_id(text):
+def playlist_id(text: str | None) -> str | None:
     """The playlist a YouTube link names (`/playlist?list=`, or a watch link played from a playlist), else None. A mix (`RD…`) is made up for
     one viewer and the Data API cannot read it, so a watch link from one stays a link to its video."""
     t = (text or "").strip()
@@ -149,7 +153,7 @@ def playlist_id(text):
     return pid
 
 
-def seconds(duration):
+def seconds(duration: str | None) -> int | None:
     """An ISO 8601 duration (`PT1H2M3S`, `P1DT2S`) in seconds; None when it cannot be read (a live stream says `P0D`, which is 0)."""
     m = DURATION.match(duration or "")
     if not m:
@@ -158,13 +162,14 @@ def seconds(duration):
     return d * 86400 + h * 3600 + mi * 60 + s
 
 
-def best_thumbnail(thumbnails):
+def best_thumbnail(thumbnails: object) -> str | None:
     """The largest of the five sizes YouTube documents (THUMBS), by pixels (names are not trusted to be in order), else the first by name;
     another size only when none of those is there. Since 2026-11 the Data API also lists `fhddefault`, `qhddefault` and `uhddefault` (1080p
     and up) for many new uploads and streams, and i.ytimg.com answers 404 for them while `maxresdefault` is there, so the largest listed size
     left 3% of the library (and nearly half the newest videos) with a blank card."""
-    known = {k: t for k, t in (thumbnails or {}).items() if k in THUMBS and isinstance(t, dict) and t.get("url")}
-    ts = list(known.values()) or [t for t in (thumbnails or {}).values() if isinstance(t, dict) and t.get("url")]
+    every = {k: obj(t) for k, t in obj(thumbnails).items()}
+    known = {k: t for k, t in every.items() if k in THUMBS and t.get("url")}
+    ts = list(known.values()) or [t for t in every.values() if t.get("url")]
     if not ts:
         return None
     sized = [t for t in ts if t.get("width") and t.get("height")]
@@ -173,30 +178,31 @@ def best_thumbnail(thumbnails):
     return next((known[k]["url"] for k in THUMBS if k in known), ts[0]["url"])
 
 
-def images(thumbnails, kind):
+def images(thumbnails: object, kind: str) -> list[Row]:
     """Every size of a thumbnails dict as `images` rows of this kind, the largest first (rank 0, the one to show: `best_thumbnail`'s choice)."""
-    ts = [t for k, t in (thumbnails or {}).items() if k in THUMBS and isinstance(t, dict) and t.get("url")]
+    ts = [obj(t) for k, t in obj(thumbnails).items() if k in THUMBS and obj(t).get("url")]
     best = best_thumbnail(thumbnails)
     ts.sort(key=lambda t: (t["url"] != best, -(t.get("width") or 0) * (t.get("height") or 0)))
     return [dict(kind=kind, url=t["url"], width=t.get("width"), height=t.get("height")) for t in ts]
 
 
-def topics(item):
+def topics(item: Json) -> list[str]:
     """A resource's topic names (`Music`, `Lifestyle`), as YouTube orders them, once each."""
     return list(
         dict.fromkeys(
-            t for t in (topic_name(u) for u in (item.get("topicDetails") or {}).get("topicCategories") or []) if t
+            t for t in (topic_name(u) for u in arr(obj(item.get("topicDetails")).get("topicCategories"))) if t
         )
     )
 
 
-def keywords(text):
+def keywords(text: str | None) -> list[str]:
     """A channel's keywords (`brandingSettings.channel.keywords`): words, or phrases in double quotes."""
-    words = [(quoted or bare).strip()[:200] for quoted, bare in re.findall(r'"([^"]+)"|(\S+)', text or "")]
+    found: list[tuple[str, str]] = re.findall(r'"([^"]+)"|(\S+)', text or "")
+    words = [(quoted or bare).strip()[:200] for quoted, bare in found]
     return list(dict.fromkeys(w for w in words if w))
 
 
-def clock(text):
+def clock(text: str) -> int:
     """Seconds from `1:02:03` or `2:03`."""
     n = 0
     for part in text.split(":"):
@@ -204,10 +210,10 @@ def clock(text):
     return n
 
 
-def chapters(description, duration=None):
+def chapters(description: str | None, duration: float | None = None) -> list[Row]:
     """The chapters a description lists, by YouTube's own rule (the first at 0:00, at least three, ascending, each at least 10 s long), as
     `chapters` rows; empty when it lists none that way."""
-    marks = []
+    marks: list[tuple[int, str]] = []
     for line in (description or "").splitlines():
         m = CHAPTER.match(line)
         if m and m[2]:
@@ -215,7 +221,7 @@ def chapters(description, duration=None):
     if len(marks) < 3 or marks[0][0] != 0:
         return []
     starts = [t for t, _ in marks]
-    ends = [*starts[1:], duration]
+    ends: list[float | None] = [*starts[1:], duration]
     if any(b is not None and b - a < 10 for a, b in zip(starts, ends, strict=True)):
         return []
     return [
@@ -224,21 +230,21 @@ def chapters(description, duration=None):
     ]
 
 
-def age_rating(cd):
+def age_rating(cd: Json | None) -> tuple[str, int] | tuple[None, None]:
     """(content_rating, min_age) for a video YouTube restricts by age (`ytAgeRestricted`), else (None, None)."""
-    return ("18", 18) if ((cd or {}).get("contentRating") or {}).get("ytRating") == "ytAgeRestricted" else (None, None)
+    return ("18", 18) if obj(obj(cd).get("contentRating")).get("ytRating") == "ytAgeRestricted" else (None, None)
 
 
-def _int(v):
+def _int(v: Any) -> int | None:
     try:
         return int(v)
     except (TypeError, ValueError):
         return None
 
 
-def channel_row(item, now):
+def channel_row(item: Json, now: str) -> Row:
     """A Data API channel resource as a `channels` row."""
-    sn, st = item.get("snippet") or {}, item.get("statistics") or {}
+    sn, st = obj(item.get("snippet")), obj(item.get("statistics"))
     return dict(
         id=item["id"],
         platform="youtube",
@@ -252,28 +258,28 @@ def channel_row(item, now):
         subscribers=None if st.get("hiddenSubscriberCount") else _int(st.get("subscriberCount")),
         total_videos=_int(st.get("videoCount")),
         views=_int(st.get("viewCount")),
-        uploads=((item.get("contentDetails") or {}).get("relatedPlaylists") or {}).get("uploads"),
+        uploads=obj(obj(item.get("contentDetails")).get("relatedPlaylists")).get("uploads"),
         added=now,
         kind="channel",
-        kids=(item.get("status") or {}).get("madeForKids"),
+        kids=obj(item.get("status")).get("madeForKids"),
         meta=channel_meta(item),
     )
 
 
-def channel_meta(item):
+def channel_meta(item: Json) -> Row:
     """A channel's `meta` (metadata.py): its avatar in every size, its banner, its keywords and topics."""
-    sn, br = item.get("snippet") or {}, item.get("brandingSettings") or {}
-    banner = (br.get("image") or {}).get("bannerExternalUrl")
+    sn, br = obj(item.get("snippet")), obj(item.get("brandingSettings"))
+    banner = obj(br.get("image")).get("bannerExternalUrl")
     return dict(
         images=images(sn.get("thumbnails"), "avatar") + ([dict(kind="banner", url=banner)] if banner else []),
-        tags=[dict(kind="keyword", value=k) for k in keywords((br.get("channel") or {}).get("keywords"))]
+        tags=[dict(kind="keyword", value=k) for k in keywords(obj(br.get("channel")).get("keywords"))]
         + [dict(kind="topic", value=t) for t in topics(item)],
     )
 
 
-def video_row(item, now):
+def video_row(item: Json, now: str) -> Row:
     """A Data API video resource as a `videos` row."""
-    sn, cd, st = item.get("snippet") or {}, item.get("contentDetails") or {}, item.get("statistics") or {}
+    sn, cd, st = obj(item.get("snippet")), obj(item.get("contentDetails")), obj(item.get("statistics"))
     return dict(
         id=item["id"],
         platform="youtube",
@@ -297,31 +303,31 @@ def video_row(item, now):
         added=now,
         kind="video",
         year=_year(sn.get("publishedAt")),
-        kids=(item.get("status") or {}).get("madeForKids"),
+        kids=obj(item.get("status")).get("madeForKids"),
         **dict(zip(("content_rating", "min_age"), age_rating(cd), strict=True)),
         meta=video_meta(item),
     )
 
 
-def _year(stamp):
+def _year(stamp: str | None) -> int | None:
     m = re.match(r"^(\d{4})-", stamp or "")
     return int(m[1]) if m else None
 
 
-def video_meta(item):
+def video_meta(item: Json) -> Row:
     """A video's `meta` (metadata.py): its thumbnails in every size, its tags, category and topics, and the chapters its description lists."""
-    sn, cd = item.get("snippet") or {}, item.get("contentDetails") or {}
+    sn, cd = obj(item.get("snippet")), obj(item.get("contentDetails"))
     cat = CATEGORIES.get(str(sn.get("categoryId") or ""))
     return dict(
         images=images(sn.get("thumbnails"), "thumb"),
-        tags=[dict(kind="keyword", value=str(t)[:200]) for t in sn.get("tags") or [] if str(t).strip()]
+        tags=[dict(kind="keyword", value=str(t)[:200]) for t in arr(sn.get("tags")) if str(t).strip()]
         + ([dict(kind="category", value=cat)] if cat else [])
         + [dict(kind="topic", value=t) for t in topics(item)],
         chapters=chapters(sn.get("description"), seconds(cd.get("duration"))),
     )
 
 
-def language(code):
+def language(code: str | None) -> str | None:
     """A BCP-47 language code as kept (`en-GB`, `fr`), or None. YouTube writes `zxx` for "no linguistic content" and lets an uploader
     leave it unset, which both mean not known here."""
     c = (code or "").strip().replace("_", "-")
@@ -332,14 +338,14 @@ def language(code):
     )
 
 
-def regions(restriction):
+def regions(restriction: object) -> dict[str, str | None]:
     """`{regions_allowed, regions_blocked}` from a video's `contentDetails.regionRestriction`: each a comma-separated list of ISO 3166-1
     alpha-2 codes (YouTube's own), or None. An `allowed` list means it plays only there; a `blocked` one means everywhere but there; YouTube
     gives one or neither. An empty `allowed` list (it plays nowhere) is kept as `-`, which matches no country."""
-    r = restriction or {}
+    r = obj(restriction)
 
-    def codes(xs):
-        ok = {x.strip().upper() for x in xs or [] if isinstance(x, str) and re.match(r"^[A-Za-z]{2}$", x.strip())}
+    def codes(xs: object) -> str | None:
+        ok = {str(x).strip().upper() for x in arr(xs) if isinstance(x, str) and re.match(r"^[A-Za-z]{2}$", x.strip())}
         return ",".join(sorted(ok)) or None
 
     allowed = codes(r.get("allowed"))
@@ -348,46 +354,45 @@ def regions(restriction):
     )
 
 
-def live(item):
+def live(item: Json) -> str | None:
     """'live' (streaming now), 'upcoming' (scheduled) or 'was' (a past stream or premiere) for a video that was a live broadcast, else None.
     YouTube's `liveBroadcastContent` goes back to 'none' when a stream ends, but the resource keeps its `liveStreamingDetails`, so that is
     what marks a past one. The Data API cannot tell a premiere (a recording played once as if live) from a stream, so both count."""
-    state = (item.get("snippet") or {}).get("liveBroadcastContent")
+    state = obj(item.get("snippet")).get("liveBroadcastContent")
     if state in ("live", "upcoming"):
         return state
     return "was" if item.get("liveStreamingDetails") else None
 
 
-def channel(kind, value):
+def channel(kind: str, value: str) -> Json | None:
     """The channel resource for an id or a handle, or None when YouTube has no such channel."""
-    items = (
+    items = objs(
         call("channels", part=CHANNEL_PARTS, **({"id": value} if kind == "channel" else {"forHandle": value})).get(
             "items"
         )
-        or []
     )
     return items[0] if items else None
 
 
-def channels(ids, parts=LOOKUP_PARTS):
+def channels(ids: Iterable[str], parts: str = LOOKUP_PARTS) -> list[Json]:
     """The channel resources for these ids (by default with their topics and audience, for suggestions), 50 per call; YouTube leaves out any it no longer has."""
-    ids, out = list(ids), []
+    ids, out = list(ids), list[Json]()
     for i in range(0, len(ids), 50):
-        out += call("channels", part=parts, id=",".join(ids[i : i + 50]), maxResults=50).get("items") or []
+        out += objs(call("channels", part=parts, id=",".join(ids[i : i + 50]), maxResults=50).get("items"))
     return out
 
 
-def topic_name(url):
+def topic_name(url: str | None) -> str | None:
     """A topic's name from the Wikipedia link YouTube gives for it: `.../wiki/Lifestyle_(sociology)` is `Lifestyle`."""
     name = urllib.parse.unquote((url or "").rstrip("/").rsplit("/", 1)[-1]).replace("_", " ")
     return re.sub(r"\s*\([^)]*\)$", "", name).strip() or None
 
 
-def lookup_row(item):
+def lookup_row(item: Json) -> Row:
     """What a suggestion keeps of a channel resource (see `channels`)."""
-    sn, st = item.get("snippet") or {}, item.get("statistics") or {}
+    sn, st = obj(item.get("snippet")), obj(item.get("statistics"))
     topics = sorted(
-        {t for t in (topic_name(u) for u in (item.get("topicDetails") or {}).get("topicCategories") or []) if t}
+        {t for t in (topic_name(u) for u in arr(obj(item.get("topicDetails")).get("topicCategories"))) if t}
     )
     return dict(
         channel_id=item["id"],
@@ -397,26 +402,26 @@ def lookup_row(item):
         subscribers=None if st.get("hiddenSubscriberCount") else _int(st.get("subscriberCount")),
         total_videos=_int(st.get("videoCount")),
         topics="|".join(topics) or None,
-        made_for_kids=(item.get("status") or {}).get("madeForKids"),
+        made_for_kids=obj(item.get("status")).get("madeForKids"),
     )
 
 
-def search_channels(text, n=1):
+def search_channels(text: str, n: int = 1) -> list[str]:
     """The channels YouTube's search finds for some words, best first (at most `n`). Costs 100 quota units a call, a hundred times a
     lookup, so callers try a handle first and search only when that misses."""
-    items = call("search", part="snippet", type="channel", maxResults=n, q=text).get("items") or []
-    return [i["id"]["channelId"] for i in items if (i.get("id") or {}).get("channelId")]
+    items = objs(call("search", part="snippet", type="channel", maxResults=n, q=text).get("items"))
+    return [i["id"]["channelId"] for i in items if obj(i.get("id")).get("channelId")]
 
 
-def videos(ids):
+def videos(ids: Iterable[str]) -> list[Json]:
     """The video resources for these ids (YouTube leaves out any it does not have, such as private or removed ones), 50 per call."""
-    ids, out = list(ids), []
+    ids, out = list(ids), list[Json]()
     for i in range(0, len(ids), 50):
-        out += call("videos", part=VIDEO_PARTS, id=",".join(ids[i : i + 50]), maxResults=50).get("items") or []
+        out += objs(call("videos", part=VIDEO_PARTS, id=",".join(ids[i : i + 50]), maxResults=50).get("items"))
     return out
 
 
-def uploads_page(playlist, token=None):
+def uploads_page(playlist: str, token: str | None = None) -> tuple[list[str], str | None]:
     """One page (up to 50) of a channel's uploads, newest first: (video ids, the next page's token or None at the end)."""
     r = call(
         "playlistItems",
@@ -426,5 +431,5 @@ def uploads_page(playlist, token=None):
         **({"pageToken": token} if token else {}),
     )
     return [
-        i["contentDetails"]["videoId"] for i in r.get("items") or [] if (i.get("contentDetails") or {}).get("videoId")
+        i["contentDetails"]["videoId"] for i in objs(r.get("items")) if obj(i.get("contentDetails")).get("videoId")
     ], r.get("nextPageToken")

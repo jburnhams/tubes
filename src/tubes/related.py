@@ -25,10 +25,14 @@ import datetime
 import os
 import re
 import time
+from collections.abc import Callable, Collection, Iterator, Sequence
+from typing import Any, cast
 
 from strata_python.http import Http
 
 from tubes import USER_AGENT, cache, db, quota, youtube
+from tubes.db import Row
+from tubes.shape import arr, obj, objs
 
 WEB = "https://www.youtube.com"
 CLIENT = {"clientName": "WEB", "clientVersion": "2.20251101.00.00", "hl": "en", "gl": "GB"}
@@ -50,11 +54,11 @@ class RelatedError(RuntimeError):
     """A watch page could not be read; the message says why, in a sentence."""
 
 
-def _web():
+def _web() -> str:
     return os.environ.get("TUBES_YOUTUBE_WEB", WEB).rstrip("/")
 
 
-def next_page(video_id):
+def next_page(video_id: str) -> Any:
     """The web client's answer for a watch page (what it lists next), as JSON."""
     reply = HTTP.post(
         f"{_web()}/youtubei/v1/next?prettyPrint=false",
@@ -72,53 +76,54 @@ def next_page(video_id):
         raise RelatedError(f"YouTube did not answer with JSON for the watch page of {video_id}.") from None
 
 
-def _find(node, key):
+def _find(node: object, key: str) -> Iterator[Any]:
     """Every value under `key` anywhere in a JSON tree, depth first."""
     if isinstance(node, dict):
-        for k, v in node.items():
+        for k, v in cast(dict[str, Any], node).items():
             if k == key:
                 yield v
             yield from _find(v, key)
     elif isinstance(node, list):
-        for v in node:
+        for v in cast(list[Any], node):
             yield from _find(v, key)
 
 
-def _channel_of(item):
+def _channel_of(item: object) -> tuple[str | None, str | None]:
     """(channel id, its handle) from the first browse link to a channel inside one listed video, or (None, None)."""
-    for b in _find(item, "browseEndpoint"):
-        if isinstance(b, dict) and CHANNEL_ID.match(b.get("browseId") or ""):
-            h = (b.get("canonicalBaseUrl") or "").lstrip("/")
-            return b["browseId"], h if h.startswith("@") else None
+    for b in map(obj, _find(item, "browseEndpoint")):
+        cid = str(b.get("browseId") or "")
+        if CHANNEL_ID.match(cid):
+            h = str(b.get("canonicalBaseUrl") or "").lstrip("/")
+            return cid, h if h.startswith("@") else None
     return None, None
 
 
-def _name_of(item):
+def _name_of(item: object) -> str | None:
     """The channel's name as the listing writes it: the first metadata line (lockupViewModel) or the byline (the older compactVideoRenderer)."""
     for rows in _find(item, "metadataRows"):
-        for row in rows or []:
-            for part in row.get("metadataParts") or []:
-                t = ((part.get("text") or {}).get("content") or "").strip()
+        for row in objs(rows):
+            for part in objs(row.get("metadataParts")):
+                t = str(obj(part.get("text")).get("content") or "").strip()
                 if t:
                     return t
     for by in _find(item, "shortBylineText"):
-        runs = (by or {}).get("runs") or []
+        runs = objs(obj(by).get("runs"))
         if runs and runs[0].get("text"):
-            return runs[0]["text"]
+            return str(runs[0]["text"])
     return None
 
 
-def parse_next(data):
+def parse_next(data: object) -> list[Row]:
     """The channels of the videos a watch page lists next: `[{channel_id, title, handle}]`, one per listed video (so a channel listed twice
     is here twice), in the page's order. Shorts shelves and playlists are left out (they name no channel); the video's own channel is kept,
     the caller drops it."""
     results = next(_find(data, "secondaryResults"), None)
-    out = []
-    for entry in next(_find(results, "results"), None) or []:
+    out: list[Row] = []
+    for entry in objs(next(_find(results, "results"), None)):
         item = entry.get("lockupViewModel") or entry.get("compactVideoRenderer")
         if not item:
             continue
-        if "lockupViewModel" in entry and entry["lockupViewModel"].get("contentType") not in (
+        if "lockupViewModel" in entry and obj(entry["lockupViewModel"]).get("contentType") not in (
             None,
             "LOCKUP_CONTENT_TYPE_VIDEO",
         ):
@@ -129,7 +134,7 @@ def parse_next(data):
     return out
 
 
-def watch_next(video_id):
+def watch_next(video_id: str) -> list[Row]:
     """See `parse_next`; RelatedError when the page cannot be read or lists nothing (YouTube changed it, or the video is gone)."""
     found = parse_next(next_page(video_id))
     if not found:
@@ -137,20 +142,20 @@ def watch_next(video_id):
     return found
 
 
-def featured(channel_id):
+def featured(channel_id: str) -> list[str]:
     """The channel ids a channel features itself (channelSections of type multipleChannels; the type comes back in either case)."""
-    items = youtube.call("channelSections", part="snippet,contentDetails", channelId=channel_id).get("items") or []
-    ids = []
-    for s in items:
-        if ((s.get("snippet") or {}).get("type") or "").lower() != "multiplechannels":
+    items = arr(youtube.call("channelSections", part="snippet,contentDetails", channelId=channel_id).get("items"))
+    ids: list[str] = []
+    for s in objs(items):
+        if str(obj(s.get("snippet")).get("type") or "").lower() != "multiplechannels":
             continue
-        for c in (s.get("contentDetails") or {}).get("channels") or []:
+        for c in arr(obj(s.get("contentDetails")).get("channels")):
             if c not in ids and c != channel_id:
                 ids.append(c)
     return ids
 
 
-def _followed_and_watched(con):
+def _followed_and_watched(con: db.Connection) -> tuple[list[str], list[str]]:
     follows = [
         r[0]
         for r in con.execute("SELECT id FROM channels WHERE follow = ? AND platform = ? ORDER BY id", (True, "youtube"))
@@ -165,14 +170,14 @@ def _followed_and_watched(con):
     return follows, [c for c in watched if c not in set(follows)]
 
 
-def source_ids():
+def source_ids() -> set[str]:
     """The channels asked about (see `sources`), without their videos."""
     with db.connect() as con:
         follows, watched = _followed_and_watched(con)
     return set(follows) | set(watched)
 
 
-def sources():
+def sources() -> dict[str, list[str]]:
     """The channels to ask about, `{channel_id: [video ids]}`: followed ones (their newest uploads), then the history's most watched (the
     videos of it watched last)."""
     with db.connect() as con:
@@ -198,11 +203,11 @@ def sources():
     return out
 
 
-def _ago(now, days):
+def _ago(now: str, days: float) -> str:
     return (datetime.datetime.fromisoformat(now) - datetime.timedelta(days=days)).isoformat(timespec="seconds")
 
 
-def due(now=None):
+def due(now: str | None = None) -> dict[str, list[str]]:
     """The sources not asked about for FRESH_DAYS (RETRY_DAYS after a failure), never asked first, then oldest first: `{channel_id: [video ids]}`."""
     now = now or cache.stamp()
     every = sources()
@@ -214,11 +219,13 @@ def due(now=None):
     return {c: every[c] for c in wanted}
 
 
-def fetch_source(channel_id, video_ids, use_api=True, pause=None):
+def fetch_source(channel_id: str, video_ids: Sequence[str], use_api: bool = True, pause: float | None = None) -> Row:
     """Ask YouTube what one channel points at: `{links: {channel_id: {title, handle, hits, featured}}, videos, error}`. Watch pages that
     fail are skipped; `error` says why when none answered (then what it pointed at before is kept: the page may have changed under us)."""
     pause = PAUSE if pause is None else pause
-    links, read, problems = {}, 0, []
+    links: dict[str, Row] = {}
+    problems: list[str] = []
+    read = 0
     for i, v in enumerate(video_ids):
         if i and pause:
             time.sleep(pause)
@@ -247,7 +254,7 @@ def fetch_source(channel_id, video_ids, use_api=True, pause=None):
     return dict(links=links, videos=read, error=error)
 
 
-def save_source(channel_id, got, now):
+def save_source(channel_id: str, got: Row, now: str) -> None:
     """Keep what one source pointed at (replacing what it pointed at before, unless this ask failed outright)."""
     with db.connect() as con:  # a failure keeps the links, so the page count they were made from too
         if not got["error"]:
@@ -265,13 +272,20 @@ def save_source(channel_id, got, now):
 
 
 @quota.purpose("related")
-def refresh(now=None, limit=RUN_LIMIT, force=False, pause=None, progress=None):
+def refresh(
+    now: str | None = None,
+    limit: int | None = RUN_LIMIT,
+    force: bool = False,
+    pause: float | None = None,
+    progress: Callable[[int, int, str, Row], None] | None = None,
+) -> Row:
     """Ask about the sources that are due (every source with `force`), at most `limit` of them, then count everything up (`aggregate`).
     Returns `{asked, failed, due, links, errors: [{channel, error}], ...aggregate}`; `due` counts what is still waiting for a later run."""
     now, pause = now or cache.stamp(), PAUSE if pause is None else pause
     todo = sources() if force else due(now)
     batch = list(todo.items())[:limit] if limit else list(todo.items())
-    errors, links = [], 0
+    errors: list[Row] = []
+    links = 0
     for n, (cid, vids) in enumerate(batch):
         if n and pause:
             time.sleep(pause)
@@ -287,7 +301,7 @@ def refresh(now=None, limit=RUN_LIMIT, force=False, pause=None, progress=None):
     )
 
 
-def aggregate():
+def aggregate() -> Row:
     """Count what every source points at into `suggestions` (see the module's notes). No network. Returns `{suggested, added}`."""
     with db.connect() as con:
         links = db.rows(
@@ -306,13 +320,11 @@ def aggregate():
         followed = {
             r[0] for r in con.execute("SELECT id FROM channels WHERE follow = ?", (True,))
         }  # in already: not suggested
-        by, score, title, handle, votes = (
-            collections.defaultdict(set),
-            collections.Counter(),
-            {},
-            {},
-            collections.defaultdict(collections.Counter),
-        )
+        by: collections.defaultdict[str, set[str]] = collections.defaultdict(set)
+        score: collections.defaultdict[str, float] = collections.defaultdict(float)
+        title: dict[str, str] = {}
+        handle: dict[str, str] = {}
+        votes: collections.defaultdict[str, collections.Counter[int]] = collections.defaultdict(collections.Counter)
         for link in links:
             c = link["channel_id"]
             if link["source_id"] not in live or c in followed:
@@ -356,7 +368,7 @@ def aggregate():
     return dict(suggested=len(by), added=len(new))
 
 
-def status(now=None):
+def status(now: str | None = None) -> Row:
     """What the Suggestions page says of this: `{sources, asked, due, failed, last}` (`last`: when a source was last asked)."""
     now = now or cache.stamp()
     every = source_ids()
@@ -374,11 +386,12 @@ def status(now=None):
     )
 
 
-def pointers(channel_ids, top=3):
+def pointers(channel_ids: Collection[str], top: int = 3) -> dict[str, list[str]]:
     """For each channel, the titles of the sources that point at it, the strongest first (at most `top`): `{channel_id: [title]}`."""
     if not channel_ids:
         return {}
-    live, out = source_ids(), collections.defaultdict(list)
+    live = source_ids()
+    out: collections.defaultdict[str, list[str]] = collections.defaultdict(list)
     with db.connect() as con:
         ids = list(channel_ids)
         for i in range(0, len(ids), 500):

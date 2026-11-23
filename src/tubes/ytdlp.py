@@ -19,8 +19,11 @@ command keeps a crash or a hang in its own process, with a timeout. Measured on 
 import json
 import re
 import subprocess
+from collections.abc import Iterable
+from typing import Any
 
 from tubes import settings
+from tubes.shape import Json
 
 CODEC_RANK = (("av01", 0), ("vp09", 1), ("vp9", 1), ("avc1", 2))  # lower is better; anything else is not fetched
 PROBE_TIMEOUT = 120
@@ -32,12 +35,12 @@ class YtdlpError(RuntimeError):
     """yt-dlp failed, timed out, could not be started, or found nothing usable; the message says which, in a sentence."""
 
 
-def signed_in_available():
+def signed_in_available() -> bool:
     """Whether a signed-in browser is set (`cookies_from_browser`)."""
     return bool(settings.get("cookies_from_browser"))
 
 
-def base_command(signed_in=False, auto_client=False):
+def base_command(signed_in: bool = False, auto_client: bool = False) -> list[str]:
     """yt-dlp and the options every call shares; signed in, it reads the browser's YouTube session (and a probe and its downloads must agree)."""
     cmd = [settings.get("ytdlp"), "--no-warnings", "--no-progress", "--ignore-config"]
     client = "" if auto_client else settings.get("player_client")
@@ -50,14 +53,14 @@ def base_command(signed_in=False, auto_client=False):
     return cmd
 
 
-def watch_url(video_id):
+def watch_url(video_id: str) -> str:
     """The watch link yt-dlp is given for a library video id, or YtdlpError when it is not one (the id goes on a command line and into a URL)."""
     if not VIDEO_ID.match(video_id or ""):
         raise YtdlpError(f"{video_id!r} is not a YouTube video id.")
     return f"https://www.youtube.com/watch?v={video_id}"
 
 
-def run_json(args, timeout, signed_in=False, auto_client=False):
+def run_json(args: Iterable[str], timeout: float, signed_in: bool = False, auto_client: bool = False) -> Any:
     """Run yt-dlp with `args` and parse its JSON output."""
     cmd = base_command(signed_in, auto_client) + list(args)
     try:
@@ -80,7 +83,7 @@ BROKEN_PIPE = re.compile(r"Broken pipe|Errno 32", re.I)
 CHATTER = re.compile(r"^(\[(info|download|tubes)\]|WARNING:)")
 
 
-def last_error(text):
+def last_error(text: str | None) -> str:
     """The most telling line of yt-dlp's or ffmpeg's error output: the last `ERROR:` line, else the last line that is not yt-dlp's progress.
     yt-dlp's "unable to write data: [Errno 32] Broken pipe" only says ffmpeg stopped reading its stdout, so ffmpeg's own line (which has no
     `ERROR:` prefix) is preferred to it; it is kept only when nothing else was said."""
@@ -105,38 +108,38 @@ BLOCKED = re.compile(
 )
 
 
-def says_blocked(message):
+def says_blocked(message: str | None) -> bool:
     """Whether yt-dlp's error says the video does not play in this server's country ("The uploader has not made this video available in
     your country", sometimes after "Video unavailable"): YouTube still has it, so it is hidden as blocked, not gone (catalogue.mark_blocked)."""
     return bool(message and BLOCKED.search(message))
 
 
-def says_gone(message):
+def says_gone(message: str | None) -> bool:
     """Whether yt-dlp's error says YouTube no longer has the video (deleted, private, its account closed), rather than that it refused this
     request (rate limits, bot checks and age checks are worded "try again later", "not a bot" or "confirm your age", sometimes after "Video
     unavailable"). A wrong yes only hides the video until the next recheck finds it (catalogue.recheck)."""
     return bool(message and GONE.search(message) and not BUSY.search(message) and not says_blocked(message))
 
 
-def probe(url, signed_in=False, auto_client=False):
+def probe(url: str, signed_in: bool = False, auto_client: bool = False) -> Json:
     """Full information about one video, with its formats. A signed-in probe whose browser session cannot be read fails (yt-dlp exits with an error in about 0.6 s)."""
     return run_json(["--dump-single-json", "--no-playlist", url], PROBE_TIMEOUT, signed_in, auto_client)
 
 
-def ad_wait(info, *chosen):
+def ad_wait(info: Json, *chosen: Json) -> float | None:
     """Seconds the download of the chosen formats must wait for an ad (`available_at` against the probe's `epoch`), 0 when none, None when the probe does not say."""
-    times = [f.get("available_at") for f in chosen]
-    if not chosen or any(t is None for t in times) or info.get("epoch") is None:
+    times: list[float] = [f["available_at"] for f in chosen if f.get("available_at") is not None]
+    if not chosen or len(times) < len(chosen) or info.get("epoch") is None:
         return None
     return max(0, max(times) - info["epoch"])
 
 
-def codec_rank(vcodec):
+def codec_rank(vcodec: str | None) -> int | None:
     v = (vcodec or "").lower()
     return next((rank for prefix, rank in CODEC_RANK if v.startswith(prefix)), None)
 
 
-def choose_formats(formats, max_height):
+def choose_formats(formats: Iterable[Json], max_height: int) -> tuple[Json, Json]:
     """The (video, audio) formats to fetch: the tallest video within `max_height` (and 16:9 of it in width), the better codec at that height,
     then the higher bitrate; and the original audio track at the highest bitrate, AAC before Opus. Raises YtdlpError when either is missing."""
     max_width = round(max_height * 16 / 9)
@@ -164,7 +167,7 @@ def choose_formats(formats, max_height):
         raise YtdlpError(f"No video stream at or under {max_height}p in a codec Chrome plays (AV1, VP9 or H.264).")
     if not audios:
         raise YtdlpError("No separate audio stream was offered.")
-    video = max(videos, key=lambda f: (f["height"], -codec_rank(f["vcodec"]), f.get("tbr") or 0))
+    video = max(videos, key=lambda f: (f["height"], -(codec_rank(f["vcodec"]) or 0), f.get("tbr") or 0))
     audio = max(
         audios,
         key=lambda f: (
@@ -177,17 +180,17 @@ def choose_formats(formats, max_height):
     return video, audio
 
 
-def describe(video, audio):
+def describe(video: Json, audio: Json) -> str:
     """A short label for what was fetched, such as `1080p AV1 + AAC`."""
     names = {"av01": "AV1", "vp09": "VP9", "vp9": "VP9", "avc1": "H.264", "mp4a": "AAC", "opus": "Opus"}
 
-    def name(c):
+    def name(c: str | None) -> str:
         return next((n for p, n in names.items() if (c or "").lower().startswith(p)), (c or "?").split(".")[0])
 
     return f"{video.get('height')}p {name(video.get('vcodec'))} + {name(audio.get('acodec'))}"
 
 
-def version():
+def version() -> str | None:
     """yt-dlp's version, or None when it cannot be run."""
     try:
         p = subprocess.run([settings.get("ytdlp"), "--version"], capture_output=True, text=True, timeout=30)

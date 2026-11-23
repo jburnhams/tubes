@@ -22,8 +22,12 @@ row names, whatever the owner had there before, and leaves the tables it does no
 clears another's. `get` reads them back for one owner, as lists."""
 
 import json
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 from tubes import db
+from tubes.db import Row
+from tubes.shape import obj
 
 IMAGE_KINDS = ("thumb", "poster", "backdrop", "logo", "square", "banner", "avatar", "portrait")
 TAG_KINDS = ("genre", "category", "topic", "keyword", "label", "country")
@@ -72,27 +76,30 @@ DEFAULTS = dict(
 )
 
 
-def _col(c):
+def _col(c: str) -> str:
     return f'"{c}"' if c == "end" else c  # `end` is a keyword in SQL (segments quotes it too)
 
 
-def colours(blur):
+def colours(blur: object) -> str | None:
     """Plex's UltraBlurColors (or any such dict of four hex colours) as the JSON kept in `colours`, or None."""
     keys = ("topLeft", "topRight", "bottomRight", "bottomLeft")
-    if not isinstance(blur, dict) or not all(isinstance(blur.get(k), str) for k in keys):
+    if not isinstance(blur, dict):
         return None
-    return json.dumps({k: "#" + blur[k].lstrip("#")[:6] for k in keys})
+    got: dict[str, Any] = dict(blur)  # pyright: ignore[reportUnknownArgumentType] - JSON from a source
+    if not all(isinstance(got.get(k), str) for k in keys):
+        return None
+    return json.dumps({k: "#" + str(got[k]).lstrip("#")[:6] for k in keys})
 
 
-def strip(row):
+def strip(row: Mapping[str, Any]) -> Row:
     """A source row without its `meta`, for the row's own table."""
     return {k: v for k, v in row.items() if k != "meta"}
 
 
-def save(con, owner, rows):
+def save(con: db.Connection, owner: str, rows: Iterable[Mapping[str, Any]]) -> None:
     """Write the `meta` of these source rows (each with `id`) for this owner ('channel' or 'video'): each table a row names is replaced for it."""
     for row in rows:
-        meta = row.get("meta") or {}
+        meta: dict[str, Any] = obj(row.get("meta"))
         for table, items in meta.items():
             if table not in TABLES:
                 raise ValueError(f"{table} is not a metadata table")
@@ -103,7 +110,8 @@ def save(con, owner, rows):
             where = " AND ".join(f"{k} = :{k}" for k in key)
             ids = dict(video_id=row["id"]) if by_video else dict(owner=owner, owner_id=row["id"])
             con.execute(f"DELETE FROM {table} WHERE {where}", ids)
-            seen, out = set(), []
+            seen: set[tuple[Any, ...]] = set()
+            out: list[Row] = []
             for i, item in enumerate(items or []):
                 r = dict(DEFAULTS, **({"rank": i} if "rank" in cols and "rank" not in item else {}), **item, **ids)
                 pk = tuple(r.get(c) for c in PRIMARY[table])
@@ -118,9 +126,9 @@ def save(con, owner, rows):
                 )
 
 
-def get(owner, owner_id):
+def get(owner: str, owner_id: str) -> dict[str, list[Row]]:
     """Every metadata table's rows for one channel or video, as {table: [rows]} (a video's chapters and tracks too); empty lists where none."""
-    out = {}
+    out: dict[str, list[Row]] = {}
     with db.connect() as con:
         for table, (cols, by_video) in TABLES.items():
             if by_video and owner != "video":
@@ -142,7 +150,7 @@ def get(owner, owner_id):
     return out
 
 
-def delete(con, owner, ids):
+def delete(con: db.Connection, owner: str, ids: Iterable[str]) -> None:
     """Forget the metadata of these channels or videos (they left the library)."""
     ids = list(ids)
     if not ids:

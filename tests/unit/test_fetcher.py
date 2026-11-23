@@ -60,7 +60,7 @@ def test_start_refusals(monkeypatch):
     with pytest.raises(fetcher.FetchError, match="Linux or macOS"):
         fetcher.start("aaaaaaaaaaa")
     monkeypatch.setattr(fetcher, "CAN_PASS_FDS", True)
-    monkeypatch.setattr(fetcher, "_running", {f"v{i}": None for i in range(fetcher.MAX_RUNNING)})
+    monkeypatch.setattr(fetcher, "_running", {f"v{i}": fetcher.Job(f"v{i}") for i in range(fetcher.MAX_RUNNING)})
     with pytest.raises(fetcher.FetchError, match="already being fetched"):
         fetcher.start("aaaaaaaaaaa")
 
@@ -992,7 +992,7 @@ def test_a_whole_fetch_that_cannot_start_after_a_kept_start_is_said_in_the_serve
         r = pipe(job, *a)
         job.until = None
         job.wanted = True
-        fetcher._running.update({f"v{i}": None for i in range(fetcher.MAX_RUNNING)})
+        fetcher._running.update({f"v{i}": fetcher.Job(f"v{i}") for i in range(fetcher.MAX_RUNNING)})
         return r  # every slot taken by then
 
     monkeypatch.setattr(fetcher, "pipeline", racing)

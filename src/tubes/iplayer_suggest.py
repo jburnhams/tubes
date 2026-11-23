@@ -22,8 +22,16 @@ import collections
 import datetime
 import math
 import re
+from collections.abc import Collection, Iterable, Mapping, Sequence
 
 from tubes import cache, db, iplayer
+from tubes.db import Row
+from tubes.shape import Json, arr, obj
+
+Vector = dict[str, float]  # feature -> weight
+Found = tuple[
+    float, list[tuple[float, str]], int
+]  # a suggestion's (score, [(likeness, source)], how many sources are close)
 
 LETTERS = [*"abcdefghijklmnopqrstuvwxyz", "0-9"]
 CATALOGUE_HOURS = 20
@@ -147,18 +155,18 @@ TOPIC_CATEGORIES = {  # YouTube's topic names (Wikipedia articles) to iPlayer's 
 }
 
 
-def _ago(now, hours):
+def _ago(now: str, hours: float) -> str:
     return (datetime.datetime.fromisoformat(now) - datetime.timedelta(hours=hours)).isoformat(timespec="seconds")
 
 
-def _row(p, now):
-    syn, im, mb = p.get("synopses") or {}, p.get("images") or {}, p.get("master_brand") or {}
+def _row(p: Json, now: str) -> Row:
+    syn, im, mb = obj(p.get("synopses")), obj(p.get("images")), obj(p.get("master_brand"))
     return dict(
         id=p["id"],
         title=p.get("title") or p["id"],
         synopsis=syn.get("medium") or syn.get("small") or syn.get("large"),
-        categories="|".join(p.get("categories") or []) or None,
-        label=(p.get("labels") or {}).get("category"),
+        categories="|".join(arr(p.get("categories"))) or None,
+        label=obj(p.get("labels")).get("category"),
         network=mb.get("id"),
         kind=p.get("tleo_type"),
         episodes=p.get("count"),
@@ -167,7 +175,7 @@ def _row(p, now):
     )
 
 
-def refresh_catalogue(now=None, force=False):
+def refresh_catalogue(now: str | None = None, force: bool = False) -> Row:
     """Read iPlayer's A to Z into `bbc_programmes` unless it was read in the last CATALOGUE_HOURS (or `force`). Returns `{read, new, dropped}`,
     or `{skipped: when}`. An error part way keeps what was there."""
     now = now or cache.stamp()
@@ -175,7 +183,7 @@ def refresh_catalogue(now=None, force=False):
         last = con.execute("SELECT value FROM meta WHERE key = 'bbc_catalogue'").fetchone()
     if last and not force and last[0] >= _ago(now, CATALOGUE_HOURS):
         return dict(skipped=last[0])
-    found = {}
+    found: dict[str, Row] = {}
     for letter in LETTERS:
         page, more = 0, True
         while more:
@@ -202,19 +210,19 @@ def refresh_catalogue(now=None, force=False):
     return dict(read=len(found), new=len(set(found) - held), dropped=len(gone))
 
 
-def words(text):
+def words(text: str | None) -> list[str]:
     return [w for w in re.findall(r"[a-z][a-z']+", (text or "").lower()) if len(w) > 2 and w not in STOP]
 
 
-def fine(cats):
+def fine(cats: Sequence[str]) -> set[str]:
     """The categories that narrow another one listed (`documentaries-history` under `documentaries`); the rest are top-level (even with a
     hyphen, as `science-and-nature` is)."""
     return {c for c in cats if any(c != o and c.startswith(o + "-") for o in cats)}
 
 
-def features(p):
+def features(p: Row) -> dict[str, float]:
     """A programme's raw features, `{feature: weight}` (before rarity is weighed)."""
-    out = collections.Counter()
+    out: collections.defaultdict[str, float] = collections.defaultdict(float)
     cats = [c for c in (p["categories"] or "").split("|") if c]
     narrow = fine(cats)
     for c in cats:
@@ -226,15 +234,15 @@ def features(p):
     ws = words(f"{p['title']} {p['synopsis'] or ''}")
     for w in ws:
         out["w:" + w] += WEIGHTS["word"] / math.sqrt(len(ws))
-    return out
+    return dict(out)
 
 
-def vectors(programmes):
+def vectors(programmes: Iterable[Row]) -> dict[str, Vector]:
     """`{id: unit vector}` over the catalogue, every feature weighted by how rare it is (TF-IDF)."""
     raw = {p["id"]: features(p) for p in programmes}
     df = collections.Counter(f for v in raw.values() for f in v)
     n = len(raw) or 1
-    out = {}
+    out: dict[str, Vector] = {}
     for pid, v in raw.items():
         w = {f: x * math.log(1 + n / df[f]) for f, x in v.items()}
         norm = math.sqrt(sum(x * x for x in w.values())) or 1.0
@@ -242,13 +250,13 @@ def vectors(programmes):
     return out
 
 
-def cosine(a, b):
+def cosine(a: Vector, b: Vector) -> float:
     if len(a) > len(b):
         a, b = b, a
     return sum(x * b.get(f, 0.0) for f, x in a.items())
 
 
-def sources():
+def sources() -> tuple[dict[str, float], dict[str, float]]:
     """What suggestions are made from: `{programme id: weight}` (followed programmes 1, played ones more for more plays), and the YouTube
     history's topics as `{iPlayer category: weight}`."""
     with db.connect() as con:
@@ -265,11 +273,11 @@ def sources():
             "SELECT topics, score FROM suggestions WHERE platform = 'youtube' AND watches > ? AND topics IS NOT NULL",
             (0,),
         ).fetchall()
-    weight = collections.Counter(dict.fromkeys(followed, 1.0))
+    weight: collections.defaultdict[str, float] = collections.defaultdict(float, dict.fromkeys(followed, 1.0))
     for cid, n in plays:
         if not iplayer.category_id(cid):
             weight[cid] = min(2.0, weight[cid] + 0.5 + 0.25 * math.log2(n))
-    bridge = collections.Counter()
+    bridge: collections.defaultdict[str, float] = collections.defaultdict(float)
     for raw, score in topics:
         for t in raw.split("|"):
             for c in TOPIC_CATEGORIES.get(t, ()):
@@ -277,11 +285,11 @@ def sources():
     return dict(weight), dict(bridge)
 
 
-def kids(p):
+def kids(p: Row) -> bool:
     return any(c.startswith(KIDS) for c in (p["categories"] or "").split("|"))
 
 
-def score(now=None):
+def score(now: str | None = None) -> Row:
     """Score the catalogue against the sources into suggestions (see the module's notes). No network. Returns `{sources, suggested, added}`."""
     now = now or cache.stamp()
     with db.connect() as con:
@@ -306,7 +314,7 @@ def score(now=None):
         b = {"c:" + c: x / total for c, x in bridge.items()}
         norm = math.sqrt(sum(x * x for x in b.values())) or 1.0
         srcs["youtube"] = (BRIDGE, {f: x / norm for f, x in b.items()})
-    found = {}
+    found: dict[str, Found] = {}
     for p in programmes:
         if p["id"] in followed or p["id"] in weight or p["id"] in dismissed or p["kind"] == "episode" or not srcs:
             continue
@@ -368,29 +376,30 @@ def score(now=None):
     return dict(sources=len(srcs), suggested=len(best), added=sum(1 for pid in best if pid not in held))
 
 
-def spread(found, limit):
+def spread(found: Mapping[str, Found], limit: int) -> list[tuple[str, Found]]:
     """The best `limit` of `found` ({id: (score, [(likeness, source)], close)}), taken in turn from each source's own best (by the source it
     is most like), so one dense corner of the catalogue (a dozen nature series like one followed) does not fill every place."""
-    lanes = collections.defaultdict(list)
+    lanes: collections.defaultdict[str, list[tuple[str, Found]]] = collections.defaultdict(list)
     for pid, v in sorted(found.items(), key=lambda kv: (-kv[1][0], kv[0])):
         lanes[v[1][0][1]].append((pid, v))
     order = sorted(lanes, key=lambda src: (-lanes[src][0][1][0], src))  # the lane with the best suggestion first
-    out = []
+    out: list[tuple[str, Found]] = []
     for i in range(max((len(x) for x in lanes.values()), default=0)):
         out += [lanes[src][i] for src in order if i < len(lanes[src])]
     return out[:limit]
 
 
-def run(now=None, force=False):
+def run(now: str | None = None, force: bool = False) -> Row:
     """Refresh the catalogue if it is due (or `force`), then score: what `tubes related` does for iPlayer after YouTube. Returns both results."""
     return dict(catalogue=refresh_catalogue(now, force), **score(now))
 
 
-def pointers(channel_ids, top=TOP_SOURCES):
+def pointers(channel_ids: Collection[str], top: int = TOP_SOURCES) -> dict[str, list[str]]:
     """For each suggested programme, the titles of what it is most like, the closest first: `{channel_id: [title]}`."""
     if not channel_ids:
         return {}
-    out, ids = collections.defaultdict(list), list(channel_ids)
+    out: collections.defaultdict[str, list[str]] = collections.defaultdict(list)
+    ids = list(channel_ids)
     with db.connect() as con:
         rows = con.execute(
             f"""SELECT x.channel_id, x.source_id, COALESCE(c.title, b.title, x.source_id) FROM bbc_similar x LEFT JOIN channels c ON c.id = x.source_id

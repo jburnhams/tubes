@@ -24,8 +24,12 @@ whatever the filters say: it cannot be played here. They only narrow the lists; 
 
 import datetime
 import json
+from collections.abc import Mapping
+from typing import Any
 
 from tubes import db, metadata, youtube
+from tubes.db import Row
+from tubes.shape import obj
 
 VIDEO_COLUMNS = """v.id, v.platform, v.channel_id, c.title AS channel, v.title, v.published, v.duration, v.thumbnail, v.views,
                    k.state AS cache_state, k.bytes AS cache_bytes, v.gone, v.live, v.expires, v.series, v.episode,
@@ -55,20 +59,21 @@ CHOICES = dict(streams=STREAMS, unknown_language=("show", "hide"), captions=("an
 LANGUAGE = "COALESCE(LOWER(COALESCE(v.language, c.language)), '')"  # a video's spoken language, else its channel's, '' when neither says (never NULL, so NOT works; needs the channels joined as c)
 
 
-def filters():
+def filters() -> Row:
     """Which videos the watching side shows, as Admin set them (FILTERS, None: no limit)."""
     with db.connect() as con:
         row = con.execute("SELECT value FROM meta WHERE key = 'shown'").fetchone()
     try:
-        saved = json.loads(row[0]) if row and row[0] else {}
+        saved = obj(json.loads(row[0])) if row and row[0] else {}
     except ValueError:
         saved = {}
-    return {k: saved.get(k, v) for k, v in FILTERS.items()} if isinstance(saved, dict) else dict(FILTERS)
+    return {k: saved.get(k, v) for k, v in FILTERS.items()}
 
 
-def _chosen(f):
+def _chosen(f: Mapping[str, Any]) -> tuple[str, list[Any]]:
     """The SQL (and its arguments) for what `f` leaves in, never NULL so NOT works. Needs the channels joined as c."""
-    parts, args = [], []
+    parts: list[str] = []
+    args: list[Any] = []
     if f["streams"] == "all":
         parts.append("v.live IS NULL")
     if f["min_seconds"] is not None:
@@ -83,7 +88,7 @@ def _chosen(f):
         parts.append("(v.regions_blocked IS NULL OR (',' || v.regions_blocked || ',') NOT LIKE ?)")
         args.append(f"%,{f['region']},%")
     if f.get("languages"):
-        each = []
+        each: list[str] = []
         for code in f["languages"]:
             each.append(f"{LANGUAGE} = ? OR {LANGUAGE} LIKE ?")
             args += [code, code + "-%"]
@@ -96,7 +101,7 @@ def _chosen(f):
     return ("(" + " AND ".join(parts) + ")" if parts else "(1 = 1)"), args
 
 
-def languages(now=None):
+def languages(now: str | None = None) -> list[Row]:
     """The spoken languages of the videos the library offers (before Admin's filters), as base codes with how many videos each: `[{code,
     videos}]`, most first, with `code` None for those whose language is not known. What Settings offers to choose from."""
     with db.connect() as con:
@@ -105,14 +110,14 @@ def languages(now=None):
                                WHERE {AVAILABLE} AND {NOT_STREAMING} GROUP BY {LANGUAGE}""",
             [_now(now)],
         ).fetchall()
-    counts = {}
+    counts: dict[str | None, int] = {}
     for code, n in rows:
         base = code.split("-")[0] or None
         counts[base] = counts.get(base, 0) + n
     return [dict(code=c, videos=n) for c, n in sorted(counts.items(), key=lambda x: (-x[1], x[0] or ""))]
 
 
-def shown(now=None, f=None):
+def shown(now: str | None = None, f: Mapping[str, Any] | None = None) -> tuple[str, list[Any]]:
     """What the lists show, as SQL and its arguments (needs the copies joined as k and the channels as c): still offered, not a stream live now or scheduled, and
     let through by Admin's filters. Never NULL, so NOT works."""
     chosen, args = _chosen(f or filters())
@@ -123,11 +128,11 @@ CHANNEL_COLUMNS = """c.id, c.platform, c.title, c.handle, c.thumbnail, c.synced,
                      c.added, c.sync_token IS NOT NULL AS resumable, c.kind, c.tagline, c.network, c.content_rating, c.min_age, c.kids, c.colours"""
 
 
-def _now(now=None):
+def _now(now: str | None = None) -> str:
     return now or datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")
 
 
-def status(now=None):
+def status(now: str | None = None) -> Row:
     """`{synced, channels, videos, hidden, live, filtered, configured}`: when every followed channel was last synced (None: never), what the
     library holds (videos that can be watched; those hidden because YouTube no longer has them or iPlayer no longer offers them; streams live
     now or scheduled, hidden until they end; and those Admin's filters leave out), and whether the YouTube key is in the environment
@@ -142,7 +147,7 @@ def status(now=None):
                                         COALESCE(SUM(CASE WHEN {AVAILABLE} AND {NOT_STREAMING} AND NOT {chosen} THEN 1 ELSE 0 END), 0)
                                  FROM videos v LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = v.id""",
             [*args, _now(now), *chosen_args],
-        ).fetchone()
+        ).one()
     channel_count, total, videos_, live, filtered = counts
     return dict(
         synced=synced[0] if synced else None,
@@ -155,7 +160,7 @@ def status(now=None):
     )
 
 
-def channels(now=None):
+def channels(now: str | None = None) -> list[Row]:
     """Every channel with how many videos it has here to watch, how many are hidden (gone, streams not over yet, expired from iPlayer, or
     left out by Admin's filters) and its newest one's date, by title."""
     ok, args = shown(now)
@@ -178,7 +183,7 @@ def channels(now=None):
     return rows
 
 
-def api_row(r):
+def api_row(r: Row) -> Row:
     """A row as the API gives it: true and false (not 1 and 0) on SQLite too, and `colours` read from its JSON."""
     for k in ("kids", "hdr", "captions"):
         if r.get(k) is not None:
@@ -191,7 +196,7 @@ def api_row(r):
     return r
 
 
-def channel(channel_id):
+def channel(channel_id: str) -> Row | None:
     """One channel as `channels` lists it, with its description and every metadata table (`meta`, metadata.get), or None."""
     c = next((c for c in channels() if c["id"] == channel_id), None)
     if c is None:
@@ -203,12 +208,18 @@ def channel(channel_id):
     return dict(c, meta=metadata.get("channel", channel_id))
 
 
-def cursor(v):
+def cursor(v: Mapping[str, Any]) -> str:
     """The cursor that asks for the videos after this one."""
     return f"{v['published']}|{v['id']}"
 
 
-def videos(channel_id=None, search=None, after=None, limit=24, now=None):
+def videos(
+    channel_id: str | None = None,
+    search: str | None = None,
+    after: str | None = None,
+    limit: int = 24,
+    now: str | None = None,
+) -> Row:
     """One page of videos, newest first: `{videos, has_more}`. `search` matches words in the title, in any order; `after` is a cursor."""
     ok, args = shown(now)
     where = [ok]
@@ -229,7 +240,7 @@ def videos(channel_id=None, search=None, after=None, limit=24, now=None):
     return dict(videos=rows[:limit], has_more=len(rows) > limit)
 
 
-def shuffle(count=24, channel_id=None, now=None):
+def shuffle(count: int = 24, channel_id: str | None = None, now: str | None = None) -> list[Row]:
     """`count` videos picked at random (from one channel, if given), for a page that offers something different on every visit."""
     ok, args = shown(now)
     where, args = (f"WHERE {ok} AND v.channel_id = ?", [*args, channel_id]) if channel_id else (f"WHERE {ok}", args)
@@ -245,7 +256,7 @@ def shuffle(count=24, channel_id=None, now=None):
         ]
 
 
-def video(video_id, meta=False):
+def video(video_id: str, meta: bool = False) -> Row | None:
     """One video with its channel's title and its copy's state, or None when the library has no such video; with `meta`, also its
     description and the rest of its page (DETAIL_COLUMNS) and every metadata table (`meta`, metadata.get)."""
     with db.connect() as con:

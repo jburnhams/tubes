@@ -22,6 +22,8 @@ import urllib.parse
 from strata_python.http import Http
 
 from tubes import USER_AGENT, cache, db, iplayer, settings
+from tubes.db import Row
+from tubes.shape import arr, obj, objs
 
 API = "https://sponsor.ajay.app"
 TIMEOUT = 15
@@ -58,14 +60,14 @@ class SegmentError(RuntimeError):
     """The source of a video's segments could not be asked; the message says why, in a sentence."""
 
 
-def categories():
+def categories() -> list[Row]:
     """Every category, in SponsorBlock's order, with its label, a sentence and the setting for it: `[{id, label, detail, mode}]`."""
     return [
         dict(id=c, label=LABELS[c], detail=DETAILS[c], mode=settings.get(f"skip_{c}")) for c in settings.SKIP_DEFAULTS
     ]
 
 
-def sponsorblock(video_id):
+def sponsorblock(video_id: str) -> list[Row]:
     """SponsorBlock's segments for a YouTube video: `[{category, start, end, action, votes}]` (see the module's notes)."""
     prefix = hashlib.sha256(video_id.encode()).hexdigest()[:4]
     cats = json.dumps(list(settings.SKIP_DEFAULTS), separators=(",", ":"))
@@ -81,14 +83,10 @@ def sponsorblock(video_id):
         data = reply.json()
     except ValueError:
         raise SegmentError("SponsorBlock did not answer with JSON.") from None
-    mine = (
-        next((v for v in data if isinstance(v, dict) and v.get("videoID") == video_id), None)
-        if isinstance(data, list)
-        else None
-    )
-    out = []
-    for s in (mine or {}).get("segments") or []:
-        seg, cat, act = s.get("segment") or [], s.get("category"), s.get("actionType") or "skip"
+    mine = next((v for v in objs(data) if v.get("videoID") == video_id), obj(None))
+    out: list[Row] = []
+    for s in objs(mine.get("segments")):
+        seg, cat, act = arr(s.get("segment")), s.get("category"), s.get("actionType") or "skip"
         if cat in settings.SKIP_DEFAULTS and act in ACTIONS and len(seg) == 2 and seg[1] > seg[0]:
             out.append(
                 dict(
@@ -105,7 +103,7 @@ def sponsorblock(video_id):
 SUBTYPES = dict(intro="intro", recap="preview", preview="preview")
 
 
-def iplayer_points(episode_pid):
+def iplayer_points(episode_pid: str) -> list[Row]:
     """iPlayer's own skip points for an episode: `[{category, start, end, action, votes}]` (see the module's notes)."""
     try:
         ep = iplayer.episode(episode_pid)
@@ -114,9 +112,9 @@ def iplayer_points(episode_pid):
     v = iplayer.version(ep) if ep else None
     if not v:
         return []
-    out = []
-    for i in v.get("interactions") or []:
-        cat, pts = SUBTYPES.get(i.get("subtype")), i.get("interaction_points") or {}
+    out: list[Row] = []
+    for i in objs(v.get("interactions")):
+        cat, pts = SUBTYPES.get(i.get("subtype") or ""), obj(i.get("interaction_points"))
         start, end = pts.get("show_from"), pts.get("skip_to")
         if (
             i.get("type") == "skip"
@@ -126,18 +124,18 @@ def iplayer_points(episode_pid):
             and end > start
         ):
             out.append(dict(category=cat, start=float(start), end=float(end), action="skip", votes=None))
-    length = iplayer.seconds((v.get("duration") or {}).get("value"))
+    length = iplayer.seconds(obj(v.get("duration")).get("value"))
     credits = v.get("credits_start")
     if isinstance(credits, (int, float)) and length and length > credits:
         out.append(dict(category="outro", start=float(credits), end=float(length), action="skip", votes=None))
     return out
 
 
-def _ago(now, **kw):
+def _ago(now: str, **kw: float) -> str:
     return (datetime.datetime.fromisoformat(now) - datetime.timedelta(**kw)).isoformat(timespec="seconds")
 
 
-def for_video(video_id, now=None):
+def for_video(video_id: str, now: str | None = None) -> Row:
     """A video's segments and what the player does in each: `{segments: [{category, start, end, action}], categories: [...], error}` (`error`
     when the source could not be asked just now). Asks the source when its list is due (see the module's notes)."""
     now = now or cache.stamp()

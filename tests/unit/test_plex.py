@@ -453,3 +453,7 @@ def test_server_endpoints(fake_plex, monkeypatch):
     img = c.get("/api/plex/image?path=/library/metadata/101/thumb/1&w=200")
     assert img.status_code == 200 and img.headers["content-type"] == "image/jpeg"
     assert c.get("/api/plex/image?path=/etc/passwd").status_code == 502
+
+
+def test_an_id_that_is_not_plex_s_is_no_item():
+    assert plex.item(plex.rating_key("aaaaaaaaaaa")) is None  # a YouTube id: Plex is not asked
