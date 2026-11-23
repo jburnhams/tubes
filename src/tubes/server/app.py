@@ -5,11 +5,11 @@
 The library (channels and videos) is managed here, from YouTube and BBC iPlayer (catalogue.py writes it, library.py reads it).
 
 API (JSON):
-  GET  /api/health                         {ok, version}
+  GET  /api/health                         {ok, version, commit} (strata-python's web.base_app)
   GET  /api/system                         versions (app, Python, yt-dlp, ffmpeg), folders, disk, cache use, the library copy's state, prefetching (prefetch.py)
   GET  /api/skipping                      [{id, label, detail, mode}]: every kind of segment, with what the player does in it (settings skip_<id>)
   GET  /api/videos/{id}/segments          {segments: [{category, start, end, action}], categories: [{id, label, detail, mode}], error}: what can be skipped
-  GET  /api/settings, PUT /api/settings    every setting (settings.py); PUT takes any subset, a null resets one
+  GET  /api/settings, PUT /api/settings    every setting (settings.py, through web.base_app); PUT takes any subset, a null resets one
   GET  /api/library                       {synced, channels, videos, hidden, live, filtered, configured}: when every followed channel was last synced, and whether the YouTube key is set
   POST /api/library {input}                add a channel (followed; its sync starts at once, or after the running sync's channels) or one video from a link, id or @handle; an iPlayer programme or episode link works the same way: {kind, channel|video, sync}
   GET  /api/library/shown, PUT            which videos the watching side shows (library.filters): {min_seconds, max_seconds, streams, region, languages, unknown_language, captions, filtered, language_counts}; PUT takes any subset of the filters, null for no limit; filtered is how many they leave out, language_counts the languages there are to choose from (library.languages)
@@ -60,18 +60,23 @@ API (JSON):
   A play's body may say what the browser decodes (`decodes`: h264, hevc, av1, vp9, hdr): a Plex film or episode is then fetched as its
   file has it when the browser plays that, else converted to H.264 (fetcher.plex_copy); the answer's `copy` is the id its files are under.
 Every other path serves the web app (`src/tubes/server/static/index.html` when built with `cd web && npm run build`, else the plain stand-in
-`landing.html`), so a reload or a shared link opens that screen: the app routes in the browser (React Router)."""
+`landing.html`), so a reload or a shared link opens that screen: the app routes in the browser (React Router; strata-python's web.add_web).
+Errors are raised, not caught in routes: web.add_error_handlers answers them as {detail, payload} with the status in ERRORS."""
 import os, platform, shutil
 
-from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, HTMLResponse, Response
-from fastapi.staticfiles import StaticFiles
+from fastapi import HTTPException, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
+from strata_python import web
 
 from . import answers as A
 from .answers import answer
 
 from tubes import __version__, cache, catalogue, db, fetcher, history, iplayer, library, paste, plex, prefetch, quota, segments, settings, viewing, youtube, ytdlp
+
+# The app's own exceptions as HTTP statuses, on top of strata-python's (ValueError 400, KeyError 404, ...). A KeyError here is a request
+# naming a filter or setting there is none of, so 400 as before. YouTube, Plex and a history import choose by what went wrong (below).
+ERRORS = {fetcher.FetchError: 400, KeyError: 400, catalogue.NotFound: 404, history.NotFound: 404, viewing.NotFound: 404, catalogue.Job.Busy: 409, iplayer.IplayerError: 502}
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 LANDING = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'landing.html')
@@ -147,39 +152,28 @@ def system_status():
                 disk=dict(total=du.total, used=du.used, free=du.free), library=library.status())
 
 
+def _status_by_cause(app):
+    """The errors whose status depends on more than their class: a service not set up here (503) is not one that failed (502)."""
+    def answer(status, e): return JSONResponse(dict(detail=str(e), payload=None), status_code=status)
+    app.add_exception_handler(history.ImportProblem, lambda r, e: answer(502 if 'could not be read' in str(e) else 400, e))
+    app.add_exception_handler(youtube.YoutubeError, lambda r, e: answer(503 if not youtube.configured() else 502, e))
+    app.add_exception_handler(plex.PlexError, lambda r, e: answer(503 if not plex.configured() else 502, e))
+
+
 def create_app(recover=True):
-    """The app. `recover=False` builds it without touching the database or the cache (what `tubes openapi` needs to write the schema)."""
-    app = FastAPI(title='tubes', docs_url='/api/docs', openapi_url='/api/openapi.json')
+    """The app. `recover=False` builds it without touching the database or the cache (what `tubes openapi` needs to write the schema).
+    strata-python's base_app gives /api/health (with the commit the server runs), /api/settings (typed from settings.SETTINGS) and the docs."""
+    app = web.base_app('tubes', __version__, settings.SETTINGS, commit=web.source_commit(__file__))
+    web.add_error_handlers(app, ERRORS); _status_by_cause(app)
     app.router.route_class = A.CheckedRoute                       # every answer checked against its declared model while the tests run (answers.py)
     if recover: cache.recover(cache.stamp())
     job = app.state.sync = catalogue.Job()
     ahead = app.state.prefetch = prefetch.Prefetcher()             # its thread is started by main(), so tests and other hosts of the app start none
 
-    def guard(fn, *a, **kw):
-        try: return fn(*a, **kw)
-        except history.ImportProblem as e: raise HTTPException(502 if 'could not be read' in str(e) else 400, str(e))
-        except (settings.SettingError, fetcher.FetchError, ValueError) as e: raise HTTPException(400, str(e))
-        except (catalogue.NotFound, history.NotFound, viewing.NotFound) as e: raise HTTPException(404, str(e))
-        except catalogue.Job.Busy as e: raise HTTPException(409, str(e))
-        except youtube.YoutubeError as e: raise HTTPException(503 if not youtube.configured() else 502, str(e))
-        except iplayer.IplayerError as e: raise HTTPException(502, str(e))
-        except plex.PlexError as e: raise HTTPException(503 if not plex.configured() else 502, str(e))
-        except KeyError as e: raise HTTPException(400, str(e.args[0]))
-
     def stream(video_id): return dict(cache.status(video_id), **cache.plays(video_id))
-
-    @app.get('/api/health', responses=answer(A.Health))
-    def get_health(): return dict(ok=True, version=__version__)
 
     @app.get('/api/system', responses=answer(A.SystemStatus))
     def get_system(): return dict(system_status(), prefetch=ahead.state())
-
-    @app.get('/api/settings')
-    def get_settings(): return settings.all_settings()
-
-    @app.put('/api/settings')
-    def put_settings(changes: dict):
-        guard(settings.save, changes); return settings.all_settings()
 
     def video_or_404(video_id, meta=False):
         v = library.video(video_id, meta=meta)
@@ -191,7 +185,7 @@ def create_app(recover=True):
 
     @app.post('/api/library', responses=answer(A.Added))
     def post_library(b: AddIn):
-        r = guard(catalogue.add, b.input)
+        r = catalogue.add(b.input)
         if r['kind'] == 'channel':                                   # a new channel's videos arrive at once, as when storage's Sync was pressed after adding it
             r['sync'] = job.follow_up([r['channel']['id']])          # after the running sync's own channels, if one runs
         return r
@@ -200,7 +194,7 @@ def create_app(recover=True):
     def get_shown(): return dict(library.filters(), filtered=library.status()['filtered'], language_counts=library.languages())
 
     @app.put('/api/library/shown', responses=answer(A.ShownFilters))
-    def put_shown(changes: dict): guard(catalogue.save_filters, changes); return get_shown()
+    def put_shown(changes: dict): catalogue.save_filters(changes); return get_shown()
 
     @app.get('/api/library/sync', responses=answer(A.SyncJob))
     def get_sync(): return job.state()
@@ -208,17 +202,17 @@ def create_app(recover=True):
     @app.post('/api/library/sync', responses=answer(A.SyncJob))
     def post_sync(b: SyncIn | None = None):
         if not youtube.configured() and catalogue.needs_youtube(b.channels if b else None): raise HTTPException(503, 'YouTube cannot be asked without YOUTUBE_API_KEY in the server’s environment.')
-        return guard(job.start, b.channels if b else None)
+        return job.start(b.channels if b else None)
 
     @app.get('/api/quota', responses=answer(A.QuotaUsage))
     def get_quota(): return quota.usage()
 
     @app.delete('/api/channels/{channel_id}', responses=answer(A.Removed))
-    def delete_channel(channel_id: str): return guard(catalogue.remove, channel_id)
+    def delete_channel(channel_id: str): return catalogue.remove(channel_id)
 
     @app.post('/api/channels/{channel_id}/restart', responses=answer(A.Restarted))
     def post_restart(channel_id: str):
-        r = guard(catalogue.restart, channel_id)
+        r = catalogue.restart(channel_id)
         if not youtube.configured() and catalogue.needs_youtube([channel_id]): return dict(r, sync=job.state())
         r['sync'] = job.follow_up([channel_id]); return r
 
@@ -228,7 +222,7 @@ def create_app(recover=True):
     @app.get('/api/channels/{channel_id}/overview', responses=answer(A.ChannelOverview))
     def get_channel_overview(channel_id: str):
         """Everything known of a channel (library, watch history, suggestion), whether or not the library has it."""
-        return guard(history.overview, channel_id)
+        return history.overview(channel_id)
 
     @app.post('/api/channels/{channel_id}/views', responses=answer(A.Visited))
     def post_channel_view(channel_id: str, b: FromIn | None = None):
@@ -266,7 +260,7 @@ def create_app(recover=True):
     def post_check(b: CheckIn):
         """The watching side found these videos missing (a thumbnail or a fetch failed): ask YouTube, and hide the ones it no longer has."""
         if not youtube.configured(): raise HTTPException(503, 'YouTube cannot be asked without YOUTUBE_API_KEY in the server’s environment.')
-        return guard(catalogue.report, b.ids)
+        return catalogue.report(b.ids)
 
     @app.get('/api/videos/{video_id}', responses=answer(A.VideoDetail))
     def get_video(video_id: str):
@@ -278,8 +272,8 @@ def create_app(recover=True):
     def post_play(video_id: str, b: FromIn | None = None):
         v = video_or_404(video_id)
         b = b or FromIn()
-        copy = guard(fetcher.plex_copy, video_id, b.decodes)                      # the video itself, but for a Plex file a browser plays as it is
-        guard(fetcher.start, copy, v['title'], v['channel'])
+        copy = fetcher.plex_copy(video_id, b.decodes)                      # the video itself, but for a Plex file a browser plays as it is
+        fetcher.start(copy, v['title'], v['channel'])
         started = viewing.start(video_id, cache.stamp(), source=b.source, detail=b.detail, rank=b.rank)    # before the status, so its count has this play
         return dict(stream(copy), copy=copy, **started)
 
@@ -287,13 +281,13 @@ def create_app(recover=True):
     def get_plex():
         if not plex.configured(): return dict(configured=False, reachable=False, version=None, sections=[])
         ok, said = plex.reachable()
-        return dict(configured=True, reachable=ok, version=said if ok else None, error=None if ok else said, sections=guard(plex.sections) if ok else [])
+        return dict(configured=True, reachable=ok, version=said if ok else None, error=None if ok else said, sections=plex.sections() if ok else [])
 
     @app.get('/api/plex/sections/{section}/filters', responses=answer(list[A.PlexFilterKind]))
-    def get_plex_filters(section: str): return guard(plex.filters, section)
+    def get_plex_filters(section: str): return plex.filters(section)
 
     @app.get('/api/plex/sections/{section}/filters/{name}', responses=answer(list[A.PlexChoice]))
-    def get_plex_choices(section: str, name: str): return guard(plex.choices, section, name)
+    def get_plex_choices(section: str, name: str): return plex.choices(section, name)
 
     def followed(items):
         ids = [plex.video_id(i['key']) for i in items if i.get('key', '').isdigit()]
@@ -306,16 +300,16 @@ def create_app(recover=True):
     @app.get('/api/plex/browse', responses=answer(A.PlexPage))
     def get_plex_browse(request: Request, section: str, start: int = Query(0, ge=0), size: int = Query(50, ge=1, le=200)):
         params = {k: v for k, v in request.query_params.items() if k not in ('section', 'start', 'size')}
-        r = guard(plex.browse, section, params, start, size)
+        r = plex.browse(section, params, start, size)
         return dict(r, items=followed(r['items']), params=plex.clean(params))
 
     @app.get('/api/plex/search', responses=answer(list[A.PlexItem]))
-    def get_plex_search(q: str = Query(..., min_length=1, max_length=200)): return followed(guard(plex.search, q))
+    def get_plex_search(q: str = Query(..., min_length=1, max_length=200)): return followed(plex.search(q))
 
     @app.post('/api/plex/follow', responses=answer(A.Added))
     def post_plex_follow(b: FollowIn):
-        if b.key: r = guard(catalogue.add_plex, b.key)
-        elif b.section: r = guard(catalogue.add_plex_filter, b.section, b.params or {}, b.title)
+        if b.key: r = catalogue.add_plex(b.key)
+        elif b.section: r = catalogue.add_plex_filter(b.section, b.params or {}, b.title)
         else: raise HTTPException(400, 'Say which show or film (key), or which library and filters (section, params).')
         cid = r['channel']['id'] if r['kind'] == 'channel' else plex.FILMS
         if r['kind'] == 'channel': r['sync'] = job.follow_up([cid])
@@ -323,13 +317,13 @@ def create_app(recover=True):
 
     @app.get('/api/plex/image')
     def get_plex_image(path: str = Query(..., max_length=300), w: int = Query(640, ge=16, le=4000)):
-        f = guard(plex.cached_image, path, w)
+        f = plex.cached_image(path, w)
         return FileResponse(f, media_type='image/jpeg', headers={'Cache-Control': 'public, max-age=604800'})
 
     @app.post('/api/plays/{play_id}', responses=answer(A.Reported))
     def post_progress(play_id: int, b: ProgressIn):
         """How a play is going: the page reports it while it plays, on pause and end, and as it is left (POST, so a closing page can send it)."""
-        return guard(viewing.report, play_id, b.position, b.watched, b.length)
+        return viewing.report(play_id, b.position, b.watched, b.length)
 
     @app.get('/api/plays', responses=answer(A.PlayPage))
     def get_plays(limit: int = Query(viewing.PAGE, ge=1, le=500), after: str | None = None, outcome: str | None = None, source: str | None = None):
@@ -373,7 +367,7 @@ def create_app(recover=True):
     @app.get('/api/cache', responses=answer(A.CacheReport))
     def get_cache():
         now = cache.utcnow()
-        return dict(**cache.usage(now), items=[dict(e, protected=cache.protected(e, now, settings.get('protect_days'))) for e in cache.entries(now)])
+        return dict(**cache.usage(now), items=[dict(e, protected=cache.protected(e, now, settings.get_float('protect_days'))) for e in cache.entries(now)])
 
     @app.put('/api/cache/{video_id}')
     def put_cache(video_id: str, b: PinIn):
@@ -391,14 +385,14 @@ def create_app(recover=True):
 
     @app.get('/api/suggestions', responses=answer(A.SuggestionPage))
     def get_suggestions(group: str | None = None, topic: str | None = None, kids: bool | None = None, q: str | None = None, dismissed: bool = False, limit: int = Query(history.LIST_LIMIT, ge=1, le=1000), order: str = 'watched', pasted: bool = False):
-        return guard(history.suggestions, group, topic, kids, q, dismissed, limit, order, pasted)
+        return history.suggestions(group, topic, kids, q, dismissed, limit, order, pasted)
 
     @app.get('/api/suggestions/summary', responses=answer(A.SuggestionSummary))
     def get_suggestions_summary(): return history.summary()
 
     @app.post('/api/suggestions/refresh', responses=answer(A.RefreshedWithSummary))
     def post_suggestions_refresh():
-        r = guard(history.sync_database)['refresh'] if history.database_configured() else history.refresh()
+        r = history.sync_database()['refresh'] if history.database_configured() else history.refresh()
         return dict(r, summary=history.summary())
 
     @app.get('/api/history', responses=answer(A.HistoryStats))
@@ -406,62 +400,30 @@ def create_app(recover=True):
         return dict(history.stats(start, end, source, top), sources=history.sources(), configured=youtube.configured())
 
     @app.post('/api/suggestions/paste', responses=answer(A.Pasted))
-    def post_suggestions_paste(b: PasteIn): return guard(paste.paste, b.text)
+    def post_suggestions_paste(b: PasteIn): return paste.paste(b.text)
 
     @app.post('/api/suggestions/import', responses=answer(A.Imported))
-    def post_suggestions_import(b: ImportIn): return guard(history.import_text, b.text, b.source)
+    def post_suggestions_import(b: ImportIn): return history.import_text(b.text, b.source)
 
     @app.delete('/api/suggestions/sources/{source}', responses=answer(A.SourceRemoved))
-    def delete_source(source: str): return guard(history.remove_source, source)
+    def delete_source(source: str): return history.remove_source(source)
 
     @app.put('/api/suggestions/groups/{group_id}', responses=answer(A.OverviewGroup))
-    def put_group(group_id: int, b: NameIn): return guard(history.rename_group, group_id, b.name)
+    def put_group(group_id: int, b: NameIn): return history.rename_group(group_id, b.name)
 
     @app.put('/api/suggestions/{channel_id}', responses=answer(A.Suggestion))
-    def put_suggestion(channel_id: str, b: DismissIn): return guard(history.dismiss, channel_id, b.dismissed)
+    def put_suggestion(channel_id: str, b: DismissIn): return history.dismiss(channel_id, b.dismissed)
 
     @app.post('/api/suggestions/{channel_id}/videos', responses=answer(A.AddedWatched))
     def post_suggestion_videos(channel_id: str):
         if not youtube.configured(): raise HTTPException(503, 'YouTube cannot be asked without YOUTUBE_API_KEY in the server’s environment.')
-        guard(history.suggestion, channel_id)
-        return guard(catalogue.add_videos, history.watched_videos(channel_id))
+        history.suggestion(channel_id)
+        return catalogue.add_videos(history.watched_videos(channel_id))
 
-    if os.path.isdir(os.path.join(STATIC, 'assets')): app.mount('/assets', StaticFiles(directory=os.path.join(STATIC, 'assets')), name='assets')
-
-    @app.get('/{path:path}', response_class=HTMLResponse, include_in_schema=False)
-    def page(path: str):
-        if path.startswith('api/'): raise HTTPException(404, 'no such endpoint')
-        top = static_file(path)
-        if top: return FileResponse(top)     # favicon.svg and the like, built from web/public
-        built = os.path.join(STATIC, 'index.html')          # the React app when it has been built (cd web && npm run build), else the plain stand-in page
-        with open(built if os.path.exists(built) else LANDING, encoding='utf8') as f: html = f.read()
-        return with_base(html, path)
-
+    web.add_web(app, STATIC, LANDING)                                      # last: the catch-all page
     return app
 
 
-def static_file(path: str) -> str | None:
-    """The built file at the top of the static folder that `path` names, or None. Only a plain file name is served: a path with either separator,
-    a drive or `..` could reach outside the folder (on Windows `..\\app.py` has no `/`, and `os.path.join` drops STATIC for `C:\\...`), so the
-    resolved file must also sit directly in STATIC."""
-    if not path or '/' in path or '\\' in path or ':' in path or path in ('.', '..'): return None
-    root = os.path.realpath(STATIC)
-    full = os.path.realpath(os.path.join(root, path))
-    return full if os.path.dirname(full) == root and os.path.isfile(full) else None
-
-
-def with_base(html: str, path: str) -> str:
-    """Give the page a relative <base> that points back at where the app is served, so one build works at the server's root and behind a reverse proxy at /<prefix>/.
-
-    The server only sees the path under its own root (`settings`, `a/b`), never the proxy's prefix, but that is enough: the depth says how many `../` lead back up.
-    The web app reads its base from `document.baseURI` (web/src/api.ts BASE), for its API calls and as React Router's basename, and its assets are relative (vite.config.ts base './')."""
-    depth = path.count('/')
-    tag = f'<base href="{"../" * depth or "./"}">'
-    return html.replace('<head>', '<head>' + tag, 1) if '<head>' in html else tag + html
-
-
 def main(argv=None):
-    import argparse, uvicorn
-    a = argparse.ArgumentParser(); a.add_argument('--host', default='127.0.0.1'); a.add_argument('--port', type=int, default=DEFAULT_PORT); a = a.parse_args(argv)
-    print(f'data folder: {settings.data_dir()}\ncache folder: {settings.cache_dir()}\nhttp://{a.host}:{a.port}/'); app = create_app(); app.state.prefetch.start()
-    uvicorn.run(app, host=a.host, port=a.port, log_level='warning')
+    app = create_app(); app.state.prefetch.start()
+    web.serve(app, argv, default_port=DEFAULT_PORT, banner=f'data folder: {settings.data_dir()}\ncache folder: {settings.cache_dir()}')

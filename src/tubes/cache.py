@@ -268,7 +268,7 @@ def score(play_times, now, half_life_days):
 
 def entries(now):
     """Every cached video with its size (a running fetch's folder is measured), plays, last play, title and score, highest score first."""
-    hl = settings.get('half_life_days')
+    hl = settings.get_float('half_life_days')
     with db.connect() as con:
         rows = db.rows(con.execute('SELECT * FROM copies'))
         plays = {}
@@ -317,7 +317,7 @@ def usage(now):
 def evict(now, dry_run=False):
     """Run eviction; returns `{evicted: [{video_id, title, bytes, score}], freed}`."""
     items = entries(now)
-    victims = plan(items, settings.cache_limit_bytes(), now, settings.get('protect_days'))
+    victims = plan(items, settings.cache_limit_bytes(), now, settings.get_float('protect_days'))
     gone = [dict(video_id=e['video_id'], title=e['title'], bytes=e['bytes'], score=e['score']) for e in victims]
     freed = sum(e['bytes'] for e in victims) if dry_run else forget([e['video_id'] for e in victims])
     return dict(evicted=gone, freed=freed, dry_run=dry_run)

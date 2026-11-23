@@ -1,30 +1,46 @@
 """Command line. `doctor` checks the environment; `add`, `remove`, `sync` and `channels` manage the library from YouTube and BBC iPlayer; `history` imports a
 watch history that suggestions are made from; `related` asks YouTube which channels the followed and watched ones point at; `fetch`, `cache`, `evict` the cache; `quota` what the YouTube key has used today; `plays` what was watched here and how much; `set` the settings; `serve` starts the web server.
 A timer on the server runs `tubes sync; tubes related; tubes evict` every few hours (docs/deploy.md)."""
-import argparse, importlib, json, os, sys
+import argparse, json, os, sys
+
+from strata_python import cli as strata_cli
 
 from tubes import __version__, cache, catalogue, fetcher, history, iplayer, iplayer_suggest, library, quota, related, settings, viewing, youtube, ytdlp
 
-CHECKS = (('fastapi', 'fastapi'), ('uvicorn', 'uvicorn'), ('pydantic', 'pydantic'))
+IMPORTS = ('fastapi', 'uvicorn', 'pydantic', 'sqlalchemy', ('networkx (suggestion groups)', 'networkx'))
+HINT = 'pip install -r requirements.txt'
 
 
-def doctor(args):
-    ok = True; print(f'tubes {__version__}, python {sys.version.split()[0]}')
-    for label, mod in CHECKS:
-        try: m = importlib.import_module(mod); print(f'  ok       {label} {getattr(m, "__version__", "")}'.rstrip())
-        except ImportError: ok = False; print(f'  MISSING  {label}: pip install -r requirements.txt')
-    for label, version, fix in (('yt-dlp', ytdlp.version(), 'install yt-dlp, or set ytdlp to its path'), ('ffmpeg', fetcher.ffmpeg_version(), 'install ffmpeg, or set ffmpeg to its path')):
-        if version: print(f'  ok       {label} {version}')
-        else: ok = False; print(f'  MISSING  {label}: {fix}')
-    if not fetcher.CAN_PASS_FDS: ok = False; print('  MISSING  fetching needs Linux or macOS')
-    if youtube.configured(): print('  ok       library: YOUTUBE_API_KEY set' + (' (sent with a Referer)' if os.environ.get('YOUTUBE_API_REFERER') else ''))
-    else: ok = False; print('  MISSING  library: YOUTUBE_API_KEY is not in the environment, so nothing can be added or synced')
+def _tool(version, fix):
+    return lambda: ('ok', version()) if version() else ('missing', fix)
+
+
+def _youtube():
+    if youtube.configured(): return 'ok', 'YOUTUBE_API_KEY set' + (' (sent with a Referer)' if os.environ.get('YOUTUBE_API_REFERER') else '')
+    return 'missing', 'YOUTUBE_API_KEY is not in the environment, so nothing can be added or synced'
+
+
+def _iplayer():
     here, why = iplayer.reachable()                                              # optional: without it only iPlayer episodes cannot be added or played
-    print('  ok       iplayer: answers as in the UK' if here else f'  note     iplayer: {why}')
+    return ('ok', 'answers as in the UK') if here else ('missing', why)
+
+
+def _library():
     lib = library.status()
-    print(f"  library    {lib['channels']} channel(s), {lib['videos']} video(s), synced {lib['synced'] or 'never'}")
-    print(f'  data       {settings.data_dir()}\n  cache      {settings.cache_dir()} (limit {settings.get("cache_limit_gb"):g} GB)')
-    return 0 if ok else 1
+    return 'ok', f"{lib['channels']} channel(s), {lib['videos']} video(s), synced {lib['synced'] or 'never'}"
+
+
+# strata-python's doctor prints every app's rows in the same columns; these are what an import cannot tell.
+CHECKS = (
+    strata_cli.Check('yt-dlp', _tool(lambda: ytdlp.version(), 'install yt-dlp, or set ytdlp to its path')),
+    strata_cli.Check('ffmpeg', _tool(lambda: fetcher.ffmpeg_version(), 'install ffmpeg, or set ffmpeg to its path')),
+    strata_cli.Check('fetching', lambda: ('ok', 'can pass pipes to ffmpeg') if fetcher.CAN_PASS_FDS else ('missing', 'fetching needs Linux or macOS')),
+    strata_cli.Check('youtube', _youtube),
+    strata_cli.Check('iplayer', _iplayer, optional=True),
+    strata_cli.Check('database', _library),
+    strata_cli.Check('data', lambda: ('ok', settings.data_dir())),
+    strata_cli.Check('cache', lambda: ('ok', f"{settings.cache_dir()} (limit {settings.get_float('cache_limit_gb'):g} GB)")),
+)
 
 
 def out(args, data, text):
@@ -171,38 +187,19 @@ def cmd_plays(args):
     return out(args, dict(items=items, summary=s), '\n'.join(lines))
 
 
-def cmd_set(args):
-    if args.key not in settings.KNOWN: sys.exit(f'unknown setting {args.key!r}; known: {", ".join(settings.KNOWN)}')
-    if args.value is not None:
-        try: settings.save({args.key: None if args.value == 'default' else args.value})
-        except settings.SettingError as e: sys.exit(str(e))
-    print(f'{args.key} = {settings.all_settings()[args.key]}'); return 0
-
-
-def schema():
-    """The server's OpenAPI schema as the committed file holds it: sorted keys, two-space indents, a newline at the end, nothing of the machine."""
+def create_schema_app():
     from .server.app import create_app
-    return json.dumps(create_app(recover=False).openapi(), indent=2, sort_keys=True, ensure_ascii=False) + '\n'
+    return create_app(recover=False)                             # the schema only: no database or cache touched
 
 
-def cmd_openapi(args):
-    # The web app's API types are generated from this file (web/openapi.json -> web/src/api.generated.ts, `npm run api-types`).
-    text = schema()
-    if args.output == '-': sys.stdout.write(text)
-    else:
-        with open(args.output, 'w', encoding='utf-8', newline='\n') as f: f.write(text)
-        print(f'Wrote {args.output}.')
-    return 0
-
-
-def cmd_serve(args):
+def serve(host, port):
     from tubes.server import app as server_app
-    server_app.main(['--host', args.host, '--port', str(args.port)]); return 0
+    server_app.main(['--host', host, '--port', str(port)])
 
 
 def main(argv=None):
     p = argparse.ArgumentParser(prog='tubes'); sub = p.add_subparsers(dest='cmd', required=True)
-    sub.add_parser('doctor', help='check the environment').set_defaults(fn=doctor)
+    strata_cli.add_doctor(sub, 'tubes', __version__, IMPORTS, checks=CHECKS, hint=HINT)
     y = sub.add_parser('sync', help="fetch new videos from YouTube for every followed channel (or the ones named)"); y.add_argument('channel', nargs='*'); y.add_argument('--json', action='store_true'); y.set_defaults(fn=cmd_sync)
     k = sub.add_parser('recheck', help='ask YouTube about the videos checked longest ago: hide those it no longer has, and live streams'); k.add_argument('--limit', type=int, default=None, help='how many (default: as many as a sync rechecks)'); k.add_argument('--all', action='store_true', help='every video in the library (a quota unit per 50)'); k.add_argument('--json', action='store_true'); k.set_defaults(fn=cmd_recheck)
     a = sub.add_parser('add', help='add a channel (followed, then synced) or one video: a link, an id or an @handle'); a.add_argument('input'); a.add_argument('--no-sync', action='store_true', help='add a channel without fetching its videos yet'); a.add_argument('--json', action='store_true'); a.set_defaults(fn=cmd_add)
@@ -219,9 +216,9 @@ def main(argv=None):
     e = sub.add_parser('evict', help='trim the cache when it is over 95%% of its limit'); e.add_argument('--dry-run', action='store_true'); e.add_argument('--json', action='store_true'); e.set_defaults(fn=cmd_evict)
     q = sub.add_parser('quota', help="show how much of the YouTube Data API's daily quota has been used today, and on what"); q.add_argument('--json', action='store_true'); q.set_defaults(fn=cmd_quota)
     g = sub.add_parser('plays', help='show the latest plays here, where each was started from and how much was watched'); g.add_argument('--limit', type=int, default=20); g.add_argument('--days', type=int, default=30, help='the summary covers this many days'); g.add_argument('--json', action='store_true'); g.set_defaults(fn=cmd_plays)
-    t = sub.add_parser('set', help='show or change a setting; value "default" resets it'); t.add_argument('key'); t.add_argument('value', nargs='?'); t.set_defaults(fn=cmd_set)
-    o = sub.add_parser('openapi', help="write the server's OpenAPI schema (the web app's API types are generated from it)"); o.add_argument('-o', '--output', default='-', help='a file, or - for standard output (default)'); o.set_defaults(fn=cmd_openapi)
-    v = sub.add_parser('serve', help='start the web server'); v.add_argument('--host', default='127.0.0.1'); v.add_argument('--port', type=int, default=8367); v.set_defaults(fn=cmd_serve)
+    strata_cli.add_set(sub, settings.SETTINGS)
+    strata_cli.add_openapi(sub, create_schema_app)                 # tubes openapi [-o web/openapi.json | -] [--check]
+    strata_cli.add_serve(sub, serve, default_port=8367)
     args = p.parse_args(argv)
     if args.cmd == 'serve': return args.fn(args)                 # the server's requests name their own purposes, or count as `other`
     with quota.purpose(args.cmd): return args.fn(args)          # YouTube calls a command makes count under its name unless its work names its own

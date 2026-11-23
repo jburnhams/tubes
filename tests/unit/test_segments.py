@@ -99,4 +99,4 @@ def test_a_video_s_list_is_cached_and_asked_again_when_due(sponsorblock, fake_ip
 def test_skip_settings():
     assert settings.get('skip_sponsor') == 'auto' and settings.get('skip_filler') == 'off'
     assert settings.save(dict(skip_intro='AUTO'))['skip_intro'] == 'auto'
-    with pytest.raises(settings.SettingError, match='skip_intro must be off, ask or auto'): settings.save(dict(skip_intro='sometimes'))
+    with pytest.raises(ValueError, match='skip_intro: must be one of off, ask, auto'): settings.save(dict(skip_intro='sometimes'))

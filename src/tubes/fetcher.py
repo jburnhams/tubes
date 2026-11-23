@@ -103,7 +103,7 @@ def choose_once(url, signed_in=False, prefer=None, auto_client=False):
     if prefer:
         ids = {f.get('format_id'): f for f in info.get('formats') or []}
         if prefer['video'] in ids and prefer['audio'] in ids: return info, ids[prefer['video']], ids[prefer['audio']], signed_in
-    return (info, *ytdlp.choose_formats(info.get('formats') or [], settings.get('max_height')), signed_in)
+    return (info, *ytdlp.choose_formats(info.get('formats') or [], settings.get_int('max_height')), signed_in)
 
 
 def same(chosen, prefer):
@@ -313,7 +313,7 @@ def _run_iplayer(job, url):
     error = None; kept = 0
     try:
         with db.connect() as con: r = con.execute('SELECT duration FROM videos WHERE id = ?', (job.video_id,)).fetchone()
-        stream_url, label = iplayer_stream(job.video_id, url, settings.get('max_height'))
+        stream_url, label = iplayer_stream(job.video_id, url, settings.get_int('max_height'))
         if job.prefer and (job.prefer['video'], job.prefer['audio']) != (label, label):       # another variant now: start again without the kept start
             note(job.video_id, '[tubes] the kept start\'s stream is not offered now; fetching from scratch')
             cache.begin(job.video_id, cache.stamp()); job.prefer = None
@@ -343,7 +343,7 @@ def _run_plex(job, url):
         c = plex.codecs(m.get('Media')); native = job.video_id.endswith(NATIVE)
         copy = native or c['video'] == 'h264'
         cache.set_formats(job.video_id, f"{c['video'] or '?'} {'copied' if copy else 'converted to H.264'}, {c['audio'] or '?'} {'copied' if c['audio'] == 'aac' else 'converted to AAC'} (Plex {c['container'] or 'file'})")
-        cmd = plex_command(url, c['video'], native, settings.get('max_height'), hdr=bool(r and r[1]))
+        cmd = plex_command(url, c['video'], native, settings.get_int('max_height'), hdr=bool(r and r[1]))
         if not job.cancelled: error = attempts(job, lambda: direct_pipeline(job, url, r[0] if r else None, cmd))
     except plex.PlexError as e: error = str(e)
     except OSError as e: error = f'Could not start the fetch: {e}'

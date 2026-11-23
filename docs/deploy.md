@@ -7,7 +7,7 @@ A Linux or macOS machine with a large disk and a residential connection (fetchin
 ```bash
 git clone https://github.com/jburnhams/tubes && cd tubes
 ./scripts/setup_env.sh                     # .venv, dependencies, web build
-dbtool new-app tubes                       # its own role and schema in the shared Postgres (omarchy_db)
+strata-db new-app tubes                    # its own role and schema in the shared Postgres (strata_python.db)
 ./tubes set cache_dir /srv/tubes/cache     # on the big disk
 ./tubes set cache_limit_gb 1000
 ```
@@ -26,6 +26,8 @@ YOUTUBE_API_KEY=...
 YOUTUBE_API_REFERER=https://<an allowed site>/    # only for a referrer-restricted key
 YOUTUBE_API_QUOTA=10000                           # only if Google granted the key a different daily quota
 ```
+
+The database is opt-in: `strata_python.db` refuses a real Postgres unless the process has `STRATA_DB_LIVE=1`, and needs the shared database's name in `STRATA_DB_DATABASE` (or a full `TUBES_DATABASE_URL`). Put both in the service's environment (a drop-in, or the env file), for `tubes.service` and `tubes-sync.service` alike; without them the server and the CLI refuse to open the database (they fail rather than serve an empty library). A hand-run CLI against the real database needs the same two variables.
 
 Moving over from the storage service needed no import: the tables already held the library copied from it, so the first `./tubes sync` on the new code read each channel back to its first upload (about one quota unit per 50 videos) and added what was missing. Nothing reads storage's D1 any more, so no Cloudflare credentials are needed.
 

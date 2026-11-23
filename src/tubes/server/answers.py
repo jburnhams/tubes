@@ -359,11 +359,6 @@ class SystemStatus(Answer):
     library: LibraryStatus
 
 
-class Health(Answer):
-    ok: bool
-    version: str
-
-
 class QuotaTotals(Answer):
     calls: int
     units: int

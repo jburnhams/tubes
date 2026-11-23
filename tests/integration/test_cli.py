@@ -19,7 +19,7 @@ def library(cli, fake_youtube, videos=2):
 
 def test_doctor_reports_the_environment(cli, fake_ytdlp):
     r = cli('doctor', check=False)
-    assert 'tubes 0.1.0' in r.stdout and 'ok       yt-dlp 2026.10.26' in r.stdout and 'MISSING  library' in r.stdout and 'synced never' in r.stdout
+    assert 'tubes 0.1.0' in r.stdout and 'ok       yt-dlp 2026.10.26' in r.stdout and 'MISSING  youtube' in r.stdout and 'synced never' in r.stdout
 
 
 def test_add_sync_and_remove_a_channel(cli, fake_youtube):
