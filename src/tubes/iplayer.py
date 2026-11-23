@@ -19,12 +19,19 @@ with the id `iplayer-<category>`: its sync takes the category's one-offs (ibl li
 one-off added on its own is kept under the category channel when it is a film (FILED_UNDER), else under its network (`bbc_one`), unfollowed.
 
 `TUBES_IPLAYER_API` and `TUBES_MEDIASELECTOR` point the calls elsewhere (the tests' stand-in)."""
-import datetime, json, os, re, urllib.error, urllib.parse, urllib.request
+import datetime, json, os, re, urllib.parse
+
+from strata_python.http import Http
+
+from tubes import USER_AGENT
 
 IBL = 'https://ibl.api.bbc.co.uk/ibl/v1'
 MEDIASELECTOR = 'https://open.live.bbc.co.uk/mediaselector/6/select/version/2.0'
 MEDIASET = 'iptv-all'
 TIMEOUT = 30
+# ibl, the mediaselector and the playlists are asked a few times a play or a page; a short gap per host, and GETs retried on a 5xx or a
+# dropped connection (Http's rules), keep a moment's trouble at the BBC from failing a play.
+HTTP = Http(USER_AGENT, min_interval=0.1, attempts=3, max_wait=10, timeout=TIMEOUT)
 PAGE = 200
 FHD_BITRATE = 12000000
 THUMB = '1280x720'                    # an episode's or programme's wide image, as big as YouTube's best thumbnails that the cards scale down
@@ -47,14 +54,10 @@ class IplayerError(RuntimeError):
 
 def _get(url, accept='application/json', error_body=False):
     """The body of a GET. `error_body`: an error status's body is returned too (the mediaselector says why it will not play in a JSON body with 403 or 404)."""
-    try:
-        with urllib.request.urlopen(urllib.request.Request(url, headers={'Accept': accept, 'User-Agent': 'tubes'}), timeout=TIMEOUT) as r: return r.read()
-    except urllib.error.HTTPError as e:
-        if error_body:
-            try: return e.read()
-            except OSError: pass
-        raise IplayerError(f'iPlayer refused the request ({e.code}).') from None
-    except (urllib.error.URLError, OSError) as e: raise IplayerError(f'iPlayer could not be reached: {getattr(e, "reason", e)}.') from None
+    reply = HTTP.get(url, headers={'Accept': accept})
+    if reply.status == 0: raise IplayerError(f'iPlayer could not be reached: {reply.error}.')
+    if reply.ok or (error_body and reply.body and not reply.error): return reply.body
+    raise IplayerError(f'iPlayer refused the request ({reply.status}).')
 
 
 def call(path, **params):

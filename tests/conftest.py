@@ -27,6 +27,16 @@ def checked_answers(monkeypatch):
     monkeypatch.setattr(answers, 'CHECK', True)
 
 
+@pytest.fixture(autouse=True)
+def http_without_waits(monkeypatch):
+    """Tubes' web clients (strata-python's Http, one per service) keep their rules (retries, which statuses are errors) but wait for nothing
+    between attempts or requests, and forget what an earlier test taught them (a host cooling down after a 429)."""
+    from tubes import iplayer, plex, related, segments, youtube
+    for module in (iplayer, plex, related, segments, youtube):
+        monkeypatch.setattr(module.HTTP, '_sleep', lambda seconds: None); monkeypatch.setattr(module.HTTP, 'min_interval', 0)
+        module.HTTP._next.clear(); module.HTTP._cool_until.clear()
+
+
 @pytest.fixture
 def fake_ytdlp(monkeypatch, tmp_path):
     """Point `ytdlp` at tests/utils/fake_ytdlp.py (a real process that answers like yt-dlp, without the network, making media with ffmpeg) and

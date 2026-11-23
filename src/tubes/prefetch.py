@@ -16,6 +16,8 @@ episodes are prefetched too (their first segment comes 0.5-2.3 s after Play; the
 live and scheduled streams are not."""
 import collections, datetime, re, sys, threading, time
 
+from strata_python.tasks import Ticker
+
 from tubes import cache, fetcher, library, segments, settings, ytdlp
 
 HOME = 24                    # Home's first page (web: useVideos reads 24 at a time)
@@ -46,7 +48,10 @@ class Prefetcher:
     """The background prefetcher: `want(ids)` when the watching side offers videos, `start()` once when the server starts, `state()` for System."""
 
     def __init__(self, clock=time.time):
-        self.clock, self.lock, self.wake, self.thread, self.stopping = clock, threading.Lock(), threading.Event(), None, False
+        self.clock, self.lock = clock, threading.Lock()
+        # strata-python's Ticker runs `tick` on a daemon thread: the wait after each step is the one `tick` returns (by why nothing was
+        # prefetched), an error waits as long as a pause and never ends the loop (the database went away, say), and `want` pokes it.
+        self.ticker = Ticker(WAITS['paused'], self.tick, name='tubes-prefetch', on_error=self.failed, immediately=True)
         self.asked = collections.OrderedDict()                                   # recently offered video ids, latest last
         self.tried = {}                                                          # video id -> when its prefetch last ran
         self.day, self.count, self.paused_until, self.last = None, 0, 0.0, None
@@ -57,7 +62,7 @@ class Prefetcher:
             for v in video_ids:
                 self.asked.pop(v, None); self.asked[v] = None
             while len(self.asked) > ASKED: self.asked.popitem(last=False)
-        self.wake.set()
+        self.ticker.poke()
 
     def candidates(self):
         """Video ids to consider, in order: the ones offered last first, then Home's first page."""
@@ -95,19 +100,18 @@ class Prefetcher:
         self.last = dict(video_id=vid, wanted=want, seconds=st.get('seconds', 0), state=st['state'], error=error, at=cache.stamp())
         return vid
 
-    def run(self):
-        while not self.stopping:
-            try: why = self.step()
-            except Exception as e:                                                # the database went away, say: try again later, never die
-                print(f'tubes: prefetch failed: {e}', file=sys.stderr, flush=True); why = 'paused'
-            self.wake.wait(WAITS.get(why, GAP_SECONDS)); self.wake.clear()
+    def tick(self):
+        """One step; the seconds to wait before the next."""
+        return WAITS.get(self.step(), GAP_SECONDS)
+
+    def failed(self, e):
+        print(f'tubes: prefetch failed: {e}', file=sys.stderr, flush=True)
 
     def start(self):
-        self.thread = threading.Thread(target=self.run, daemon=True, name='tubes-prefetch'); self.thread.start()
+        self.ticker.start()
 
     def stop(self):
-        self.stopping = True; self.wake.set()
-        if self.thread: self.thread.join(30)
+        self.ticker.stop(30)
 
     def state(self):
         """For the System page: `{enabled, seconds, today, per_day, paused_until, last}`."""

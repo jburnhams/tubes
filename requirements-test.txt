@@ -1,7 +1,7 @@
 # Dependencies for the unit and integration suites. The CI workflows install exactly this.
 # strata-python[dev] brings pytest, httpx, ruff and the pytest plugins (cov, randomly, timeout, xdist) at the versions it tests with,
 # and its own pytest plugin (hermetic home and data folders, no network, the fake_* fixtures, the db_* fixtures with --pg).
-strata-python[db,dev]>=0.2.7,<0.3
+strata-python[db,dev]>=0.2.10,<0.3
 networkx                       # history.py groups channels (Louvain); also in requirements.txt
 # Test tooling the app adds
 hypothesis

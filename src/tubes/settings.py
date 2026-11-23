@@ -25,13 +25,13 @@
 The file handling, the order (environment, then the file, then the default), validation and the API's shape come from strata-python's
 `Settings`; this module only declares them. Every setting can be overridden by `TUBES_<KEY>` in the environment (handy for tests and one-off
 runs), the folders and tools by their older names TUBES_DATA, TUBES_CACHE, TUBES_YTDLP, TUBES_FFMPEG, TUBES_HISTORY_URL and TUBES_HISTORY_TABLE.
-Values are canonical strings (read them with `get_int`/`get_float`); GET /api/settings sends the numbers as JSON numbers (`numbers=True`).
+Values are canonical strings (read them with `get_int`/`get_float`); GET /api/settings sends the numbers as JSON numbers (`numbers=True`),
+and a settings file Tubes wrote before strata-python (numbers as JSON numbers) is read as it is.
 The YouTube key (YOUTUBE_API_KEY) is only ever in the environment."""
 
-import math, os
-from dataclasses import dataclass
+import os
 
-from strata_python.settings import JsonFileStore, Setting, Settings, absolute_path, non_empty, number_between, whole_between
+from strata_python.settings import Setting, Settings, absolute_path, non_empty, number_between, positive, whole_between
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_DATA_DIR = os.path.join(REPO, 'data')
@@ -40,38 +40,17 @@ SKIP_DEFAULTS = dict(sponsor='auto', selfpromo='ask', interaction='ask', intro='
 SKIP_MODES = ('off', 'ask', 'auto')
 
 
-@dataclass(frozen=True)
-class above_zero(number_between):
-    """A number more than 0 (a cache limit, a half-life: 0 would empty the cache or divide by zero). A `number_between` underneath, so the
-    schema still types it as a number; strata-python has no exclusive lower bound, so the smallest float above 0 stands in for it."""
-    lo: float = math.ulp(0.0)
-    hi: float = 1e9
-
-    def __call__(self, value: str) -> str:
-        try: x = float(value.strip())
-        except ValueError: raise ValueError('must be a number') from None
-        if not math.isfinite(x) or x <= 0: raise ValueError('must be more than 0')
-        return super().__call__(value)
-
-
 def trimmed(value: str) -> str: return value.strip()
-
-
-class OldFileStore(JsonFileStore):
-    """The settings file as Tubes wrote it before strata-python: numbers as JSON numbers, which strata-python's Settings reads as not text and
-    so ignores (the default would apply). They are read as their text, so a deployed file keeps its values; the next save writes strings."""
-    def load(self):
-        return {k: repr(v) if isinstance(v, float) else str(v) if isinstance(v, int) and not isinstance(v, bool) else v for k, v in super().load().items()}
 
 
 SETTINGS = Settings('tubes', [
     Setting('data_dir', default=lambda: DEFAULT_DATA_DIR, normalise=absolute_path, env='TUBES_DATA'),
     Setting('cache_dir', default=lambda: os.path.join(SETTINGS.get('data_dir'), 'cache'), normalise=absolute_path, env='TUBES_CACHE'),
-    Setting('cache_limit_gb', default='1000', normalise=above_zero()),
+    Setting('cache_limit_gb', default='1000', normalise=positive()),
     Setting('max_height', default='1080', normalise=whole_between(1, 10000)),
     Setting('player_client', default='visionos', normalise=trimmed),
     Setting('cookies_from_browser', default='', normalise=trimmed),
-    Setting('half_life_days', default='30', normalise=above_zero()),
+    Setting('half_life_days', default='30', normalise=positive()),
     Setting('protect_days', default='7', normalise=number_between(0, 36500)),
     Setting('prefetch_seconds', default='20', normalise=number_between(0, 3600)),
     Setting('prefetch_per_day', default='150', normalise=whole_between(0, 100000)),
@@ -81,7 +60,6 @@ SETTINGS = Settings('tubes', [
     Setting('history_table', default='', normalise=trimmed, env='TUBES_HISTORY_TABLE'),
     *(Setting(f'skip_{c}', default=mode, choices=SKIP_MODES) for c, mode in SKIP_DEFAULTS.items()),
 ], numbers=True)
-SETTINGS.store = OldFileStore(SETTINGS.path)
 
 KNOWN = SETTINGS.keys
 get, get_int, get_float, save, load, home = SETTINGS.get, SETTINGS.get_int, SETTINGS.get_float, SETTINGS.save, SETTINGS.load, SETTINGS.home

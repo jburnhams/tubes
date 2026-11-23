@@ -355,7 +355,7 @@ def test_offered_videos_are_prefetched_and_system_says_how_it_goes(monkeypatch):
     assert list(app.state.prefetch.asked)[-2:] == ['ccccccccccc', 'ddddddddddd']
     before = list(app.state.prefetch.asked); c.get('/api/videos'); c.get('/api/videos', params=dict(q='shelf'))
     assert list(app.state.prefetch.asked) == before                                             # Home is prefetched anyway; a search is not
-    assert app.state.prefetch.thread is None                                                     # only `tubes serve` starts it
+    assert not app.state.prefetch.ticker.running                                                  # only `tubes serve` starts it
     assert c.get('/api/system').json()['prefetch'] == dict(enabled=True, seconds=20.0, today=0, per_day=150, paused_until=None, last=None)
 
 

@@ -3908,8 +3908,7 @@
       "type": "string"
      },
      "cache_limit_gb": {
-      "maximum": 1000000000.0,
-      "minimum": 5e-324,
+      "exclusiveMinimum": 0.0,
       "title": "Cache Limit Gb",
       "type": "number"
      },
@@ -3926,8 +3925,7 @@
       "type": "string"
      },
      "half_life_days": {
-      "maximum": 1000000000.0,
-      "minimum": 5e-324,
+      "exclusiveMinimum": 0.0,
       "title": "Half Life Days",
       "type": "number"
      },

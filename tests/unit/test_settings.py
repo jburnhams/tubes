@@ -59,12 +59,13 @@ def test_unknown_keys_and_bad_files():
 
 
 def test_a_file_written_before_strata_python_keeps_its_numbers():
-    # Tubes used to write numbers as JSON numbers; strata-python's Settings would ignore them as not text, so a deployed file is read as text.
+    # Tubes used to write numbers as JSON numbers; strata-python's Settings reads them (strata-python #52), and a save leaves them as they are.
     os.makedirs(settings.home(), exist_ok=True)
     with open(os.path.join(settings.home(), 'settings.json'), 'w') as f: json.dump(dict(cache_limit_gb=750.0, max_height=720, protect_days=0, prefetch_per_day=10, ytdlp='/opt/yt-dlp'), f)
     assert (settings.get_float('cache_limit_gb'), settings.get_int('max_height'), settings.get_float('protect_days'), settings.get_int('prefetch_per_day')) == (750.0, 720, 0.0, 10)
-    settings.save(dict(player_client='mweb'))                                                   # the next save writes every value as text
-    with open(os.path.join(settings.home(), 'settings.json')) as f: assert json.load(f) == dict(cache_limit_gb='750.0', max_height='720', protect_days='0', prefetch_per_day='10', ytdlp='/opt/yt-dlp', player_client='mweb')
+    settings.save(dict(player_client='mweb', max_height=1080))
+    with open(os.path.join(settings.home(), 'settings.json')) as f: assert json.load(f) == dict(cache_limit_gb=750.0, max_height='1080', protect_days=0, prefetch_per_day=10, ytdlp='/opt/yt-dlp', player_client='mweb')
+    assert (settings.get_float('cache_limit_gb'), settings.get_int('max_height')) == (750.0, 1080)
 
 
 def test_the_api_shape_types_numbers_and_choices():

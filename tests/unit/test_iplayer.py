@@ -122,7 +122,7 @@ def test_an_error_body_that_cannot_be_read_is_a_refusal(monkeypatch):
     import urllib.error
 
     class Broken(urllib.error.HTTPError):
-        def read(self): raise OSError('reset')
+        def read(self, *a): raise OSError("reset")
     def refuse(req, timeout): raise Broken('http://x', 403, 'Forbidden', {}, None)
     monkeypatch.setattr(urllib.request, 'urlopen', refuse)
     with pytest.raises(iplayer.IplayerError, match=r'refused the request \(403\)'): iplayer._get('http://x', error_body=True)

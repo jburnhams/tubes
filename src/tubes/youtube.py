@@ -9,12 +9,17 @@ details of up to 50 videos are one more. Every call that reaches Google is count
 Google gives no way to ask how much of the quota is left.
 
 `parse` reads what a person pastes (a channel or video link, an id, a handle) so one field can add either."""
-import json, os, re, urllib.error, urllib.parse, urllib.request
+import os, re, urllib.parse
 
-from tubes import quota
+from strata_python.http import Http
+
+from tubes import USER_AGENT, quota
 
 API = 'https://www.googleapis.com/youtube/v3'
 TIMEOUT = 30
+# One request at a time is the API's only pace rule: no gap is needed, and no retry here, since each attempt costs quota and a sync tries a
+# failed channel again itself (catalogue.sync). A 429 is not a reason to leave Google alone for minutes (no cool-down): quota is a 403.
+HTTP = Http(USER_AGENT, min_interval=0, attempts=1, cool_down=0, timeout=TIMEOUT)
 VIDEO_PARTS = 'snippet,contentDetails,statistics,liveStreamingDetails,status,topicDetails'     # parts cost no quota of their own: still one unit per 50
 CHANNEL_PARTS = 'snippet,statistics,contentDetails,brandingSettings,status,topicDetails'
 LOOKUP_PARTS = 'snippet,statistics,status,topicDetails'                         # what a suggestion shows of a channel (history.py)
@@ -45,19 +50,18 @@ def call(endpoint, **params):
     url = f"{os.environ.get('TUBES_YOUTUBE_API', API)}/{endpoint}?{urllib.parse.urlencode(dict(params, key=key))}"
     headers = {'Accept': 'application/json'}
     if os.environ.get('YOUTUBE_API_REFERER'): headers['Referer'] = os.environ['YOUTUBE_API_REFERER']
-    try:
-        with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=TIMEOUT) as r: body = r.read()
-        quota.record(endpoint)
-        return json.loads(body)
-    except urllib.error.HTTPError as e:
-        try: err = json.loads(e.read()).get('error') or {}
-        except ValueError: err = {}
+    reply = HTTP.get(url, headers=headers)
+    if reply.status == 0: raise YoutubeError(f'YouTube could not be reached: {reply.error}.')
+    if not reply.ok:
+        try: err = reply.json().get('error') or {}
+        except (ValueError, AttributeError): err = {}
         reason = next((x.get('reason') for x in err.get('errors') or [] if x.get('reason')), None)
         quota.record(endpoint, failed=True, refused=reason in ('quotaExceeded', 'dailyLimitExceeded'))        # Google charges an answered error too
         why = err.get('message') or reason
         if reason == 'quotaExceeded': why = 'the key has used its quota for today (it resets at midnight Pacific time)'
-        raise YoutubeError(f'YouTube refused the request ({e.code}{": " + why if why else ""}).', e.code) from None
-    except (urllib.error.URLError, OSError) as e: raise YoutubeError(f'YouTube could not be reached: {getattr(e, "reason", e)}.') from None
+        raise YoutubeError(f'YouTube refused the request ({reply.status}{": " + why if why else ""}).', reply.status)
+    quota.record(endpoint)
+    try: return reply.json()
     except ValueError: raise YoutubeError('YouTube did not answer with JSON.') from None
 
 

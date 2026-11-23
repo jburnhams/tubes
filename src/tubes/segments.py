@@ -12,12 +12,16 @@ player does in each kind (`skip_<category>` settings: off, ask or auto).
 A video's list is kept in `segments` and asked again after FRESH_DAYS (people keep adding to SponsorBlock), or RETRY_HOURS after the
 source failed; a failure is said, and the cached list (if any) is still given. `TUBES_SPONSORBLOCK` points the calls elsewhere (the tests'
 stand-in)."""
-import datetime, hashlib, json, os, urllib.error, urllib.parse, urllib.request
+import datetime, hashlib, json, os, urllib.parse
 
-from tubes import cache, db, iplayer, settings
+from strata_python.http import Http
+
+from tubes import USER_AGENT, cache, db, iplayer, settings
 
 API = 'https://sponsor.ajay.app'
 TIMEOUT = 15
+# A volunteer-run service: a gap between requests, no retries (a video's segments are asked again after RETRY_HOURS anyway).
+HTTP = Http(USER_AGENT, min_interval=0.2, attempts=1, timeout=TIMEOUT)
 FRESH_DAYS = 1
 RETRY_HOURS = 1
 ACTIONS = ('skip', 'mute')
@@ -44,12 +48,11 @@ def sponsorblock(video_id):
     prefix = hashlib.sha256(video_id.encode()).hexdigest()[:4]
     cats = json.dumps(list(settings.SKIP_DEFAULTS), separators=(',', ':'))
     url = f"{os.environ.get('TUBES_SPONSORBLOCK', API).rstrip('/')}/api/skipSegments/{prefix}?{urllib.parse.urlencode(dict(categories=cats, actionTypes=json.dumps(list(ACTIONS), separators=(',', ':'))))}"   # actionTypes defaults to skip only
-    try:
-        with urllib.request.urlopen(urllib.request.Request(url, headers={'Accept': 'application/json', 'User-Agent': 'tubes'}), timeout=TIMEOUT) as r: data = json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        if e.code == 404: return []
-        raise SegmentError(f'SponsorBlock refused the request ({e.code}).') from None
-    except (urllib.error.URLError, OSError) as e: raise SegmentError(f'SponsorBlock could not be reached: {getattr(e, "reason", e)}.') from None
+    reply = HTTP.get(url, headers={'Accept': 'application/json'})
+    if reply.status == 404: return []                                              # SponsorBlock's way of saying it has none
+    if reply.status == 0: raise SegmentError(f'SponsorBlock could not be reached: {reply.error}.')
+    if not reply.ok: raise SegmentError(f'SponsorBlock refused the request ({reply.status}).')
+    try: data = reply.json()
     except ValueError: raise SegmentError('SponsorBlock did not answer with JSON.') from None
     mine = next((v for v in data if isinstance(v, dict) and v.get('videoID') == video_id), None) if isinstance(data, list) else None
     out = []

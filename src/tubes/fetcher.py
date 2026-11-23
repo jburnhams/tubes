@@ -34,10 +34,11 @@ Fetches run in background threads of the server process, one per video, at most 
 joins it. A fetch can stop on purpose once `until` seconds are listed: a prefetch of a video's start (prefetch.py), kept as a partial copy
 (cache.keep_prefix) and fetched whole from the same formats when it is played (see cache.py's notes). A play of a video whose prefetch is
 running lets it carry on to the end instead. Prefetches do not count against `MAX_RUNNING`. The pipes need file descriptors passed by number, which Windows lacks, so fetching from YouTube runs on Linux and macOS only (CAN_PASS_FDS); an iPlayer fetch has no pipes and runs anywhere."""
-import json, os, shutil, subprocess, sys, threading, time
+import os, shutil, subprocess, sys, threading, time
 from concurrent.futures import ThreadPoolExecutor
 
 from strata_python import oslib
+from strata_python.files import write_json_atomic
 
 from tubes import cache, catalogue, db, iplayer, plex, settings, ytdlp
 
@@ -274,7 +275,7 @@ def _run(job, url):
         cache.set_formats(job.video_id, ytdlp.describe(video, audio))
         if job.cancelled: return                     # deleted while probing: start nothing (finally records it as stopped)
         info_path = os.path.join(cache.folder(job.video_id), INFO)
-        with open(info_path, 'w', encoding='utf8') as f: json.dump(info, f)
+        write_json_atomic(info_path, info, indent=None)
         error = attempts(job, lambda: pipeline(job, info_path, video['format_id'], audio['format_id'], info.get('duration'), signed_in))
         if not error and job.reached: kept = keep_start(job, dict(video=video['format_id'], audio=audio['format_id']))
     except ytdlp.YtdlpError as e: error = str(e)

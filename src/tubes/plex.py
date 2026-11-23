@@ -23,9 +23,15 @@ asks again only when Plex's `updatedAt` for it has changed (kept as the video's 
 
 Measured 2026-11-14 against a real server on the LAN: a picture in 10-70 ms, a 1080p film's file at 117 MB/s, the first 4 s segment
 0.24 s (copied) to 0.65 s (an XviD file converted) after ffmpeg starts."""
-import json, os, re, urllib.error, urllib.parse, urllib.request
+import json, os, re, urllib.parse
+
+from strata_python.http import Http
+
+from tubes import USER_AGENT
 
 TIMEOUT = 30
+# A server on the home network: no gap between requests, and no retries (a Plex that is down or refuses says so at once).
+HTTP = Http(USER_AGENT, min_interval=0, attempts=1, cool_down=0, timeout=TIMEOUT)
 PREFIX = 'plex-'
 FILMS = 'plex-films'                       # the channel films followed one by one are kept under
 FILTER = 'plex-filter-'
@@ -54,20 +60,20 @@ def base():
     return os.environ['PLEX_URL'].rstrip('/')
 
 
-def _open(path, params=None, accept='application/json'):
+def _get(path, params=None, accept='application/json'):
+    """The body of a GET on the server, or PlexError saying why there is none."""
     url = base() + path + (('&' if '?' in path else '?') + urllib.parse.urlencode(params, doseq=True) if params else '')
-    req = urllib.request.Request(url, headers={'Accept': accept, 'X-Plex-Token': os.environ['PLEX_TOKEN'], 'X-Plex-Client-Identifier': 'tubes', 'X-Plex-Product': 'Tubes'})
-    try: return urllib.request.urlopen(req, timeout=TIMEOUT)
-    except urllib.error.HTTPError as e:
-        if e.code == 401: raise PlexError('Plex refused the token (401): PLEX_TOKEN is wrong or was revoked.') from None
-        if e.code == 404: raise PlexError('Plex has no such item (404).') from None
-        raise PlexError(f'Plex refused the request ({e.code}).') from None
-    except (urllib.error.URLError, OSError) as e: raise PlexError(f'Plex could not be reached: {getattr(e, "reason", e)}.') from None
+    reply = HTTP.get(url, headers={'Accept': accept, 'X-Plex-Token': os.environ['PLEX_TOKEN'], 'X-Plex-Client-Identifier': 'tubes', 'X-Plex-Product': 'Tubes'})
+    if reply.status == 0: raise PlexError(f'Plex could not be reached: {reply.error}.')
+    if reply.status == 401: raise PlexError('Plex refused the token (401): PLEX_TOKEN is wrong or was revoked.')
+    if reply.status == 404: raise PlexError('Plex has no such item (404).')
+    if not reply.ok: raise PlexError(f'Plex refused the request ({reply.status}).')
+    return reply.body
 
 
 def call(path, **params):
     """One GET on the server; returns its MediaContainer."""
-    with _open(path, params) as r: body = r.read()
+    body = _get(path, params)
     try: return json.loads(body).get('MediaContainer') or {}
     except ValueError: raise PlexError('Plex did not answer with JSON.') from None
 
@@ -75,7 +81,7 @@ def call(path, **params):
 def image_bytes(path):
     """A picture's bytes from Plex (`path` as image_path gives it)."""
     if not IMAGE.match(path or ''): raise PlexError('That is not a Plex picture.')
-    with _open(path, accept='image/*') as r: return r.read()
+    return _get(path, accept='image/*')
 
 
 def file_url(part_key):

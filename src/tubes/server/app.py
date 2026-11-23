@@ -65,7 +65,7 @@ Errors are raised, not caught in routes: web.add_error_handlers answers them as 
 import os, platform, shutil
 
 from fastapi import HTTPException, Query, Request
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from strata_python import web
 
@@ -75,8 +75,12 @@ from .answers import answer
 from tubes import __version__, cache, catalogue, db, fetcher, history, iplayer, library, paste, plex, prefetch, quota, segments, settings, viewing, youtube, ytdlp
 
 # The app's own exceptions as HTTP statuses, on top of strata-python's (ValueError 400, KeyError 404, ...). A KeyError here is a request
-# naming a filter or setting there is none of, so 400 as before. YouTube, Plex and a history import choose by what went wrong (below).
-ERRORS = {fetcher.FetchError: 400, KeyError: 400, catalogue.NotFound: 404, history.NotFound: 404, viewing.NotFound: 404, catalogue.Job.Busy: 409, iplayer.IplayerError: 502}
+# naming a filter or setting there is none of, so 400 as before. YouTube, Plex and a history import choose by what went wrong: a service
+# not set up here (503) is not one that failed (502), and a history file that is not a history (400) is not a page that could not be read (502).
+ERRORS = {fetcher.FetchError: 400, KeyError: 400, catalogue.NotFound: 404, history.NotFound: 404, viewing.NotFound: 404, catalogue.Job.Busy: 409, iplayer.IplayerError: 502,
+          history.ImportProblem: lambda e: 502 if 'could not be read' in str(e) else 400,
+          youtube.YoutubeError: lambda e: 502 if youtube.configured() else 503,
+          plex.PlexError: lambda e: 502 if plex.configured() else 503}
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 LANDING = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'landing.html')
@@ -152,19 +156,11 @@ def system_status():
                 disk=dict(total=du.total, used=du.used, free=du.free), library=library.status())
 
 
-def _status_by_cause(app):
-    """The errors whose status depends on more than their class: a service not set up here (503) is not one that failed (502)."""
-    def answer(status, e): return JSONResponse(dict(detail=str(e), payload=None), status_code=status)
-    app.add_exception_handler(history.ImportProblem, lambda r, e: answer(502 if 'could not be read' in str(e) else 400, e))
-    app.add_exception_handler(youtube.YoutubeError, lambda r, e: answer(503 if not youtube.configured() else 502, e))
-    app.add_exception_handler(plex.PlexError, lambda r, e: answer(503 if not plex.configured() else 502, e))
-
-
 def create_app(recover=True):
     """The app. `recover=False` builds it without touching the database or the cache (what `tubes openapi` needs to write the schema).
     strata-python's base_app gives /api/health (with the commit the server runs), /api/settings (typed from settings.SETTINGS) and the docs."""
     app = web.base_app('tubes', __version__, settings.SETTINGS, commit=web.source_commit(__file__))
-    web.add_error_handlers(app, ERRORS); _status_by_cause(app)
+    web.add_error_handlers(app, ERRORS)
     app.router.route_class = A.CheckedRoute                       # every answer checked against its declared model while the tests run (answers.py)
     if recover: cache.recover(cache.stamp())
     job = app.state.sync = catalogue.Job()

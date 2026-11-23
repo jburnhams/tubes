@@ -1,5 +1,7 @@
 """prefetch.py: how much of a start is prefetched, which videos and when, and going easy on YouTube."""
 import pytest
+import threading, time
+
 from tubes import cache, fetcher, library, prefetch, segments, settings
 from library import seed
 
@@ -102,16 +104,21 @@ def test_a_failure_is_forgotten_and_tried_again_a_day_later_and_a_slow_down_paus
     assert p.step() == 'aaaaaaaaaaa' and p.last['error'] == 'Fetching needs Linux or macOS.' and len(done) == 2
 
 
-def test_the_thread_runs_steps_until_stopped(monkeypatch):
-    p = prefetch.Prefetcher(); calls = []
+def test_the_thread_runs_steps_until_stopped(monkeypatch, capsys):
+    """An error is logged and waits as long as a pause, never ending the loop; each step's answer sets the next wait; want() pokes it."""
+    p = prefetch.Prefetcher(); calls = []; third = threading.Event()
     def step():
         calls.append(1)
         if len(calls) == 1: raise RuntimeError('the database went away')
-        p.stopping = True; return 'none'
-    monkeypatch.setattr(p, 'step', step); monkeypatch.setattr(prefetch, 'WAITS', dict(paused=0, none=0))
-    p.start(); p.thread.join(10)
-    assert len(calls) == 2 and not p.thread.is_alive()
-    p.stop()
+        if len(calls) == 3: third.set()
+        return 'none'
+    monkeypatch.setattr(p, 'step', step); monkeypatch.setattr(prefetch, 'WAITS', dict(none=3600)); p.ticker.every_s = 0
+    p.start()
+    deadline = time.time() + 10
+    while len(calls) < 2 and time.time() < deadline: time.sleep(0.01)
+    assert len(calls) == 2 and 'prefetch failed: the database went away' in capsys.readouterr().err
+    p.want(['aaaaaaaaaaa']); assert third.wait(10)                               # the hour's wait is cut short by an offered video
+    p.stop(); assert not p.ticker.running
 
 
 def test_home_that_cannot_be_read_still_leaves_the_offered_ones(monkeypatch):

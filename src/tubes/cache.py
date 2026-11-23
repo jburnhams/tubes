@@ -18,6 +18,8 @@ so what it already plays never shrinks or changes."""
 import hashlib, json, os, re, shutil
 from datetime import datetime, timedelta, timezone
 
+from strata_python.files import write_json_atomic, write_text_atomic
+
 from tubes import db, settings
 
 PLAYLIST = 'index.m3u8'
@@ -170,10 +172,9 @@ def keep_prefix(video_id, until, now, formats):
     names = {name for _, name in kept} | {'init.mp4'}
     for f in os.listdir(d):
         if f not in names: os.remove(os.path.join(d, f))           # later segments, a half-written one, the fetch's log and probe
-    for name in (PLAYLIST, PREFIX):
-        with open(os.path.join(d, name), 'w', encoding='utf8') as f: f.write(playlist)
+    for name in (PLAYLIST, PREFIX): write_text_atomic(os.path.join(d, name), playlist)       # a player may be reading the playlist: never half of one
     shutil.copyfile(os.path.join(d, 'init.mp4'), os.path.join(d, PREFIX_INIT))
-    with open(os.path.join(d, PREFIX_INFO), 'w', encoding='utf8') as f: json.dump(dict(formats, seconds=round(sum(n for n, _ in kept), 3)), f)
+    write_json_atomic(os.path.join(d, PREFIX_INFO), dict(formats, seconds=round(sum(n for n, _ in kept), 3)))
     with db.connect() as con:
         con.execute("UPDATE copies SET state = 'partial', bytes = ?, finished = ?, error = NULL WHERE video_id = ?", (folder_bytes(d), now, video_id))
     return round(sum(n for n, _ in kept), 3)
@@ -241,7 +242,7 @@ def back_to_prefix(video_id, now):
     for f in os.listdir(d):
         if f not in keep: os.remove(os.path.join(d, f))
     shutil.copyfile(os.path.join(d, PREFIX_INIT), os.path.join(d, 'init.mp4'))
-    with open(os.path.join(d, PLAYLIST), 'w', encoding='utf8') as f: f.write(text)
+    write_text_atomic(os.path.join(d, PLAYLIST), text)
     with db.connect() as con:
         con.execute("UPDATE copies SET state = 'partial', bytes = ?, finished = ?, error = NULL WHERE video_id = ?", (folder_bytes(d), now, video_id))
     return True

@@ -19,13 +19,17 @@ week's asking over many runs.
 `aggregate` (no network) counts them up: a channel's `suggested_by` is how many sources point at it, and `related_score` adds, per source,
 the share of its watch pages that listed the channel (plus FEATURED for a featured one), so a channel every source's pages list ranks first.
 Channels the history has no watches for are added to `suggestions` with none, and take the group most of their sources are in."""
-import collections, datetime, json, os, re, time, urllib.error, urllib.request
+import collections, datetime, os, re, time
 
-from tubes import cache, db, quota, youtube
+from strata_python.http import Http
+
+from tubes import USER_AGENT, cache, db, quota, youtube
 
 WEB = 'https://www.youtube.com'
 CLIENT = {'clientName': 'WEB', 'clientVersion': '2.20251101.00.00', 'hl': 'en', 'gl': 'GB'}
 TIMEOUT = 30
+# A POST that only reads (idempotent, so a 5xx is tried again); PAUSE between sources sets the pace, the gap is a floor under it.
+HTTP = Http(USER_AGENT, min_interval=0.5, attempts=2, max_wait=30, timeout=TIMEOUT)
 PAUSE = 1.0                                                                 # seconds between watch pages: a person's pace, not a crawler's
 FRESH_DAYS = 7
 RETRY_DAYS = 1
@@ -46,12 +50,10 @@ def _web(): return os.environ.get('TUBES_YOUTUBE_WEB', WEB).rstrip('/')
 
 def next_page(video_id):
     """The web client's answer for a watch page (what it lists next), as JSON."""
-    body = json.dumps(dict(context=dict(client=CLIENT), videoId=video_id)).encode()
-    req = urllib.request.Request(f'{_web()}/youtubei/v1/next?prettyPrint=false', data=body, method='POST', headers={'Content-Type': 'application/json', 'Accept': 'application/json'})
-    try:
-        with urllib.request.urlopen(req, timeout=TIMEOUT) as r: return json.loads(r.read())
-    except urllib.error.HTTPError as e: raise RelatedError(f'YouTube refused the watch page of {video_id} ({e.code}).') from None
-    except (urllib.error.URLError, OSError) as e: raise RelatedError(f'YouTube could not be reached: {getattr(e, "reason", e)}.') from None
+    reply = HTTP.post(f'{_web()}/youtubei/v1/next?prettyPrint=false', json_body=dict(context=dict(client=CLIENT), videoId=video_id), headers={'Accept': 'application/json'}, idempotent=True)
+    if reply.status == 0: raise RelatedError(f'YouTube could not be reached: {reply.error}.')
+    if not reply.ok: raise RelatedError(f'YouTube refused the watch page of {video_id} ({reply.status}).')
+    try: return reply.json()
     except ValueError: raise RelatedError(f'YouTube did not answer with JSON for the watch page of {video_id}.') from None
 
 
