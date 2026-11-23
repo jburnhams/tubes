@@ -34,46 +34,73 @@ import os
 from strata_python.settings import Setting, Settings, absolute_path, non_empty, number_between, positive, whole_between
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-DEFAULT_DATA_DIR = os.path.join(REPO, 'data')
+DEFAULT_DATA_DIR = os.path.join(REPO, "data")
 # The kinds of segment the player can skip, SponsorBlock's own categories (https://wiki.sponsor.ajay.app/w/Segment_Categories), with their default.
-SKIP_DEFAULTS = dict(sponsor='auto', selfpromo='ask', interaction='ask', intro='ask', outro='ask', preview='ask', hook='off', filler='off', music_offtopic='off')
-SKIP_MODES = ('off', 'ask', 'auto')
+SKIP_DEFAULTS = dict(
+    sponsor="auto",
+    selfpromo="ask",
+    interaction="ask",
+    intro="ask",
+    outro="ask",
+    preview="ask",
+    hook="off",
+    filler="off",
+    music_offtopic="off",
+)
+SKIP_MODES = ("off", "ask", "auto")
 
 
-def trimmed(value: str) -> str: return value.strip()
+def trimmed(value: str) -> str:
+    return value.strip()
 
 
-SETTINGS = Settings('tubes', [
-    Setting('data_dir', default=lambda: DEFAULT_DATA_DIR, normalise=absolute_path, env='TUBES_DATA'),
-    Setting('cache_dir', default=lambda: os.path.join(SETTINGS.get('data_dir'), 'cache'), normalise=absolute_path, env='TUBES_CACHE'),
-    Setting('cache_limit_gb', default='1000', normalise=positive()),
-    Setting('max_height', default='1080', normalise=whole_between(1, 10000)),
-    Setting('player_client', default='visionos', normalise=trimmed),
-    Setting('cookies_from_browser', default='', normalise=trimmed),
-    Setting('half_life_days', default='30', normalise=positive()),
-    Setting('protect_days', default='7', normalise=number_between(0, 36500)),
-    Setting('prefetch_seconds', default='20', normalise=number_between(0, 3600)),
-    Setting('prefetch_per_day', default='150', normalise=whole_between(0, 100000)),
-    Setting('ytdlp', default='yt-dlp', normalise=non_empty, env='TUBES_YTDLP'),
-    Setting('ffmpeg', default='ffmpeg', normalise=non_empty, env='TUBES_FFMPEG'),
-    Setting('history_url', default='', normalise=trimmed, env='TUBES_HISTORY_URL'),
-    Setting('history_table', default='', normalise=trimmed, env='TUBES_HISTORY_TABLE'),
-    *(Setting(f'skip_{c}', default=mode, choices=SKIP_MODES) for c, mode in SKIP_DEFAULTS.items()),
-], numbers=True)
+SETTINGS = Settings(
+    "tubes",
+    [
+        Setting("data_dir", default=lambda: DEFAULT_DATA_DIR, normalise=absolute_path, env="TUBES_DATA"),
+        Setting(
+            "cache_dir",
+            default=lambda: os.path.join(SETTINGS.get("data_dir"), "cache"),
+            normalise=absolute_path,
+            env="TUBES_CACHE",
+        ),
+        Setting("cache_limit_gb", default="1000", normalise=positive()),
+        Setting("max_height", default="1080", normalise=whole_between(1, 10000)),
+        Setting("player_client", default="visionos", normalise=trimmed),
+        Setting("cookies_from_browser", default="", normalise=trimmed),
+        Setting("half_life_days", default="30", normalise=positive()),
+        Setting("protect_days", default="7", normalise=number_between(0, 36500)),
+        Setting("prefetch_seconds", default="20", normalise=number_between(0, 3600)),
+        Setting("prefetch_per_day", default="150", normalise=whole_between(0, 100000)),
+        Setting("ytdlp", default="yt-dlp", normalise=non_empty, env="TUBES_YTDLP"),
+        Setting("ffmpeg", default="ffmpeg", normalise=non_empty, env="TUBES_FFMPEG"),
+        Setting("history_url", default="", normalise=trimmed, env="TUBES_HISTORY_URL"),
+        Setting("history_table", default="", normalise=trimmed, env="TUBES_HISTORY_TABLE"),
+        *(Setting(f"skip_{c}", default=mode, choices=SKIP_MODES) for c, mode in SKIP_DEFAULTS.items()),
+    ],
+    numbers=True,
+)
 
 KNOWN = SETTINGS.keys
-get, get_int, get_float, save, load, home = SETTINGS.get, SETTINGS.get_int, SETTINGS.get_float, SETTINGS.save, SETTINGS.load, SETTINGS.home
+get, get_int, get_float, save, load, home = (
+    SETTINGS.get,
+    SETTINGS.get_int,
+    SETTINGS.get_float,
+    SETTINGS.save,
+    SETTINGS.load,
+    SETTINGS.home,
+)
 
 
 def data_dir():
     """The folder that holds the data Tubes keeps beside its database (created when asked for)."""
-    return SETTINGS.folder('data_dir')
+    return SETTINGS.folder("data_dir")
 
 
 def cache_dir():
     """The folder that holds fetched videos (created when asked for)."""
-    return SETTINGS.folder('cache_dir')
+    return SETTINGS.folder("cache_dir")
 
 
 def cache_limit_bytes():
-    return int(get_float('cache_limit_gb') * 1e9)
+    return int(get_float("cache_limit_gb") * 1e9)

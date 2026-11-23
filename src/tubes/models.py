@@ -44,30 +44,33 @@ carry them, so they sort and compare as text on both engines.
                      and subtitle tracks and other versions (audio-described, signed). A source's sync replaces what it gave before.
   segments           parts of a video the player can skip (segments.py): from SponsorBlock for YouTube, from iPlayer's own intro and credits
                      points for an episode, under SponsorBlock's categories; `segment_checks` says when each video's source was last asked."""
+
 from sqlalchemy import BigInteger, Float, Index, MetaData, String, Text, false, true
 from sqlalchemy.orm import DeclarativeBase, Mapped, MappedAsDataclass, mapped_column
-
 from strata_python.db import NAMING_CONVENTION
 
 
 class Base(MappedAsDataclass, DeclarativeBase):
     """Written out rather than `make_base()`, as strata_python.db asks (a base made by a call is not a class to type checkers). The naming
     convention is byte-identical to omarchy_db's, so the existing revisions and the deployed schema do not drift."""
+
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
 class Channel(Base):
-    __tablename__ = 'channels'
+    __tablename__ = "channels"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     title: Mapped[str]
-    platform: Mapped[str] = mapped_column(String(16), server_default='youtube', default='youtube')
+    platform: Mapped[str] = mapped_column(String(16), server_default="youtube", default="youtube")
     handle: Mapped[str | None] = mapped_column(default=None)
     thumbnail: Mapped[str | None] = mapped_column(default=None)
     synced: Mapped[str | None] = mapped_column(String(40), default=None)
     description: Mapped[str | None] = mapped_column(Text, default=None)
     published: Mapped[str | None] = mapped_column(String(40), default=None)
     country: Mapped[str | None] = mapped_column(String(8), default=None)
-    language: Mapped[str | None] = mapped_column(String(16), default=None)       # the channel's default language (BCP-47, `en-GB`); a video without its own falls back to it
+    language: Mapped[str | None] = mapped_column(
+        String(16), default=None
+    )  # the channel's default language (BCP-47, `en-GB`); a video without its own falls back to it
     subscribers: Mapped[int | None] = mapped_column(BigInteger, default=None)
     total_videos: Mapped[int | None] = mapped_column(BigInteger, default=None)
     views: Mapped[int | None] = mapped_column(BigInteger, default=None)
@@ -77,73 +80,124 @@ class Channel(Base):
     follow: Mapped[bool] = mapped_column(server_default=true(), default=True)
     added: Mapped[str | None] = mapped_column(String(40), default=None)
     # The shared metadata (metadata.py's notes): None wherever a source does not say.
-    kind: Mapped[str | None] = mapped_column(String(16), default=None)          # channel (YouTube), programme, network or category (iPlayer), show or filter (Plex)
-    tagline: Mapped[str | None] = mapped_column(Text, default=None)             # a line about it, shorter than its description
-    network: Mapped[str | None] = mapped_column(Text, default=None)             # who makes or shows it: iPlayer's network, Plex's studio
-    content_rating: Mapped[str | None] = mapped_column(String(32), default=None)    # `gb/U`, `gb/PG`, `TV-Y` (Plex's form: an optional country and its rating)
-    min_age: Mapped[int | None] = mapped_column(default=None)                  # the youngest age it is rated for
-    kids: Mapped[bool | None] = mapped_column(default=None)                     # made for children: YouTube's madeForKids, iPlayer's childrens, a Plex age up to 7
-    colours: Mapped[str | None] = mapped_column(Text, default=None)             # JSON {topLeft, topRight, bottomRight, bottomLeft} hex colours for a backdrop behind it
-    source: Mapped[str | None] = mapped_column(Text, default=None)              # Plex: a followed filter's JSON {section, params} (plex.py)
+    kind: Mapped[str | None] = mapped_column(
+        String(16), default=None
+    )  # channel (YouTube), programme, network or category (iPlayer), show or filter (Plex)
+    tagline: Mapped[str | None] = mapped_column(Text, default=None)  # a line about it, shorter than its description
+    network: Mapped[str | None] = mapped_column(
+        Text, default=None
+    )  # who makes or shows it: iPlayer's network, Plex's studio
+    content_rating: Mapped[str | None] = mapped_column(
+        String(32), default=None
+    )  # `gb/U`, `gb/PG`, `TV-Y` (Plex's form: an optional country and its rating)
+    min_age: Mapped[int | None] = mapped_column(default=None)  # the youngest age it is rated for
+    kids: Mapped[bool | None] = mapped_column(
+        default=None
+    )  # made for children: YouTube's madeForKids, iPlayer's childrens, a Plex age up to 7
+    colours: Mapped[str | None] = mapped_column(
+        Text, default=None
+    )  # JSON {topLeft, topRight, bottomRight, bottomLeft} hex colours for a backdrop behind it
+    source: Mapped[str | None] = mapped_column(
+        Text, default=None
+    )  # Plex: a followed filter's JSON {section, params} (plex.py)
 
 
 class Video(Base):
-    __tablename__ = 'videos'
-    __table_args__ = (Index('ix_videos_published', 'published', 'id'), Index('ix_videos_channel', 'channel_id', 'published', 'id'))
+    __tablename__ = "videos"
+    __table_args__ = (
+        Index("ix_videos_published", "published", "id"),
+        Index("ix_videos_channel", "channel_id", "published", "id"),
+    )
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     channel_id: Mapped[str] = mapped_column(String(64))
     title: Mapped[str]
     published: Mapped[str] = mapped_column(String(40))
     duration: Mapped[float | None] = mapped_column(default=None)
     thumbnail: Mapped[str | None] = mapped_column(default=None)
-    views: Mapped[int | None] = mapped_column(BigInteger, default=None)            # 64-bit: the most watched videos pass 2^31
+    views: Mapped[int | None] = mapped_column(BigInteger, default=None)  # 64-bit: the most watched videos pass 2^31
     description: Mapped[str | None] = mapped_column(Text, default=None)
     likes: Mapped[int | None] = mapped_column(BigInteger, default=None)
     comments: Mapped[int | None] = mapped_column(BigInteger, default=None)
-    definition: Mapped[str | None] = mapped_column(String(8), default=None)     # hd or sd
+    definition: Mapped[str | None] = mapped_column(String(8), default=None)  # hd or sd
     added: Mapped[str | None] = mapped_column(String(40), default=None)
-    gone: Mapped[str | None] = mapped_column(String(40), default=None)          # when YouTube was first found not to have it (catalogue.recheck); hidden while set
-    checked: Mapped[str | None] = mapped_column(String(40), default=None)       # when the recheck last asked YouTube about it
-    live: Mapped[str | None] = mapped_column(String(16), default=None)          # live, upcoming or was (a past stream): hidden while set, see youtube.live
-    platform: Mapped[str] = mapped_column(String(16), server_default='youtube', default='youtube')
-    expires: Mapped[str | None] = mapped_column(String(40), default=None)       # iPlayer: when it stops being offered; hidden after that unless it is cached
-    series: Mapped[str | None] = mapped_column(Text, default=None)              # iPlayer: the series' title, such as `Series 2`
-    episode: Mapped[int | None] = mapped_column(default=None)                   # iPlayer: its number within the series
-    language: Mapped[str | None] = mapped_column(String(16), default=None)      # spoken language (BCP-47, `en`, `en-GB`): YouTube's defaultAudioLanguage, else defaultLanguage
-    captions: Mapped[bool | None] = mapped_column(default=None)                 # YouTube: the uploader added captions (automatic ones are not counted); None when not known
-    regions_allowed: Mapped[str | None] = mapped_column(Text, default=None)     # comma-separated country codes it plays in only (YouTube's regionRestriction; `GB` for iPlayer)
-    regions_blocked: Mapped[str | None] = mapped_column(Text, default=None)     # comma-separated country codes it does not play in
-    blocked: Mapped[str | None] = mapped_column(String(40), default=None)       # when a fetch was refused as not available in this server's country; hidden while set
+    gone: Mapped[str | None] = mapped_column(
+        String(40), default=None
+    )  # when YouTube was first found not to have it (catalogue.recheck); hidden while set
+    checked: Mapped[str | None] = mapped_column(
+        String(40), default=None
+    )  # when the recheck last asked YouTube about it
+    live: Mapped[str | None] = mapped_column(
+        String(16), default=None
+    )  # live, upcoming or was (a past stream): hidden while set, see youtube.live
+    platform: Mapped[str] = mapped_column(String(16), server_default="youtube", default="youtube")
+    expires: Mapped[str | None] = mapped_column(
+        String(40), default=None
+    )  # iPlayer: when it stops being offered; hidden after that unless it is cached
+    series: Mapped[str | None] = mapped_column(Text, default=None)  # iPlayer: the series' title, such as `Series 2`
+    episode: Mapped[int | None] = mapped_column(default=None)  # iPlayer: its number within the series
+    language: Mapped[str | None] = mapped_column(
+        String(16), default=None
+    )  # spoken language (BCP-47, `en`, `en-GB`): YouTube's defaultAudioLanguage, else defaultLanguage
+    captions: Mapped[bool | None] = mapped_column(
+        default=None
+    )  # YouTube: the uploader added captions (automatic ones are not counted); None when not known
+    regions_allowed: Mapped[str | None] = mapped_column(
+        Text, default=None
+    )  # comma-separated country codes it plays in only (YouTube's regionRestriction; `GB` for iPlayer)
+    regions_blocked: Mapped[str | None] = mapped_column(
+        Text, default=None
+    )  # comma-separated country codes it does not play in
+    blocked: Mapped[str | None] = mapped_column(
+        String(40), default=None
+    )  # when a fetch was refused as not available in this server's country; hidden while set
     # The shared metadata (metadata.py's notes): None wherever a source does not say.
-    kind: Mapped[str | None] = mapped_column(String(16), default=None)          # video, episode or film
-    tagline: Mapped[str | None] = mapped_column(Text, default=None)             # a line about it, shorter than its description
-    year: Mapped[int | None] = mapped_column(default=None)                      # the year it came out (a film's release, an episode's first showing)
-    network: Mapped[str | None] = mapped_column(Text, default=None)             # who makes or shows it: iPlayer's network, Plex's studio
-    season: Mapped[int | None] = mapped_column(default=None)                    # the number of its series or season (`series` keeps the series' title)
-    content_rating: Mapped[str | None] = mapped_column(String(32), default=None)    # `gb/U`, `gb/PG`, `TV-Y`; `18` for a video YouTube restricts by age
-    min_age: Mapped[int | None] = mapped_column(default=None)                  # the youngest age it is rated for
-    kids: Mapped[bool | None] = mapped_column(default=None)                     # made for children: YouTube's madeForKids, iPlayer's childrens, a Plex age up to 7
-    width: Mapped[int | None] = mapped_column(default=None)                     # the picture's size and range at its best, so the player can choose before a fetch
+    kind: Mapped[str | None] = mapped_column(String(16), default=None)  # video, episode or film
+    tagline: Mapped[str | None] = mapped_column(Text, default=None)  # a line about it, shorter than its description
+    year: Mapped[int | None] = mapped_column(
+        default=None
+    )  # the year it came out (a film's release, an episode's first showing)
+    network: Mapped[str | None] = mapped_column(
+        Text, default=None
+    )  # who makes or shows it: iPlayer's network, Plex's studio
+    season: Mapped[int | None] = mapped_column(
+        default=None
+    )  # the number of its series or season (`series` keeps the series' title)
+    content_rating: Mapped[str | None] = mapped_column(
+        String(32), default=None
+    )  # `gb/U`, `gb/PG`, `TV-Y`; `18` for a video YouTube restricts by age
+    min_age: Mapped[int | None] = mapped_column(default=None)  # the youngest age it is rated for
+    kids: Mapped[bool | None] = mapped_column(
+        default=None
+    )  # made for children: YouTube's madeForKids, iPlayer's childrens, a Plex age up to 7
+    width: Mapped[int | None] = mapped_column(
+        default=None
+    )  # the picture's size and range at its best, so the player can choose before a fetch
     height: Mapped[int | None] = mapped_column(default=None)
     hdr: Mapped[bool | None] = mapped_column(default=None)
-    colours: Mapped[str | None] = mapped_column(Text, default=None)             # JSON {topLeft, topRight, bottomRight, bottomLeft} hex colours for a backdrop behind it
-    source: Mapped[str | None] = mapped_column(Text, default=None)              # Plex: its file's part key, what ffmpeg reads (plex.py)
+    colours: Mapped[str | None] = mapped_column(
+        Text, default=None
+    )  # JSON {topLeft, topRight, bottomRight, bottomLeft} hex colours for a backdrop behind it
+    source: Mapped[str | None] = mapped_column(
+        Text, default=None
+    )  # Plex: its file's part key, what ffmpeg reads (plex.py)
 
 
 class Meta(Base):
-    __tablename__ = 'meta'
+    __tablename__ = "meta"
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str | None] = mapped_column(default=None)
 
 
 class Copy(Base):
-    __tablename__ = 'copies'
+    __tablename__ = "copies"
     video_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    state: Mapped[str] = mapped_column(String(16))                    # fetching, partial (only its start, prefetched), ready or failed
+    state: Mapped[str] = mapped_column(String(16))  # fetching, partial (only its start, prefetched), ready or failed
     started: Mapped[str] = mapped_column(String(40))
     title: Mapped[str | None] = mapped_column(default=None)
     channel: Mapped[str | None] = mapped_column(default=None)
-    bytes: Mapped[int] = mapped_column(BigInteger, server_default='0', default=0)    # 64-bit: a long 1080p copy passes 2 GB
+    bytes: Mapped[int] = mapped_column(
+        BigInteger, server_default="0", default=0
+    )  # 64-bit: a long 1080p copy passes 2 GB
     finished: Mapped[str | None] = mapped_column(String(40), default=None)
     formats: Mapped[str | None] = mapped_column(default=None)
     error: Mapped[str | None] = mapped_column(default=None)
@@ -151,215 +205,268 @@ class Copy(Base):
 
 
 class Play(Base):
-    __tablename__ = 'plays'
-    __table_args__ = (Index('ix_plays_video', 'video_id', 'at'), Index('ix_plays_at', 'at'))
+    __tablename__ = "plays"
+    __table_args__ = (Index("ix_plays_video", "video_id", "at"), Index("ix_plays_at", "at"))
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
     video_id: Mapped[str] = mapped_column(String(64))
     at: Mapped[str] = mapped_column(String(40))
     # How the play went (viewing.py); every one is None on a play from before these were kept (2026-11-12) or recorded by cache.record_play.
-    source: Mapped[str | None] = mapped_column(String(32), default=None)     # where it was started: home, continue, channel, search, up_next, link (viewing.SOURCES)
-    detail: Mapped[str | None] = mapped_column(Text, default=None)           # which one: the channel's id, the search words, the video Up next was beside
-    rank: Mapped[int | None] = mapped_column(default=None)                   # its place in that list, from 0
-    length: Mapped[float | None] = mapped_column(Float, default=None)        # the video's running time in seconds, as the player found it
-    watched: Mapped[float | None] = mapped_column(Float, default=None)       # seconds of it seen, each second once (a part played again counts once; a part skipped counts as seen)
-    position: Mapped[float | None] = mapped_column(Float, default=None)      # where the player was at the last report: where a later play picks up
-    outcome: Mapped[str | None] = mapped_column(String(16), default=None)    # none, short, partial or full (90% and more seen), viewing.outcome
-    updated: Mapped[str | None] = mapped_column(String(40), default=None)    # the last report
+    source: Mapped[str | None] = mapped_column(
+        String(32), default=None
+    )  # where it was started: home, continue, channel, search, up_next, link (viewing.SOURCES)
+    detail: Mapped[str | None] = mapped_column(
+        Text, default=None
+    )  # which one: the channel's id, the search words, the video Up next was beside
+    rank: Mapped[int | None] = mapped_column(default=None)  # its place in that list, from 0
+    length: Mapped[float | None] = mapped_column(
+        Float, default=None
+    )  # the video's running time in seconds, as the player found it
+    watched: Mapped[float | None] = mapped_column(
+        Float, default=None
+    )  # seconds of it seen, each second once (a part played again counts once; a part skipped counts as seen)
+    position: Mapped[float | None] = mapped_column(
+        Float, default=None
+    )  # where the player was at the last report: where a later play picks up
+    outcome: Mapped[str | None] = mapped_column(
+        String(16), default=None
+    )  # none, short, partial or full (90% and more seen), viewing.outcome
+    updated: Mapped[str | None] = mapped_column(String(40), default=None)  # the last report
 
 
 class ChannelView(Base):
-    __tablename__ = 'channel_views'
-    __table_args__ = (Index('ix_channel_views_channel', 'channel_id', 'at'), Index('ix_channel_views_at', 'at'))
+    __tablename__ = "channel_views"
+    __table_args__ = (Index("ix_channel_views_channel", "channel_id", "at"), Index("ix_channel_views_at", "at"))
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
     channel_id: Mapped[str] = mapped_column(String(64))
     at: Mapped[str] = mapped_column(String(40))
-    source: Mapped[str | None] = mapped_column(String(32), default=None)     # where it was opened from: rail, chips, channels, home, watch... (viewing.SOURCES)
+    source: Mapped[str | None] = mapped_column(
+        String(32), default=None
+    )  # where it was opened from: rail, chips, channels, home, watch... (viewing.SOURCES)
     detail: Mapped[str | None] = mapped_column(Text, default=None)
 
 
 class Watch(Base):
-    __tablename__ = 'watches'
-    __table_args__ = (Index('ix_watches_source', 'source', 'at'), Index('ix_watches_channel', 'channel_id', 'at'))
+    __tablename__ = "watches"
+    __table_args__ = (Index("ix_watches_source", "source", "at"), Index("ix_watches_channel", "channel_id", "at"))
     id: Mapped[int] = mapped_column(primary_key=True, init=False)
     source: Mapped[str] = mapped_column(String(64))
     at: Mapped[str] = mapped_column(String(40))
     video_id: Mapped[str] = mapped_column(String(64))
     title: Mapped[str | None] = mapped_column(Text, default=None)
-    channel_id: Mapped[str | None] = mapped_column(String(64), default=None)       # None when the video has gone (the history names no channel then)
+    channel_id: Mapped[str | None] = mapped_column(
+        String(64), default=None
+    )  # None when the video has gone (the history names no channel then)
     channel_title: Mapped[str | None] = mapped_column(Text, default=None)
 
 
 class Suggestion(Base):
-    __tablename__ = 'suggestions'
-    __table_args__ = (Index('ix_suggestions_score', 'score', 'channel_id'), Index('ix_suggestions_group', 'group_id', 'score'))
+    __tablename__ = "suggestions"
+    __table_args__ = (
+        Index("ix_suggestions_score", "score", "channel_id"),
+        Index("ix_suggestions_group", "group_id", "score"),
+    )
     channel_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     title: Mapped[str]
-    watches: Mapped[int] = mapped_column(server_default='0', default=0)
-    videos: Mapped[int] = mapped_column(server_default='0', default=0)          # different videos watched
+    watches: Mapped[int] = mapped_column(server_default="0", default=0)
+    videos: Mapped[int] = mapped_column(server_default="0", default=0)  # different videos watched
     first: Mapped[str | None] = mapped_column(String(40), default=None)
     last: Mapped[str | None] = mapped_column(String(40), default=None)
-    score: Mapped[float] = mapped_column(Float, server_default='0', default=0.0)
+    score: Mapped[float] = mapped_column(Float, server_default="0", default=0.0)
     group_id: Mapped[int | None] = mapped_column(default=None)
     thumbnail: Mapped[str | None] = mapped_column(default=None)
     handle: Mapped[str | None] = mapped_column(default=None)
     subscribers: Mapped[int | None] = mapped_column(BigInteger, default=None)
     total_videos: Mapped[int | None] = mapped_column(BigInteger, default=None)
-    topics: Mapped[str | None] = mapped_column(Text, default=None)               # YouTube's topic names, joined by '|'
+    topics: Mapped[str | None] = mapped_column(Text, default=None)  # YouTube's topic names, joined by '|'
     made_for_kids: Mapped[bool | None] = mapped_column(default=None)
-    looked_up: Mapped[str | None] = mapped_column(String(40), default=None)      # when YouTube was last asked about the channel
-    missing: Mapped[bool] = mapped_column(server_default=false(), default=False) # YouTube has no such channel any more: it cannot be followed
+    looked_up: Mapped[str | None] = mapped_column(
+        String(40), default=None
+    )  # when YouTube was last asked about the channel
+    missing: Mapped[bool] = mapped_column(
+        server_default=false(), default=False
+    )  # YouTube has no such channel any more: it cannot be followed
     dismissed: Mapped[str | None] = mapped_column(String(40), default=None)
-    suggested_by: Mapped[int] = mapped_column(server_default='0', default=0)     # how many of the library's and the history's channels point at it (related.py)
-    related_score: Mapped[float] = mapped_column(Float, server_default='0', default=0.0)
-    platform: Mapped[str] = mapped_column(String(16), server_default='youtube', default='youtube')   # an iPlayer programme only comes in pasted
-    pasted: Mapped[str | None] = mapped_column(String(40), default=None)         # when someone pasted it into the page (paste.py)
+    suggested_by: Mapped[int] = mapped_column(
+        server_default="0", default=0
+    )  # how many of the library's and the history's channels point at it (related.py)
+    related_score: Mapped[float] = mapped_column(Float, server_default="0", default=0.0)
+    platform: Mapped[str] = mapped_column(
+        String(16), server_default="youtube", default="youtube"
+    )  # an iPlayer programme only comes in pasted
+    pasted: Mapped[str | None] = mapped_column(
+        String(40), default=None
+    )  # when someone pasted it into the page (paste.py)
 
 
 class RelatedSource(Base):
-    __tablename__ = 'related_sources'
+    __tablename__ = "related_sources"
     channel_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    fetched: Mapped[str] = mapped_column(String(40))                             # when YouTube was last asked (whether or not it answered)
-    videos: Mapped[int] = mapped_column(server_default='0', default=0)          # watch pages read for it that answered
-    error: Mapped[str | None] = mapped_column(Text, default=None)                # why the last ask failed; it is asked again sooner
+    fetched: Mapped[str] = mapped_column(String(40))  # when YouTube was last asked (whether or not it answered)
+    videos: Mapped[int] = mapped_column(server_default="0", default=0)  # watch pages read for it that answered
+    error: Mapped[str | None] = mapped_column(Text, default=None)  # why the last ask failed; it is asked again sooner
 
 
 class RelatedLink(Base):
-    __tablename__ = 'related_links'
-    __table_args__ = (Index('ix_related_links_channel', 'channel_id'),)
+    __tablename__ = "related_links"
+    __table_args__ = (Index("ix_related_links_channel", "channel_id"),)
     source_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     channel_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     title: Mapped[str | None] = mapped_column(Text, default=None)
     handle: Mapped[str | None] = mapped_column(default=None)
-    hits: Mapped[int] = mapped_column(server_default='0', default=0)            # how many of the source's watch pages listed one of its videos
-    featured: Mapped[bool] = mapped_column(server_default=false(), default=False)   # the source lists it among its own channels (channelSections)
+    hits: Mapped[int] = mapped_column(
+        server_default="0", default=0
+    )  # how many of the source's watch pages listed one of its videos
+    featured: Mapped[bool] = mapped_column(
+        server_default=false(), default=False
+    )  # the source lists it among its own channels (channelSections)
 
 
 class BbcProgramme(Base):
-    __tablename__ = 'bbc_programmes'
+    __tablename__ = "bbc_programmes"
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     title: Mapped[str] = mapped_column(Text)
-    seen: Mapped[str] = mapped_column(String(40))                                # when Tubes first saw it in the catalogue
+    seen: Mapped[str] = mapped_column(String(40))  # when Tubes first saw it in the catalogue
     refreshed: Mapped[str] = mapped_column(String(40))
     synopsis: Mapped[str | None] = mapped_column(Text, default=None)
-    categories: Mapped[str | None] = mapped_column(Text, default=None)          # iPlayer's category ids, joined by '|' (`documentaries|documentaries-history`)
-    label: Mapped[str | None] = mapped_column(Text, default=None)               # its own one-word genre (`Nature`, `Crime Drama`)
-    network: Mapped[str | None] = mapped_column(String(64), default=None)       # `bbc_two`
-    kind: Mapped[str | None] = mapped_column(String(32), default=None)          # `brand`, `series` or `episode` (a one-off)
+    categories: Mapped[str | None] = mapped_column(
+        Text, default=None
+    )  # iPlayer's category ids, joined by '|' (`documentaries|documentaries-history`)
+    label: Mapped[str | None] = mapped_column(Text, default=None)  # its own one-word genre (`Nature`, `Crime Drama`)
+    network: Mapped[str | None] = mapped_column(String(64), default=None)  # `bbc_two`
+    kind: Mapped[str | None] = mapped_column(String(32), default=None)  # `brand`, `series` or `episode` (a one-off)
     episodes: Mapped[int | None] = mapped_column(default=None)
     thumbnail: Mapped[str | None] = mapped_column(default=None)
 
 
 class BbcSimilar(Base):
-    __tablename__ = 'bbc_similar'
-    __table_args__ = (Index('ix_bbc_similar_channel', 'channel_id', 'score'),)
-    channel_id: Mapped[str] = mapped_column(String(64), primary_key=True)        # the programme suggested
-    source_id: Mapped[str] = mapped_column(String(64), primary_key=True)         # a followed or played programme it is like
-    score: Mapped[float] = mapped_column(Float, server_default='0', default=0.0)
+    __tablename__ = "bbc_similar"
+    __table_args__ = (Index("ix_bbc_similar_channel", "channel_id", "score"),)
+    channel_id: Mapped[str] = mapped_column(String(64), primary_key=True)  # the programme suggested
+    source_id: Mapped[str] = mapped_column(String(64), primary_key=True)  # a followed or played programme it is like
+    score: Mapped[float] = mapped_column(Float, server_default="0", default=0.0)
 
 
 class Segment(Base):
-    __tablename__ = 'segments'
+    __tablename__ = "segments"
     video_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     start: Mapped[float] = mapped_column(Float, primary_key=True)
-    category: Mapped[str] = mapped_column(String(32), primary_key=True)          # SponsorBlock's: sponsor, selfpromo, intro, outro ...
+    category: Mapped[str] = mapped_column(
+        String(32), primary_key=True
+    )  # SponsorBlock's: sponsor, selfpromo, intro, outro ...
     end: Mapped[float] = mapped_column(Float)
-    source: Mapped[str] = mapped_column(String(16))                              # sponsorblock or iplayer
-    action: Mapped[str] = mapped_column(String(16), server_default='skip', default='skip')   # skip, or mute (SponsorBlock's actionType)
+    source: Mapped[str] = mapped_column(String(16))  # sponsorblock or iplayer
+    action: Mapped[str] = mapped_column(
+        String(16), server_default="skip", default="skip"
+    )  # skip, or mute (SponsorBlock's actionType)
     votes: Mapped[int | None] = mapped_column(default=None)
 
 
 class Image(Base):
-    __tablename__ = 'images'
-    owner: Mapped[str] = mapped_column(String(8), primary_key=True)              # channel or video
+    __tablename__ = "images"
+    owner: Mapped[str] = mapped_column(String(8), primary_key=True)  # channel or video
     owner_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    kind: Mapped[str] = mapped_column(String(16), primary_key=True)              # thumb, poster, backdrop, logo, square, banner, avatar, portrait (metadata.IMAGE_KINDS)
-    rank: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)    # 0 is the one to show; more sizes or choices follow
+    kind: Mapped[str] = mapped_column(
+        String(16), primary_key=True
+    )  # thumb, poster, backdrop, logo, square, banner, avatar, portrait (metadata.IMAGE_KINDS)
+    rank: Mapped[int] = mapped_column(
+        primary_key=True, autoincrement=False
+    )  # 0 is the one to show; more sizes or choices follow
     url: Mapped[str] = mapped_column(Text)
     width: Mapped[int | None] = mapped_column(default=None)
     height: Mapped[int | None] = mapped_column(default=None)
 
 
 class Tag(Base):
-    __tablename__ = 'tags'
-    __table_args__ = (Index('ix_tags_value', 'kind', 'value'),)
+    __tablename__ = "tags"
+    __table_args__ = (Index("ix_tags_value", "kind", "value"),)
     owner: Mapped[str] = mapped_column(String(8), primary_key=True)
     owner_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    kind: Mapped[str] = mapped_column(String(16), primary_key=True)              # genre, category, topic, keyword, label, country (metadata.TAG_KINDS)
+    kind: Mapped[str] = mapped_column(
+        String(16), primary_key=True
+    )  # genre, category, topic, keyword, label, country (metadata.TAG_KINDS)
     value: Mapped[str] = mapped_column(String(200), primary_key=True)
-    rank: Mapped[int] = mapped_column(server_default='0', default=0)             # the source's order
+    rank: Mapped[int] = mapped_column(server_default="0", default=0)  # the source's order
 
 
 class Credit(Base):
-    __tablename__ = 'credits'
+    __tablename__ = "credits"
     owner: Mapped[str] = mapped_column(String(8), primary_key=True)
     owner_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    role: Mapped[str] = mapped_column(String(16), primary_key=True)              # actor, director, writer, producer, presenter
-    rank: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)    # billing order within the role
+    role: Mapped[str] = mapped_column(String(16), primary_key=True)  # actor, director, writer, producer, presenter
+    rank: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)  # billing order within the role
     name: Mapped[str] = mapped_column(Text)
-    character: Mapped[str | None] = mapped_column(Text, default=None)            # who an actor plays
+    character: Mapped[str | None] = mapped_column(Text, default=None)  # who an actor plays
     photo: Mapped[str | None] = mapped_column(Text, default=None)
 
 
 class Rating(Base):
-    __tablename__ = 'ratings'
+    __tablename__ = "ratings"
     owner: Mapped[str] = mapped_column(String(8), primary_key=True)
     owner_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    source: Mapped[str] = mapped_column(String(32), primary_key=True)            # imdb, rottentomatoes_critic, rottentomatoes_audience, tmdb
-    value: Mapped[float] = mapped_column(Float)                                  # out of 10
+    source: Mapped[str] = mapped_column(
+        String(32), primary_key=True
+    )  # imdb, rottentomatoes_critic, rottentomatoes_audience, tmdb
+    value: Mapped[float] = mapped_column(Float)  # out of 10
 
 
 class ExternalId(Base):
-    __tablename__ = 'external_ids'
-    __table_args__ = (Index('ix_external_ids_value', 'source', 'value'),)
+    __tablename__ = "external_ids"
+    __table_args__ = (Index("ix_external_ids_value", "source", "value"),)
     owner: Mapped[str] = mapped_column(String(8), primary_key=True)
     owner_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    source: Mapped[str] = mapped_column(String(16), primary_key=True)            # imdb, tmdb, tvdb, plex
+    source: Mapped[str] = mapped_column(String(16), primary_key=True)  # imdb, tmdb, tvdb, plex
     value: Mapped[str] = mapped_column(String(128))
 
 
 class Chapter(Base):
-    __tablename__ = 'chapters'
+    __tablename__ = "chapters"
     video_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    start: Mapped[float] = mapped_column(Float, primary_key=True)                # seconds
+    start: Mapped[float] = mapped_column(Float, primary_key=True)  # seconds
     end: Mapped[float | None] = mapped_column(Float, default=None)
     title: Mapped[str | None] = mapped_column(Text, default=None)
     image: Mapped[str | None] = mapped_column(Text, default=None)
 
 
 class Track(Base):
-    __tablename__ = 'tracks'
+    __tablename__ = "tracks"
     video_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    kind: Mapped[str] = mapped_column(String(16), primary_key=True)              # audio, subtitle, or version (another cut: audio-described, signed)
-    rank: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)    # the source's order within the kind
+    kind: Mapped[str] = mapped_column(
+        String(16), primary_key=True
+    )  # audio, subtitle, or version (another cut: audio-described, signed)
+    rank: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)  # the source's order within the kind
     language: Mapped[str | None] = mapped_column(String(16), default=None)
-    label: Mapped[str | None] = mapped_column(Text, default=None)                # as the source names it: `English (EAC3 5.1)`, `Audio described`
+    label: Mapped[str | None] = mapped_column(
+        Text, default=None
+    )  # as the source names it: `English (EAC3 5.1)`, `Audio described`
     codec: Mapped[str | None] = mapped_column(String(32), default=None)
-    ref: Mapped[str | None] = mapped_column(Text, default=None)                  # how the source finds it again: a stream index, a version id
+    ref: Mapped[str | None] = mapped_column(
+        Text, default=None
+    )  # how the source finds it again: a stream index, a version id
     is_default: Mapped[bool] = mapped_column(server_default=false(), default=False)
     forced: Mapped[bool] = mapped_column(server_default=false(), default=False)
 
 
 class SegmentCheck(Base):
-    __tablename__ = 'segment_checks'
+    __tablename__ = "segment_checks"
     video_id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    checked: Mapped[str] = mapped_column(String(40))                              # when its source was last asked (whether or not it answered)
+    checked: Mapped[str] = mapped_column(String(40))  # when its source was last asked (whether or not it answered)
     error: Mapped[str | None] = mapped_column(Text, default=None)
 
 
 class SuggestionGroup(Base):
-    __tablename__ = 'suggestion_groups'
+    __tablename__ = "suggestion_groups"
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
     name: Mapped[str]
     named: Mapped[bool] = mapped_column(server_default=false(), default=False)
 
 
 class ApiUsage(Base):
-    __tablename__ = 'api_usage'
-    day: Mapped[str] = mapped_column(String(10), primary_key=True)             # YYYY-MM-DD in Pacific time, the quota's day
-    hour: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)   # 0-23, Pacific
-    purpose: Mapped[str] = mapped_column(String(32), primary_key=True)         # sync, recheck, add... (quota.purpose)
-    endpoint: Mapped[str] = mapped_column(String(32), primary_key=True)        # channels, videos, playlistItems...
-    calls: Mapped[int] = mapped_column(server_default='0', default=0)
-    units: Mapped[int] = mapped_column(server_default='0', default=0)
-    failed: Mapped[int] = mapped_column(server_default='0', default=0)
-    refused: Mapped[int] = mapped_column(server_default='0', default=0)
+    __tablename__ = "api_usage"
+    day: Mapped[str] = mapped_column(String(10), primary_key=True)  # YYYY-MM-DD in Pacific time, the quota's day
+    hour: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)  # 0-23, Pacific
+    purpose: Mapped[str] = mapped_column(String(32), primary_key=True)  # sync, recheck, add... (quota.purpose)
+    endpoint: Mapped[str] = mapped_column(String(32), primary_key=True)  # channels, videos, playlistItems...
+    calls: Mapped[int] = mapped_column(server_default="0", default=0)
+    units: Mapped[int] = mapped_column(server_default="0", default=0)
+    failed: Mapped[int] = mapped_column(server_default="0", default=0)
+    refused: Mapped[int] = mapped_column(server_default="0", default=0)
