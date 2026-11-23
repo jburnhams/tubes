@@ -26,8 +26,8 @@ CI (`.github/workflows/`): `unit.yml` (lint, unit tests with coverage on Linux f
 
 - `unit/`: fast, isolated, synthetic data and fakes; no external services or network.
 - `integration/`: the CLI (in process and as a real process) and the HTTP API over real on-disk files. Not part of the coverage gate.
-- Both suites are hermetic (autouse in `conftest.py`): `~`, `TUBES_HOME` and `TUBES_DATA` point into a tmp dir outside `tmp_path`, tuning and credential variables (`TUBES_*`, `YOUTUBE_*`, `OMARCHY_DB_URL`) are removed, `TUBES_DATABASE_URL` points at the test's own database, and any outbound (non-loopback) connection fails the test. Every 200 answer of a route that declares a model is validated against it (`answers.CHECK`), so a test that reads an endpoint also checks its answer matches the API types.
-- `utils/`: helpers importable by name in any test (`from fakes import FakeUrlopen, FakePopen, FakeRun`; `tests/utils` is on `pythonpath`).
+- Both suites are hermetic (strata-python's pytest plugin, configured by `strata_env_prefix`, `strata_tuning_vars` and `strata_env` in `pyproject.toml`): `~`, `TUBES_HOME` and `TUBES_DATA` point into a tmp dir outside `tmp_path`, tuning and credential variables (`TUBES_*`, `YOUTUBE_*`, `STRATA_DB_*`, `PLEX_*`) are removed, `TUBES_DATABASE_URL` and `STRATA_DB_URL` point at the test's own database (`db_env`, autouse in `conftest.py`), and any outbound (non-loopback) connection fails the test. Every 200 answer of a route that declares a model is validated against it (`answers.CHECK`), so a test that reads an endpoint also checks its answer matches the API types.
+- `utils/`: Tubes' own stand-ins and helpers, importable by name in any test (`tests/utils` is on `pythonpath`). The generic doubles come from strata-python: the `fake_urlopen`, `fake_popen`, `fake_run` and `no_sleep` fixtures, and `from strata_python.testing import FakeResponse, http_error` for a test that needs one directly.
 - One test file per module (`cache.py` -> `unit/test_cache.py`; add to the existing file if there is one).
 
 ## Who owns which files (so parallel branches don't conflict)

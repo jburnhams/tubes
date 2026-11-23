@@ -9,22 +9,10 @@
 import { HttpError, describeHttpError, fetchJson } from 'strata-react'
 import type { components, Schema } from './api.generated'
 
-export interface Settings {
-  data_dir: string
-  cache_dir: string
-  cache_limit_gb: number
-  max_height: number
-  player_client: string
-  cookies_from_browser: string
-  half_life_days: number
-  protect_days: number
-  ytdlp: string
-  ffmpeg: string
-  /** What the player does in each kind of segment (`skip_sponsor`, `skip_intro` ...): off, ask or auto. */
-  [skip: `skip_${string}`]: SkipMode | undefined
-}
+/** `GET /api/settings`: every setting (src/tubes/settings.py), typed from the server's declaration; numbers are numbers, `skip_*` one of the modes. */
+export type Settings = Schema<'TubesSettings'>
 
-export type SkipMode = 'off' | 'ask' | 'auto'
+export type SkipMode = Settings['skip_sponsor']
 
 /** A part of a video the player can skip, under SponsorBlock's categories (src/tubes/segments.py). `mute` parts are muted rather than skipped when skipped automatically. */
 export type Segment = Schema<'Segment'>

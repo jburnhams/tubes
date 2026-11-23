@@ -2,7 +2,7 @@
 // tests, every Storybook story and the visual suite's screenshots, so a screen looks the same in
 // each. Dates are fixed, so screenshots do not change from day to day. Pictures are flat SVG
 // tiles as data URLs, so nothing is fetched from outside.
-import type { PlexChoice, PlexSection, PlexStatus, CacheItem, CacheReport, Channel, ChannelVisit, Outcome, Play, PlaySource, PlaySummary, Segment, SegmentKind, ChannelOverview, HistorySource, HistoryStats, LibraryStatus, QuotaTotals, QuotaUsage, RelatedStatus, Settings, ShownFilters, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video, ContinueVideo } from '../api'
+import type { SkipMode, PlexChoice, PlexSection, PlexStatus, CacheItem, CacheReport, Channel, ChannelVisit, Outcome, Play, PlaySource, PlaySummary, Segment, SegmentKind, ChannelOverview, HistorySource, HistoryStats, LibraryStatus, QuotaTotals, QuotaUsage, RelatedStatus, Settings, ShownFilters, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video, ContinueVideo } from '../api'
 
 export const GB = 1e9
 
@@ -15,8 +15,12 @@ export const defaultSettings: Settings = {
   cookies_from_browser: '',
   half_life_days: 30,
   protect_days: 7,
+  prefetch_seconds: 20,
+  prefetch_per_day: 150,
   ytdlp: 'yt-dlp',
   ffmpeg: 'ffmpeg',
+  history_url: '',
+  history_table: '',
   skip_sponsor: 'auto', skip_selfpromo: 'ask', skip_interaction: 'ask', skip_intro: 'ask', skip_outro: 'ask', skip_preview: 'ask', skip_hook: 'off', skip_filler: 'off', skip_music_offtopic: 'off',
 }
 
@@ -33,7 +37,7 @@ export const segmentKinds: Omit<SegmentKind, 'mode'>[] = [
   { id: 'music_offtopic', label: 'Non-music section', detail: 'The talking or other parts of a music video that are not the music.' },
 ]
 
-export const kindsFor = (s: Settings): SegmentKind[] => segmentKinds.map(k => ({ ...k, mode: s[`skip_${k.id}`] ?? 'off' }))
+export const kindsFor = (s: Settings): SegmentKind[] => segmentKinds.map(k => ({ ...k, mode: (s as Record<string, unknown>)[`skip_${k.id}`] as SkipMode | undefined ?? 'off' }))
 
 /** A first video's skippable parts: an intro, a sponsor read and end cards, so the timeline, the Skip button and an automatic skip all show. */
 export const sampleSegments: Segment[] = [

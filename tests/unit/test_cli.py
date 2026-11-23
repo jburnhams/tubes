@@ -1,7 +1,7 @@
 import importlib, json
 from pathlib import Path
 import pytest
-from tubes import cache, catalogue, cli, fetcher, oslib, quota, settings, youtube, ytdlp
+from tubes import cache, catalogue, cli, fetcher, quota, settings, youtube, ytdlp
 from library import seed
 from test_cache import write_playlist
 
@@ -9,23 +9,23 @@ from test_cache import write_playlist
 @pytest.fixture(autouse=True)
 def tools(monkeypatch):
     monkeypatch.setattr(ytdlp, 'version', lambda: '2026.10.26'); monkeypatch.setattr(fetcher, 'ffmpeg_version', lambda: 'ffmpeg version 7.1')
-    monkeypatch.setattr(oslib, 'CAN_PASS_FDS', True)
+    monkeypatch.setattr(fetcher, 'CAN_PASS_FDS', True)
 
 
 def test_doctor(capsys, monkeypatch):
     monkeypatch.setenv('YOUTUBE_API_KEY', 'k'); monkeypatch.setenv('YOUTUBE_API_REFERER', 'https://site.test/')
     assert cli.main(['doctor']) == 0
     out = capsys.readouterr().out
-    assert 'ok       yt-dlp 2026.10.26' in out and 'ok       ffmpeg ffmpeg version 7.1' in out and 'limit 1000 GB' in out and 'ok       library: YOUTUBE_API_KEY set (sent with a Referer)' in out
-    assert 'library    0 channel(s), 0 video(s), synced never' in out
+    assert 'ok       yt-dlp 2026.10.26' in out and 'ok       ffmpeg ffmpeg version 7.1' in out and 'limit 1000 GB' in out and 'ok       youtube YOUTUBE_API_KEY set (sent with a Referer)' in out
+    assert 'ok       database 0 channel(s), 0 video(s), synced never' in out
 
     real_import = importlib.import_module
     monkeypatch.setattr(importlib, 'import_module', lambda name: (_ for _ in ()).throw(ImportError(name)) if name == 'uvicorn' else real_import(name))
-    monkeypatch.setattr(ytdlp, 'version', lambda: None); monkeypatch.setattr(fetcher, 'ffmpeg_version', lambda: None); monkeypatch.setattr(oslib, 'CAN_PASS_FDS', False)
+    monkeypatch.setattr(ytdlp, 'version', lambda: None); monkeypatch.setattr(fetcher, 'ffmpeg_version', lambda: None); monkeypatch.setattr(fetcher, 'CAN_PASS_FDS', False)
     monkeypatch.delenv('YOUTUBE_API_KEY')
     assert cli.main(['doctor']) == 1
     out = capsys.readouterr().out
-    assert 'MISSING  uvicorn' in out and 'MISSING  yt-dlp' in out and 'MISSING  ffmpeg' in out and 'MISSING  fetching needs Linux or macOS' in out and 'MISSING  library: YOUTUBE_API_KEY is not in the environment' in out
+    assert 'MISSING  uvicorn' in out and 'MISSING  yt-dlp' in out and 'MISSING  ffmpeg' in out and 'MISSING  fetching: fetching needs Linux or macOS' in out and 'MISSING  youtube: YOUTUBE_API_KEY is not in the environment' in out
 
 
 def test_add_sync_channels_and_remove(capsys, fake_youtube, monkeypatch):
@@ -103,7 +103,7 @@ def test_set_and_serve(capsys, monkeypatch):
     assert cli.main(['set', 'max_height']) == 0 and capsys.readouterr().out.strip() == 'max_height = 1080'
     assert cli.main(['set', 'max_height', '720']) == 0 and capsys.readouterr().out.strip() == 'max_height = 720'
     assert cli.main(['set', 'max_height', 'default']) == 0 and capsys.readouterr().out.strip() == 'max_height = 1080'
-    with pytest.raises(SystemExit, match='must be a number'): cli.main(['set', 'max_height', 'tall'])
+    with pytest.raises(SystemExit, match='must be a whole number'): cli.main(['set', 'max_height', 'tall'])
     with pytest.raises(SystemExit, match='unknown setting'): cli.main(['set', 'colour', 'red'])
 
     from tubes.server import app as server_app
@@ -218,8 +218,10 @@ def test_openapi_matches_the_committed_schema(capsys, tmp_path):
     # The web app's request types are generated from web/openapi.json (npm run api-types; CI checks the TypeScript against it), so the
     # committed file must be what the server declares: regenerate it with `./tubes openapi -o web/openapi.json` after changing a route.
     committed = (Path(__file__).parents[2] / 'web' / 'openapi.json').read_text(encoding='utf-8')
-    assert cli.schema() == committed, 'web/openapi.json is stale: run ./tubes openapi -o web/openapi.json, then npm run api-types in web/'
-    assert cli.main(['openapi']) == 0 and capsys.readouterr().out == committed
+    from strata_python.testing import assert_openapi_current
+    assert_openapi_current(cli.create_schema_app, Path(__file__).parents[2] / 'web' / 'openapi.json')      # fails naming the command to run
+    assert cli.main(['openapi', '-o', '-']) == 0 and capsys.readouterr().out == committed
     out = tmp_path / 'openapi.json'
-    assert cli.main(['openapi', '-o', str(out)]) == 0 and out.read_text(encoding='utf-8') == committed and 'Wrote' in capsys.readouterr().out
+    assert cli.main(['openapi', '-o', str(out)]) == 0 and out.read_text(encoding='utf-8') == committed and 'wrote' in capsys.readouterr().out
+    assert cli.main(['openapi', '-o', str(out), '--check']) == 0
     assert json.loads(committed)['components']['schemas']['ProgressIn']['properties'].keys() == {'position', 'watched', 'length'}

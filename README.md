@@ -17,7 +17,7 @@ export YOUTUBE_API_KEY=...          # a YouTube Data API v3 key (YOUTUBE_API_REF
 ./tubes serve                       # http://127.0.0.1:8367
 ```
 
-Tubes keeps its own tables (the library, cache copies, plays) in a database through [omarchy_db](https://github.com/jburnhams/database): its own `tubes` schema in the machine's shared Postgres by default (`TUBES_DATABASE_URL` or `OMARCHY_DB_URL` to change it; any SQLAlchemy URL, SQLite included). Migrations run on start. Running it on a server, with the timer and the reverse proxy, is in [`docs/deploy.md`](docs/deploy.md).
+Tubes keeps its own tables (the library, cache copies, plays) in a database through [strata-python](https://github.com/jburnhams/strata-python)'s `strata_python.db`: its own `tubes` schema in the shared Postgres named by `STRATA_DB_DATABASE` (with `STRATA_DB_LIVE=1`; `TUBES_DATABASE_URL` or `STRATA_DB_URL` to point elsewhere, any SQLAlchemy URL, SQLite included). Migrations run on start. Running it on a server, with the timer and the reverse proxy, is in [`docs/deploy.md`](docs/deploy.md).
 
 ## Commands
 

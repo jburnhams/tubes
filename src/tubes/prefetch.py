@@ -30,7 +30,7 @@ SLOW_DOWN = re.compile(r'try again later|not a bot|rate.?limit|too many requests
 
 def length(video_id):
     """How many seconds of a video's start to prefetch: `prefetch_seconds`, after the parts at the very start that the player skips or offers to skip."""
-    base = settings.get('prefetch_seconds')
+    base = settings.get_float('prefetch_seconds')
     try: found = segments.for_video(video_id)
     except Exception: return base                                               # SponsorBlock's answer is a bonus, never a reason not to prefetch
     modes = {c['id']: c['mode'] for c in found.get('categories') or []}
@@ -75,12 +75,12 @@ class Prefetcher:
     def step(self):
         """Prefetch one video if one is due; returns its id, or why not: off, paused, busy, limit or none."""
         now = self.clock()
-        if settings.get('prefetch_seconds') <= 0 or settings.get('prefetch_per_day') <= 0: return 'off'
+        if settings.get_float('prefetch_seconds') <= 0 or settings.get_int('prefetch_per_day') <= 0: return 'off'
         if now < self.paused_until: return 'paused'
         if fetcher.running(): return 'busy'                                       # a play's fetch has the line and YouTube's attention
         today = datetime.date.fromtimestamp(now)
         if today != self.day: self.day, self.count = today, 0
-        if self.count >= settings.get('prefetch_per_day'): return 'limit'
+        if self.count >= settings.get_int('prefetch_per_day'): return 'limit'
         vid = next((v for v in self.candidates() if self.eligible(v, now)), None)
         if vid is None: return 'none'
         self.tried[vid] = now; self.count += 1
@@ -112,6 +112,6 @@ class Prefetcher:
     def state(self):
         """For the System page: `{enabled, seconds, today, per_day, paused_until, last}`."""
         paused = datetime.datetime.fromtimestamp(self.paused_until, datetime.timezone.utc).isoformat(timespec='seconds') if self.paused_until > self.clock() else None
-        return dict(enabled=settings.get('prefetch_seconds') > 0 and settings.get('prefetch_per_day') > 0, seconds=settings.get('prefetch_seconds'),
-                    today=self.count if self.day == datetime.date.fromtimestamp(self.clock()) else 0, per_day=settings.get('prefetch_per_day'),
+        return dict(enabled=settings.get_float('prefetch_seconds') > 0 and settings.get_int('prefetch_per_day') > 0, seconds=settings.get_float('prefetch_seconds'),
+                    today=self.count if self.day == datetime.date.fromtimestamp(self.clock()) else 0, per_day=settings.get_int('prefetch_per_day'),
                     paused_until=paused, last=self.last)

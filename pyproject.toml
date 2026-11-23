@@ -4,8 +4,16 @@ testpaths = ["tests/unit"]
 addopts = "-ra --timeout=300"
 filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`"]       # TestClient noise from the installed starlette; remove when the dependency moves on
 markers = [
-    "integration: runs the CLI and HTTP server end-to-end (tests/integration)",
     "slow: slow tests; run manually or on a schedule",
+]                               # `integration` is registered (and added under tests/integration) by strata-python's plugin
+# strata-python's pytest plugin makes every test hermetic: HOME, TUBES_HOME and TUBES_DATA in a fresh folder, no network, and these
+# variables removed (credentials and the overrides a developer sets to try things), then strata_env set.
+strata_env_prefix = "TUBES"
+strata_tuning_vars = ["TUBES_YOUTUBE_API", "TUBES_YOUTUBE_WEB", "YOUTUBE_API_KEY", "YOUTUBE_API_REFERER", "YOUTUBE_API_QUOTA", "TUBES_CACHE", "TUBES_YTDLP", "TUBES_FFMPEG", "TUBES_HISTORY_URL", "TUBES_HISTORY_TABLE", "STRATA_DB_URL", "STRATA_DB_DATABASE", "TUBES_DATABASE_URL", "FAKE_YTDLP_SECONDS", "FAKE_YTDLP_FAIL", "PLEX_URL", "PLEX_TOKEN"]
+strata_env = [
+    "TUBES_SYNC_RETRY=0",                         # a failed channel is tried again at once, not after catalogue.RETRY_DELAY
+    "TUBES_IPLAYER_API=http://127.0.0.1:9",       # nothing answers there: iPlayer is unreachable unless a test uses fake_iplayer
+    "TUBES_MEDIASELECTOR=http://127.0.0.1:9",
 ]
 
 [tool.coverage.run]
@@ -26,9 +34,9 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E9", "F63", "F7", "F82"]
 
-# The database (omarchy_db, from the `database` repo): models in src/tubes/models.py, Alembic revisions in migrations/.
-# `dbtool revision -m "..."` after changing a model, `dbtool check` before a PR (docs/ADOPTING.md in that repo).
-[tool.omarchy-db]
+# The database (strata_python.db, strata-python's [db] extra): models in src/tubes/models.py, Alembic revisions in migrations/.
+# `strata-db revision -m "..."` after changing a model (against Postgres, so server defaults come out portable), `strata-db check` before a PR.
+[tool.strata-db]
 app = "tubes"
 models = "tubes.models:Base"
 migrations = "migrations"

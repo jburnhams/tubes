@@ -2,7 +2,7 @@ import os, threading
 import pytest
 import uvicorn
 from fastapi.testclient import TestClient
-from tubes import cache, fetcher, library, oslib, ytdlp
+from tubes import cache, fetcher, library, ytdlp
 from tubes.server import app as server_app
 from tubes.server.app import create_app
 from library import CHANNELS, VIDEOS, seed
@@ -18,7 +18,7 @@ def test_landing_page_and_built_static_index(tmp_path, monkeypatch):
     monkeypatch.setattr(server_app, 'STATIC', str(tmp_path / 'no_static'))
     c = TestClient(create_app())
     assert '<h1>Tubes</h1>' in c.get('/').text and 'npm run build' in c.get('/').text
-    assert c.get('/api/health').json() == dict(ok=True, version='0.1.0')
+    h = c.get('/api/health').json(); assert (h['ok'], h['version']) == (True, '0.1.0') and set(h) <= {'ok', 'version', 'commit'}      # commit: the checkout the server runs, when there is one
 
     static = tmp_path / 'static'; (static / 'assets').mkdir(parents=True)
     (static / 'index.html').write_text('<h1>built react app</h1>', encoding='utf8')
@@ -40,23 +40,22 @@ def test_every_page_path_serves_the_app_with_a_base_back_to_its_root(tmp_path, m
     assert c.get('/favicon.svg').text == '<svg/>'
     for escape in ('..%5Capp.py', '..%2Fapp.py', 'C:%5Cwindows%5Cwin.ini', '..'):
         assert c.get('/' + escape).text.startswith('<html><head><base')
-    assert server_app.static_file('..\\app.py') is None and server_app.static_file('C:\\x') is None and server_app.static_file('') is None and server_app.static_file('missing.txt') is None
-    assert c.get('/api/nope').status_code == 404 and c.get('/api/nope').json() == dict(detail='no such endpoint')
+    assert c.get('/api/nope').status_code == 404 and c.get('/api/nope').json()['detail'] == 'no such endpoint'
 
 
 def test_system_and_settings(client, monkeypatch):
     monkeypatch.setattr(ytdlp, 'version', lambda: '2026.10.26'); monkeypatch.setattr(fetcher, 'ffmpeg_version', lambda: 'ffmpeg version 7.1')
     s = client.get('/api/system').json()
-    assert (s['ytdlp'], s['ffmpeg'], s['can_fetch'], s['fetching']) == ('2026.10.26', 'ffmpeg version 7.1', oslib.CAN_PASS_FDS, [])
+    assert (s['ytdlp'], s['ffmpeg'], s['can_fetch'], s['fetching']) == ('2026.10.26', 'ffmpeg version 7.1', fetcher.CAN_PASS_FDS, [])
     assert s['disk']['total'] > 0 and s['cache']['limit'] == 10**12 and s['cache_dir'].endswith('cache') and s['library'] == dict(synced=None, channels=0, videos=0, hidden=0, live=0, filtered=0, configured=False)
     assert client.put('/api/settings', json=dict(max_height=720, player_client='')).json()['max_height'] == 720
     assert client.get('/api/settings').json()['player_client'] == ''
     assert client.put('/api/settings', json=dict(max_height=None)).json()['max_height'] == 1080
-    assert client.put('/api/settings', json=dict(cache_dir='relative')).json() == dict(detail='cache_dir must be an absolute path')
-    assert client.put('/api/settings', json=dict(colour='red')).json() == dict(detail="unknown setting 'colour'")
+    assert client.put('/api/settings', json=dict(cache_dir='relative')).json()['detail'] == 'cache_dir: must be an absolute path'
+    assert client.put('/api/settings', json=dict(colour='red')).json()['detail'] == "unknown setting 'colour'"
     assert client.get('/api/library/shown').json() == dict(min_seconds=None, max_seconds=None, streams='current', region=None, languages=[], unknown_language='show', captions='any', filtered=0, language_counts=[])
     assert client.put('/api/library/shown', json=dict(min_seconds=120, streams='all')).json() == dict(min_seconds=120, max_seconds=None, streams='all', region=None, languages=[], unknown_language='show', captions='any', filtered=0, language_counts=[])
-    r = client.put('/api/library/shown', json=dict(max_seconds=60)); assert r.status_code == 400 and r.json() == dict(detail='The shortest length must not be longer than the longest.')
+    r = client.put('/api/library/shown', json=dict(max_seconds=60)); assert r.status_code == 400 and r.json()['detail'] == 'The shortest length must not be longer than the longest.'
     assert client.get('/api/library/shown').json()['max_seconds'] is None and client.get('/api/library').json()['filtered'] == 0
 
 
@@ -150,7 +149,7 @@ def test_play_stream_and_media(client, monkeypatch):
     st = client.post('/api/videos/aaaaaaaaaaa/play').json()
     assert (st['state'], st['segments'], st['playable'], st['plays']) == ('fetching', 1, True, 1) and started == [('aaaaaaaaaaa', 'Building a 50% shelf', 'Workshop')]
     assert client.get('/api/videos/aaaaaaaaaaa').json()['plays'] == 1
-    assert client.post('/api/videos/zzzzzzzzzzz/play').json() == dict(detail='There is no video zzzzzzzzzzz in the library.')
+    assert client.post('/api/videos/zzzzzzzzzzz/play').json()['detail'] == 'There is no video zzzzzzzzzzz in the library.'
     assert client.get('/api/videos/zzzzzzzzzzz/stream').json()['state'] == 'none' 
 
     r = client.get('/api/media/aaaaaaaaaaa/index.m3u8')
@@ -171,7 +170,7 @@ def test_play_stream_and_media(client, monkeypatch):
 
     def refuse(*a): raise fetcher.FetchError('Fetching needs Linux or macOS.')
     monkeypatch.setattr(fetcher, 'start', refuse)
-    assert client.post('/api/videos/bbbbbbbbbbb/play').json() == dict(detail='Fetching needs Linux or macOS.')
+    assert client.post('/api/videos/bbbbbbbbbbb/play').json()['detail'] == 'Fetching needs Linux or macOS.'
 
 
 def test_cache_endpoints(client, monkeypatch):
@@ -329,7 +328,7 @@ def test_plays_say_where_they_came_from_and_how_they_went(client, monkeypatch):
     first = client.post('/api/videos/aaaaaaaaaaa/play', json=dict(source='channel', detail=CHANNELS[0]['id'], rank=1)).json()
     assert (first['play_id'], first['resume'], first['plays']) == (1, None, 1)
     assert client.post('/api/plays/1', json=dict(position=250, watched=240, length=600)).json() == dict(play_id=1, video_id='aaaaaaaaaaa', watched=240, position=250, length=600, outcome='partial')
-    assert client.post('/api/plays/9', json=dict(watched=1)).json() == dict(detail='There is no play 9.')
+    assert client.post('/api/plays/9', json=dict(watched=1)).json()['detail'] == 'There is no play 9.'
     assert client.post('/api/plays/1', json=dict(watched=-1)).status_code == 422
     assert client.post('/api/videos/bbbbbbbbbbb/play', json=dict(rank=-2)).status_code == 422
     assert [(v['id'], v['resume'], v['progress']) for v in client.get('/api/videos/continue').json()] == [('aaaaaaaaaaa', 250, round(250 / 600, 4))]

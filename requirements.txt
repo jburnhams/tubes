@@ -1,6 +1,5 @@
 # Main runtime environment (Python 3.11+; tested on 3.11-3.13 across Linux, macOS and Windows).
-fastapi
-uvicorn
-pydantic
+# strata-python brings FastAPI, uvicorn and pydantic, and with [db] SQLAlchemy, Alembic and psycopg (strata_python.db, the shared database);
+# while it is 0.x a minor release may break, so the cap is the next minor (read its CHANGELOG before raising it).
+strata-python[db]>=0.2.7,<0.3
 networkx                # suggestions: groups channels watched in the same sittings (Louvain communities, history.py)
-omarchy-db @ git+https://github.com/jburnhams/database@2d2940613d49fea5c2f70f62769a5ca56ea581a9#subdirectory=python   # the shared database tooling: SQLAlchemy, Alembic, psycopg, dbtool, pytest fixtures

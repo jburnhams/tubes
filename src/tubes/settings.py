@@ -22,116 +22,80 @@
                    credits are mapped onto): `off` (nothing, not even drawn), `ask` (a Skip button while it plays) or `auto` (skipped, with
                    Undo). Defaults: sponsor auto; self-promotion, subscribe reminders, intros, credits and previews ask; the rest off.
 
-The environment variables TUBES_DATA, TUBES_CACHE, TUBES_YTDLP, TUBES_FFMPEG, TUBES_HISTORY_URL and TUBES_HISTORY_TABLE override the file (handy for tests and one-off runs). The YouTube key
-(YOUTUBE_API_KEY) is only ever in the environment."""
-import json, os
+The file handling, the order (environment, then the file, then the default), validation and the API's shape come from strata-python's
+`Settings`; this module only declares them. Every setting can be overridden by `TUBES_<KEY>` in the environment (handy for tests and one-off
+runs), the folders and tools by their older names TUBES_DATA, TUBES_CACHE, TUBES_YTDLP, TUBES_FFMPEG, TUBES_HISTORY_URL and TUBES_HISTORY_TABLE.
+Values are canonical strings (read them with `get_int`/`get_float`); GET /api/settings sends the numbers as JSON numbers (`numbers=True`).
+The YouTube key (YOUTUBE_API_KEY) is only ever in the environment."""
+
+import math, os
+from dataclasses import dataclass
+
+from strata_python.settings import JsonFileStore, Setting, Settings, absolute_path, non_empty, number_between, whole_between
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_DATA_DIR = os.path.join(REPO, 'data')
-
-# name -> (default, type, environment override). Folders are handled by data_dir() and cache_dir() because their defaults depend on other settings.
-SPEC = {
-    'data_dir': (None, str, 'TUBES_DATA'),
-    'cache_dir': (None, str, 'TUBES_CACHE'),
-    'cache_limit_gb': (1000.0, float, None),
-    'max_height': (1080, int, None),
-    'player_client': ('visionos', str, None),
-    'cookies_from_browser': ('', str, None),
-    'half_life_days': (30.0, float, None),
-    'protect_days': (7.0, float, None),
-    'prefetch_seconds': (20.0, float, None),
-    'prefetch_per_day': (150, int, None),
-    'ytdlp': ('yt-dlp', str, 'TUBES_YTDLP'),
-    'ffmpeg': ('ffmpeg', str, 'TUBES_FFMPEG'),
-    'history_url': ('', str, 'TUBES_HISTORY_URL'),
-    'history_table': ('', str, 'TUBES_HISTORY_TABLE'),
-}
 # The kinds of segment the player can skip, SponsorBlock's own categories (https://wiki.sponsor.ajay.app/w/Segment_Categories), with their default.
 SKIP_DEFAULTS = dict(sponsor='auto', selfpromo='ask', interaction='ask', intro='ask', outro='ask', preview='ask', hook='off', filler='off', music_offtopic='off')
 SKIP_MODES = ('off', 'ask', 'auto')
-SPEC.update({f'skip_{c}': (mode, str, None) for c, mode in SKIP_DEFAULTS.items()})
-KNOWN = tuple(SPEC)
-POSITIVE = ('cache_limit_gb', 'max_height', 'half_life_days')
 
 
-class SettingError(ValueError):
-    """Raised when a setting's value cannot be used."""
+@dataclass(frozen=True)
+class above_zero(number_between):
+    """A number more than 0 (a cache limit, a half-life: 0 would empty the cache or divide by zero). A `number_between` underneath, so the
+    schema still types it as a number; strata-python has no exclusive lower bound, so the smallest float above 0 stands in for it."""
+    lo: float = math.ulp(0.0)
+    hi: float = 1e9
+
+    def __call__(self, value: str) -> str:
+        try: x = float(value.strip())
+        except ValueError: raise ValueError('must be a number') from None
+        if not math.isfinite(x) or x <= 0: raise ValueError('must be more than 0')
+        return super().__call__(value)
 
 
-def home():
-    return os.environ.get('TUBES_HOME') or os.path.join(os.path.expanduser('~'), '.tubes')
+def trimmed(value: str) -> str: return value.strip()
 
 
-def _path(): return os.path.join(home(), 'settings.json')
+class OldFileStore(JsonFileStore):
+    """The settings file as Tubes wrote it before strata-python: numbers as JSON numbers, which strata-python's Settings reads as not text and
+    so ignores (the default would apply). They are read as their text, so a deployed file keeps its values; the next save writes strings."""
+    def load(self):
+        return {k: repr(v) if isinstance(v, float) else str(v) if isinstance(v, int) and not isinstance(v, bool) else v for k, v in super().load().items()}
 
 
-def load():
-    try:
-        with open(_path(), encoding='utf8') as f: d = json.load(f)
-    except (OSError, ValueError): d = {}
-    return d if isinstance(d, dict) else {}
+SETTINGS = Settings('tubes', [
+    Setting('data_dir', default=lambda: DEFAULT_DATA_DIR, normalise=absolute_path, env='TUBES_DATA'),
+    Setting('cache_dir', default=lambda: os.path.join(SETTINGS.get('data_dir'), 'cache'), normalise=absolute_path, env='TUBES_CACHE'),
+    Setting('cache_limit_gb', default='1000', normalise=above_zero()),
+    Setting('max_height', default='1080', normalise=whole_between(1, 10000)),
+    Setting('player_client', default='visionos', normalise=trimmed),
+    Setting('cookies_from_browser', default='', normalise=trimmed),
+    Setting('half_life_days', default='30', normalise=above_zero()),
+    Setting('protect_days', default='7', normalise=number_between(0, 36500)),
+    Setting('prefetch_seconds', default='20', normalise=number_between(0, 3600)),
+    Setting('prefetch_per_day', default='150', normalise=whole_between(0, 100000)),
+    Setting('ytdlp', default='yt-dlp', normalise=non_empty, env='TUBES_YTDLP'),
+    Setting('ffmpeg', default='ffmpeg', normalise=non_empty, env='TUBES_FFMPEG'),
+    Setting('history_url', default='', normalise=trimmed, env='TUBES_HISTORY_URL'),
+    Setting('history_table', default='', normalise=trimmed, env='TUBES_HISTORY_TABLE'),
+    *(Setting(f'skip_{c}', default=mode, choices=SKIP_MODES) for c, mode in SKIP_DEFAULTS.items()),
+], numbers=True)
+SETTINGS.store = OldFileStore(SETTINGS.path)
 
-
-def parse(key, value):
-    """`value` as the setting's type (a string from the CLI or JSON from the API), or SettingError with the reason."""
-    if key not in SPEC: raise KeyError(f'unknown setting {key!r}')
-    kind = SPEC[key][1]
-    if key in ('data_dir', 'cache_dir'):
-        v = str(value).strip()
-        if not os.path.isabs(os.path.expanduser(v)): raise SettingError(f'{key} must be an absolute path')
-        return v
-    if key.startswith('skip_'):
-        v = str(value).strip().lower()
-        if v not in SKIP_MODES: raise SettingError(f"{key} must be {', '.join(SKIP_MODES[:-1])} or {SKIP_MODES[-1]}")
-        return v
-    if kind is str: return str(value).strip()
-    try: v = kind(value)
-    except (TypeError, ValueError): raise SettingError(f'{key} must be a number') from None
-    if key in POSITIVE and v <= 0: raise SettingError(f'{key} must be more than 0')
-    if v < 0: raise SettingError(f'{key} must not be negative')
-    return v
-
-
-def save(changes):
-    """Merge `changes` into the settings file after checking every value (nothing is saved if one is wrong); returns the saved settings. A None value removes the setting (back to its default)."""
-    d = load()
-    for k, v in changes.items():
-        if v is None:
-            if k not in SPEC: raise KeyError(f'unknown setting {k!r}')
-            d.pop(k, None)
-        else: d[k] = parse(k, v)
-    os.makedirs(home(), exist_ok=True); tmp = _path() + '.tmp'
-    with open(tmp, 'w', encoding='utf8') as f: json.dump(d, f, indent=1)
-    os.replace(tmp, _path()); return d
-
-
-def get(key):
-    """One setting: the environment override, else the file, else the default (a bad value in the file falls back to the default)."""
-    default, _kind, env = SPEC[key]
-    raw = (os.environ.get(env) if env else None) or load().get(key)
-    if raw is None: return default
-    try: return parse(key, raw)
-    except SettingError: return default
-
-
-def _folder(p):
-    p = os.path.abspath(os.path.expanduser(p)); os.makedirs(p, exist_ok=True); return p
+KNOWN = SETTINGS.keys
+get, get_int, get_float, save, load, home = SETTINGS.get, SETTINGS.get_int, SETTINGS.get_float, SETTINGS.save, SETTINGS.load, SETTINGS.home
 
 
 def data_dir():
-    """The folder that holds the database (created when asked for)."""
-    return _folder(get('data_dir') or DEFAULT_DATA_DIR)
+    """The folder that holds the data Tubes keeps beside its database (created when asked for)."""
+    return SETTINGS.folder('data_dir')
 
 
 def cache_dir():
     """The folder that holds fetched videos (created when asked for)."""
-    return _folder(get('cache_dir') or os.path.join(data_dir(), 'cache'))
+    return SETTINGS.folder('cache_dir')
 
 
 def cache_limit_bytes():
-    return int(get('cache_limit_gb') * 1e9)
-
-
-def all_settings():
-    d = {k: get(k) for k in KNOWN}
-    d.update(data_dir=data_dir(), cache_dir=cache_dir()); return d
+    return int(get_float('cache_limit_gb') * 1e9)

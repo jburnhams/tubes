@@ -1,5 +1,5 @@
-"""Tubes' tables, as typed records. They live in the `tubes` schema of the shared PostgreSQL server (omarchy_db: `connect('tubes')`), and on
-SQLite in the tests and for a quick local run (`TUBES_DATABASE_URL=data/tubes.db`). Change a field here, then `dbtool revision -m "..."` writes
+"""Tubes' tables, as typed records. They live in the `tubes` schema of the shared PostgreSQL server (strata_python.db: `connect('tubes')`), and on
+SQLite in the tests and for a quick local run (`TUBES_DATABASE_URL=data/tubes.db`). Change a field here, then `strata-db revision -m "..."` writes
 the migration into migrations/ (review it and commit it); the server applies pending migrations when it starts (db.py).
 
 Everything is portable SQL (no Postgres-only types), so the tests run on SQLite. Times are ISO 8601 strings in UTC, as the library's own rows
@@ -44,12 +44,16 @@ carry them, so they sort and compare as text on both engines.
                      and subtitle tracks and other versions (audio-described, signed). A source's sync replaces what it gave before.
   segments           parts of a video the player can skip (segments.py): from SponsorBlock for YouTube, from iPlayer's own intro and credits
                      points for an episode, under SponsorBlock's categories; `segment_checks` says when each video's source was last asked."""
-from sqlalchemy import BigInteger, Float, Index, String, Text, false, true
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import BigInteger, Float, Index, MetaData, String, Text, false, true
+from sqlalchemy.orm import DeclarativeBase, Mapped, MappedAsDataclass, mapped_column
 
-from omarchy_db import make_base
+from strata_python.db import NAMING_CONVENTION
 
-Base = make_base()
+
+class Base(MappedAsDataclass, DeclarativeBase):
+    """Written out rather than `make_base()`, as strata_python.db asks (a base made by a call is not a class to type checkers). The naming
+    convention is byte-identical to omarchy_db's, so the existing revisions and the deployed schema do not drift."""
+    metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 
 class Channel(Base):

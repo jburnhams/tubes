@@ -33,11 +33,15 @@ when copied, 2.7 s when a 4K HEVC episode is converted to 1080p H.264 (about 4 t
 Fetches run in background threads of the server process, one per video, at most `MAX_RUNNING` at a time; a play of a video already being fetched
 joins it. A fetch can stop on purpose once `until` seconds are listed: a prefetch of a video's start (prefetch.py), kept as a partial copy
 (cache.keep_prefix) and fetched whole from the same formats when it is played (see cache.py's notes). A play of a video whose prefetch is
-running lets it carry on to the end instead. Prefetches do not count against `MAX_RUNNING`. The pipes need file descriptors passed by number, which Windows lacks, so fetching from YouTube runs on Linux and macOS only (oslib.CAN_PASS_FDS); an iPlayer fetch has no pipes and runs anywhere."""
+running lets it carry on to the end instead. Prefetches do not count against `MAX_RUNNING`. The pipes need file descriptors passed by number, which Windows lacks, so fetching from YouTube runs on Linux and macOS only (CAN_PASS_FDS); an iPlayer fetch has no pipes and runs anywhere."""
 import json, os, shutil, subprocess, sys, threading, time
 from concurrent.futures import ThreadPoolExecutor
 
-from tubes import cache, catalogue, db, iplayer, oslib, plex, settings, ytdlp
+from strata_python import oslib
+
+from tubes import cache, catalogue, db, iplayer, plex, settings, ytdlp
+
+CAN_PASS_FDS = not oslib.WIN          # subprocess pass_fds (an inherited pipe by number, read by ffmpeg as pipe:<fd>) is POSIX only
 
 MAX_RUNNING = 3
 ATTEMPTS = 2                 # a download that fails is run once more before the copy is marked failed (most failures are passing: a retry by hand worked)
@@ -99,7 +103,7 @@ def choose_once(url, signed_in=False, prefer=None, auto_client=False):
     if prefer:
         ids = {f.get('format_id'): f for f in info.get('formats') or []}
         if prefer['video'] in ids and prefer['audio'] in ids: return info, ids[prefer['video']], ids[prefer['audio']], signed_in
-    return (info, *ytdlp.choose_formats(info.get('formats') or [], settings.get('max_height')), signed_in)
+    return (info, *ytdlp.choose_formats(info.get('formats') or [], settings.get_int('max_height')), signed_in)
 
 
 def same(chosen, prefer):
@@ -240,7 +244,7 @@ def start(video_id, title=None, channel=None, background=True, until=None):
         st = cache.status(video_id)
         if st['state'] == 'ready' and st['complete']: return st      # a ready row whose files are gone (the cache folder moved, or was cleared by hand) is fetched again
         if st['state'] == 'partial' and until is not None: return st
-        if where == 'youtube' and not oslib.CAN_PASS_FDS: raise FetchError('Fetching needs Linux or macOS.')      # an iPlayer fetch passes no pipes
+        if where == 'youtube' and not CAN_PASS_FDS: raise FetchError('Fetching needs Linux or macOS.')      # an iPlayer fetch passes no pipes
         if until is None and sum(1 for j in _running.values() if j is None or j.until is None) >= MAX_RUNNING: raise FetchError(f'{MAX_RUNNING} videos are already being fetched; try again when one finishes.')
         prefer = cache.prefix(video_id) if st['state'] == 'partial' and st['playable'] else None
         job = _running[video_id] = Job(video_id, until, prefer)
@@ -309,7 +313,7 @@ def _run_iplayer(job, url):
     error = None; kept = 0
     try:
         with db.connect() as con: r = con.execute('SELECT duration FROM videos WHERE id = ?', (job.video_id,)).fetchone()
-        stream_url, label = iplayer_stream(job.video_id, url, settings.get('max_height'))
+        stream_url, label = iplayer_stream(job.video_id, url, settings.get_int('max_height'))
         if job.prefer and (job.prefer['video'], job.prefer['audio']) != (label, label):       # another variant now: start again without the kept start
             note(job.video_id, '[tubes] the kept start\'s stream is not offered now; fetching from scratch')
             cache.begin(job.video_id, cache.stamp()); job.prefer = None
@@ -339,7 +343,7 @@ def _run_plex(job, url):
         c = plex.codecs(m.get('Media')); native = job.video_id.endswith(NATIVE)
         copy = native or c['video'] == 'h264'
         cache.set_formats(job.video_id, f"{c['video'] or '?'} {'copied' if copy else 'converted to H.264'}, {c['audio'] or '?'} {'copied' if c['audio'] == 'aac' else 'converted to AAC'} (Plex {c['container'] or 'file'})")
-        cmd = plex_command(url, c['video'], native, settings.get('max_height'), hdr=bool(r and r[1]))
+        cmd = plex_command(url, c['video'], native, settings.get_int('max_height'), hdr=bool(r and r[1]))
         if not job.cancelled: error = attempts(job, lambda: direct_pipeline(job, url, r[0] if r else None, cmd))
     except plex.PlexError as e: error = str(e)
     except OSError as e: error = f'Could not start the fetch: {e}'

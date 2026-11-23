@@ -3,9 +3,9 @@ standing in for yt-dlp: add a channel and let its sync run, browse it, play whil
 would, and see it in the cache."""
 import re, shutil, time
 import pytest
-from tubes import oslib
+from tubes import fetcher
 
-needs_ffmpeg = pytest.mark.skipif(not shutil.which('ffmpeg') or not oslib.CAN_PASS_FDS, reason='fetching needs ffmpeg on PATH and Linux or macOS')
+needs_ffmpeg = pytest.mark.skipif(not shutil.which('ffmpeg') or not fetcher.CAN_PASS_FDS, reason='fetching needs ffmpeg on PATH and Linux or macOS')
 
 
 def wait_for(fn, seconds=60):

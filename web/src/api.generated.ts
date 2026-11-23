@@ -1194,13 +1194,6 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
-        /** Health */
-        Health: {
-            /** Ok */
-            ok: boolean;
-            /** Version */
-            version: string;
-        };
         /** HistorySource */
         HistorySource: {
             /** Channels */
@@ -2127,6 +2120,82 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** TubesSettings */
+        TubesSettings: {
+            /** Cache Dir */
+            cache_dir: string;
+            /** Cache Limit Gb */
+            cache_limit_gb: number;
+            /** Cookies From Browser */
+            cookies_from_browser: string;
+            /** Data Dir */
+            data_dir: string;
+            /** Ffmpeg */
+            ffmpeg: string;
+            /** Half Life Days */
+            half_life_days: number;
+            /** History Table */
+            history_table: string;
+            /** History Url */
+            history_url: string;
+            /** Max Height */
+            max_height: number;
+            /** Player Client */
+            player_client: string;
+            /** Prefetch Per Day */
+            prefetch_per_day: number;
+            /** Prefetch Seconds */
+            prefetch_seconds: number;
+            /** Protect Days */
+            protect_days: number;
+            /**
+             * Skip Filler
+             * @enum {string}
+             */
+            skip_filler: "off" | "ask" | "auto";
+            /**
+             * Skip Hook
+             * @enum {string}
+             */
+            skip_hook: "off" | "ask" | "auto";
+            /**
+             * Skip Interaction
+             * @enum {string}
+             */
+            skip_interaction: "off" | "ask" | "auto";
+            /**
+             * Skip Intro
+             * @enum {string}
+             */
+            skip_intro: "off" | "ask" | "auto";
+            /**
+             * Skip Music Offtopic
+             * @enum {string}
+             */
+            skip_music_offtopic: "off" | "ask" | "auto";
+            /**
+             * Skip Outro
+             * @enum {string}
+             */
+            skip_outro: "off" | "ask" | "auto";
+            /**
+             * Skip Preview
+             * @enum {string}
+             */
+            skip_preview: "off" | "ask" | "auto";
+            /**
+             * Skip Selfpromo
+             * @enum {string}
+             */
+            skip_selfpromo: "off" | "ask" | "auto";
+            /**
+             * Skip Sponsor
+             * @enum {string}
+             */
+            skip_sponsor: "off" | "ask" | "auto";
+            /** Ytdlp */
+            ytdlp: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -2588,13 +2657,15 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Health"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -3173,7 +3244,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TubesSettings"];
                 };
             };
         };
@@ -3188,7 +3259,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    [key: string]: unknown;
+                    [key: string]: string | number | string[] | null;
                 };
             };
         };
@@ -3199,7 +3270,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["TubesSettings"];
                 };
             };
             /** @description Validation Error */

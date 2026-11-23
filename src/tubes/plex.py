@@ -370,14 +370,11 @@ def cached_image(path, width=640):
     out = os.path.join(folder, f"{hashlib.sha1(path.encode()).hexdigest()[:20]}-{w}.jpg")
     if os.path.exists(out): return out
     data = image_bytes(path)
-    import tempfile
-    fd, tmp = tempfile.mkstemp(suffix='.part', dir=folder); os.close(fd)        # its own: two requests for one picture at once must not share a file
+    from strata_python.files import atomic_path
     try:
-        p = subprocess.run([settings.get('ffmpeg'), '-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-i', 'pipe:0', '-vf', f"scale='min({w},iw)':-2", '-frames:v', '1', '-q:v', '3', '-f', 'mjpeg', tmp],
-                           input=data, capture_output=True, timeout=60)
-        if p.returncode != 0 or not os.path.exists(tmp): raise PlexError('The picture could not be scaled.')
-        os.replace(tmp, out)
+        with atomic_path(out) as tmp:                                             # its own temp name: two requests for one picture at once never share a file
+            p = subprocess.run([settings.get('ffmpeg'), '-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-i', 'pipe:0', '-vf', f"scale='min({w},iw)':-2", '-frames:v', '1', '-q:v', '3', '-f', 'mjpeg', tmp],
+                               input=data, capture_output=True, timeout=60)
+            if p.returncode != 0 or not os.path.exists(tmp): raise PlexError('The picture could not be scaled.')
     except (OSError, subprocess.TimeoutExpired): raise PlexError('The picture could not be scaled.') from None
-    finally:
-        if os.path.exists(tmp): os.remove(tmp)
     return out

@@ -173,7 +173,7 @@ def test_a_watched_channel_that_leaves_the_history_stays_while_pointed_at(two_fo
 
 def test_watch_next_says_when_youtube_answers_with_something_else(fake_youtube, monkeypatch):
     import urllib.request
-    from fakes import FakeResponse
+    from strata_python.testing import FakeResponse
     monkeypatch.setattr(urllib.request, 'urlopen', lambda *a, **k: FakeResponse(b'<html>consent</html>'))
     with pytest.raises(related.RelatedError, match='did not answer with JSON'): related.watch_next('v0000000000')
 
