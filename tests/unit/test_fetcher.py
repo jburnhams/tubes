@@ -365,7 +365,7 @@ def test_pipeline_wires_two_downloads_into_ffmpeg(monkeypatch):
     ]
     assert isinstance(v.kw["stdout"], int) and isinstance(a.kw["stdout"], int)
     for fd in (*fds, v.kw["stdout"], a.kw["stdout"]):
-        with pytest.raises(OSError, match="Bad file descriptor"):
+        with pytest.raises(OSError, match=r"Bad file descriptor|handle is invalid"):
             os.fstat(fd)  # every pipe end is closed in this process
 
 
