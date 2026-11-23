@@ -1,10 +1,14 @@
 import pytest
 from tubes import db
-from tubes.models import Base
-from omarchy_db import drift
+
+# strata_python.db's standard tests: the migrated test database matches the models, and every revision goes up, down and up again on a
+# scratch database (what `strata-db check` does), on SQLite and with --pg on Postgres.
+from strata_python.db.testing import test_migrations, test_schema_matches_models  # noqa: F401
 
 
-def test_schema_matches_models():
+def test_the_engine_tubes_opens_matches_the_models():
+    from strata_python.db import drift
+    from tubes.models import Base
     assert drift(db.engine(), Base.metadata) == []
 
 
@@ -27,15 +31,15 @@ def test_placeholders_must_match_the_values():
 def test_one_engine_per_url(monkeypatch, tmp_path):
     first = db.engine()
     assert db.engine() is first
-    monkeypatch.setenv('TUBES_DATABASE_URL', str(tmp_path / 'other.db'))
+    monkeypatch.delenv('STRATA_DB_URL'); monkeypatch.setenv('TUBES_DATABASE_URL', str(tmp_path / 'other.db'))      # the app's own variable (STRATA_DB_URL would win)
     assert db.engine() is not first and db.url().endswith('other.db')
     with db.connect() as con: assert con.execute('SELECT COUNT(*) FROM copies').scalar() == 0     # migrated on first use
 
 
 def test_threads_asking_at_once_migrate_once_and_one_at_a_time(monkeypatch, tmp_path):
     import threading, time
-    from omarchy_db import Project
-    monkeypatch.setenv('TUBES_DATABASE_URL', str(tmp_path / 'fresh.db'))         # not migrated yet in this process
+    from strata_python.db import Project
+    monkeypatch.delenv('STRATA_DB_URL'); monkeypatch.setenv('TUBES_DATABASE_URL', str(tmp_path / 'fresh.db'))         # not migrated yet in this process
     running, ran, overlapped = [], [], []
     def upgrade(self, engine):
         if running: overlapped.append(True)

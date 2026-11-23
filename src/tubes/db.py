@@ -1,6 +1,8 @@
-"""The database: Tubes' schema (`tubes`) in the shared PostgreSQL server, through omarchy_db (the `database` repo: SQLAlchemy models in
-models.py, Alembic migrations in migrations/, applied on first use). Which database: `TUBES_DATABASE_URL` (or `OMARCHY_DB_URL`), else the
-shared server over its Unix socket; a plain path means SQLite, which the tests use and which suits a quick local run (`data/tubes.db`).
+"""The database: Tubes' schema (`tubes`) in the shared PostgreSQL server, through strata_python.db (SQLAlchemy models in models.py, Alembic
+migrations in migrations/, applied on first use). Which database: `STRATA_DB_URL`, else `TUBES_DATABASE_URL`, else the shared server named by
+`STRATA_DB_DATABASE` over its Unix socket; a plain path means SQLite, which the tests use and which suits a quick local run (`data/tubes.db`).
+A real Postgres database is refused unless the process has `STRATA_DB_LIVE=1` (the service units set it) and always under pytest.
+There is deliberately no SQLite fallback when nothing is set: a service that lost its environment should fail to start, not serve an empty library.
 
 Queries are plain SQL that runs on both engines (no Postgres-only features). `connect()` gives one transaction, committed when the block
 ends and rolled back on an error; its `execute` takes `?` placeholders with a tuple, or `:name` with a dict, so call sites stay short."""
@@ -9,7 +11,7 @@ import threading
 
 from sqlalchemy import text
 
-from omarchy_db import Project, connect as connect_engine, url_for
+from strata_python.db import Project, connect as connect_engine, url_for
 
 APP = 'tubes'
 _engines = {}                # url -> migrated engine

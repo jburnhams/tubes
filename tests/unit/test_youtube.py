@@ -1,6 +1,6 @@
 import urllib.error
 import pytest
-from fakes import http_error
+from strata_python.testing import http_error
 from tubes import youtube
 
 

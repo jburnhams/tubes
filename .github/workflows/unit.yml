@@ -43,7 +43,7 @@ jobs:
           path: coverage.xml
 
   postgres:
-    # The same unit and integration suites on Postgres (omarchy_db's --pg), since production runs there and tests default to SQLite.
+    # The same unit and integration suites on Postgres (strata_python.db's --pg), since production runs there and tests default to SQLite.
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -54,7 +54,7 @@ jobs:
         options: >-
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
-      OMARCHY_DB_TEST_ADMIN_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
+      STRATA_DB_TEST_ADMIN_URL: postgresql+psycopg://postgres:postgres@localhost:5432/postgres
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
