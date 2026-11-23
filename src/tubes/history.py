@@ -335,7 +335,8 @@ def communities(sits: list[set[str]], counts: Mapping[str, int], minimum: int = 
     g.add_weighted_edges_from((a, b, n / math.sqrt(counts[a] * counts[b])) for (a, b), n in shared.items() if n >= 2)
     if not g.number_of_edges():
         return []
-    found = nx.community.louvain_communities(g, weight="weight", seed=1)
+    # newer typeshed stubs leave part of `seed`'s type unknown; the call itself is typed (list[set[str]])
+    found: list[set[str]] = nx.community.louvain_communities(g, weight="weight", seed=1)  # pyright: ignore[reportUnknownMemberType]
     return sorted((set(c) for c in found if len(c) >= 2), key=lambda c: (-sum(counts[x] for x in c), min(c)))
 
 
