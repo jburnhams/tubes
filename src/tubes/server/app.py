@@ -71,7 +71,7 @@ from pydantic import BaseModel, Field
 from . import answers as A
 from .answers import answer
 
-from tubes import __version__, cache, catalogue, db, fetcher, history, iplayer, library, oslib, paste, plex, prefetch, quota, segments, settings, viewing, youtube, ytdlp
+from tubes import __version__, cache, catalogue, db, fetcher, history, iplayer, library, paste, plex, prefetch, quota, segments, settings, viewing, youtube, ytdlp
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static')
 LANDING = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'landing.html')
@@ -142,7 +142,7 @@ def system_status():
     """A snapshot for the System page. Sizes are bytes; the web app formats them."""
     du = shutil.disk_usage(settings.cache_dir())
     return dict(version=__version__, python=platform.python_version(), platform=f'{platform.system()} {platform.release()}'.strip(),
-                ytdlp=ytdlp.version(), ffmpeg=fetcher.ffmpeg_version(), can_fetch=oslib.CAN_PASS_FDS,
+                ytdlp=ytdlp.version(), ffmpeg=fetcher.ffmpeg_version(), can_fetch=fetcher.CAN_PASS_FDS,
                 data_dir=settings.data_dir(), cache_dir=settings.cache_dir(), cache=cache.usage(cache.utcnow()), fetching=fetcher.running(),
                 disk=dict(total=du.total, used=du.used, free=du.free), library=library.status())
 

@@ -2,7 +2,7 @@ import os, threading
 import pytest
 import uvicorn
 from fastapi.testclient import TestClient
-from tubes import cache, fetcher, library, oslib, ytdlp
+from tubes import cache, fetcher, library, ytdlp
 from tubes.server import app as server_app
 from tubes.server.app import create_app
 from library import CHANNELS, VIDEOS, seed
@@ -47,7 +47,7 @@ def test_every_page_path_serves_the_app_with_a_base_back_to_its_root(tmp_path, m
 def test_system_and_settings(client, monkeypatch):
     monkeypatch.setattr(ytdlp, 'version', lambda: '2026.10.26'); monkeypatch.setattr(fetcher, 'ffmpeg_version', lambda: 'ffmpeg version 7.1')
     s = client.get('/api/system').json()
-    assert (s['ytdlp'], s['ffmpeg'], s['can_fetch'], s['fetching']) == ('2026.10.26', 'ffmpeg version 7.1', oslib.CAN_PASS_FDS, [])
+    assert (s['ytdlp'], s['ffmpeg'], s['can_fetch'], s['fetching']) == ('2026.10.26', 'ffmpeg version 7.1', fetcher.CAN_PASS_FDS, [])
     assert s['disk']['total'] > 0 and s['cache']['limit'] == 10**12 and s['cache_dir'].endswith('cache') and s['library'] == dict(synced=None, channels=0, videos=0, hidden=0, live=0, filtered=0, configured=False)
     assert client.put('/api/settings', json=dict(max_height=720, player_client='')).json()['max_height'] == 720
     assert client.get('/api/settings').json()['player_client'] == ''

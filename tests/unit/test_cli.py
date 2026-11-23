@@ -1,7 +1,7 @@
 import importlib, json
 from pathlib import Path
 import pytest
-from tubes import cache, catalogue, cli, fetcher, oslib, quota, settings, youtube, ytdlp
+from tubes import cache, catalogue, cli, fetcher, quota, settings, youtube, ytdlp
 from library import seed
 from test_cache import write_playlist
 
@@ -9,7 +9,7 @@ from test_cache import write_playlist
 @pytest.fixture(autouse=True)
 def tools(monkeypatch):
     monkeypatch.setattr(ytdlp, 'version', lambda: '2026.10.26'); monkeypatch.setattr(fetcher, 'ffmpeg_version', lambda: 'ffmpeg version 7.1')
-    monkeypatch.setattr(oslib, 'CAN_PASS_FDS', True)
+    monkeypatch.setattr(fetcher, 'CAN_PASS_FDS', True)
 
 
 def test_doctor(capsys, monkeypatch):
@@ -21,7 +21,7 @@ def test_doctor(capsys, monkeypatch):
 
     real_import = importlib.import_module
     monkeypatch.setattr(importlib, 'import_module', lambda name: (_ for _ in ()).throw(ImportError(name)) if name == 'uvicorn' else real_import(name))
-    monkeypatch.setattr(ytdlp, 'version', lambda: None); monkeypatch.setattr(fetcher, 'ffmpeg_version', lambda: None); monkeypatch.setattr(oslib, 'CAN_PASS_FDS', False)
+    monkeypatch.setattr(ytdlp, 'version', lambda: None); monkeypatch.setattr(fetcher, 'ffmpeg_version', lambda: None); monkeypatch.setattr(fetcher, 'CAN_PASS_FDS', False)
     monkeypatch.delenv('YOUTUBE_API_KEY')
     assert cli.main(['doctor']) == 1
     out = capsys.readouterr().out

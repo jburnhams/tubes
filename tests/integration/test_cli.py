@@ -4,9 +4,9 @@ import json, shutil
 import pytest
 from fake_youtube import vid
 from library import seed
-from tubes import oslib, settings
+from tubes import fetcher, settings
 
-needs_ffmpeg = pytest.mark.skipif(not shutil.which('ffmpeg') or not oslib.CAN_PASS_FDS, reason='fetching needs ffmpeg on PATH and Linux or macOS')
+needs_ffmpeg = pytest.mark.skipif(not shutil.which('ffmpeg') or not fetcher.CAN_PASS_FDS, reason='fetching needs ffmpeg on PATH and Linux or macOS')
 
 
 A = 'UCaaaaaaaaaaaaaaaaaaaaaa'

@@ -1,6 +1,6 @@
 import json, os, subprocess, threading
 import pytest
-from tubes import cache, catalogue, fetcher, library, oslib, settings, ytdlp
+from tubes import cache, catalogue, fetcher, library, settings, ytdlp
 from library import seed
 from test_cache import write_playlist
 
@@ -10,7 +10,7 @@ INFO = dict(duration=8, formats=[dict(format_id='399', vcodec='av01.0.08M.08', a
 
 @pytest.fixture(autouse=True)
 def clean_jobs(monkeypatch):
-    monkeypatch.setattr(fetcher, '_running', {}); monkeypatch.setattr(oslib, 'CAN_PASS_FDS', True)
+    monkeypatch.setattr(fetcher, '_running', {}); monkeypatch.setattr(fetcher, 'CAN_PASS_FDS', True)
 
 
 def test_commands():
@@ -22,9 +22,9 @@ def test_commands():
 def test_start_refusals(monkeypatch):
     seed()
     with pytest.raises(fetcher.FetchError, match="'zzz' is not a YouTube video id"): fetcher.start('zzz')
-    monkeypatch.setattr(oslib, 'CAN_PASS_FDS', False)
+    monkeypatch.setattr(fetcher, 'CAN_PASS_FDS', False)
     with pytest.raises(fetcher.FetchError, match='Linux or macOS'): fetcher.start('aaaaaaaaaaa')
-    monkeypatch.setattr(oslib, 'CAN_PASS_FDS', True)
+    monkeypatch.setattr(fetcher, 'CAN_PASS_FDS', True)
     monkeypatch.setattr(fetcher, '_running', {f'v{i}': None for i in range(fetcher.MAX_RUNNING)})
     with pytest.raises(fetcher.FetchError, match='already being fetched'): fetcher.start('aaaaaaaaaaa')
 
@@ -171,7 +171,7 @@ def test_a_cancelled_fetch_is_recorded_as_stopped(monkeypatch):
 def test_cancel_stops_running_processes(monkeypatch, fake_popen):
     job = fetcher.Job('aaaaaaaaaaa'); p = fake_popen(['x']); done = fake_popen(['y']); done.returncode = 0
     job.procs = [p, done]; job.thread = threading.Thread(target=job.ended.set); job.thread.start()
-    killed = []; monkeypatch.setattr(oslib, 'kill_tree', lambda pid: killed.append(pid))
+    killed = []; monkeypatch.setattr(fetcher.oslib, 'kill_tree', lambda pid: killed.append(pid))
     fetcher._running['aaaaaaaaaaa'] = job
     fetcher.cancel(['aaaaaaaaaaa', 'not-running'])
     assert job.cancelled is True and killed == [p.pid]
@@ -249,7 +249,7 @@ def test_pipeline_stops_what_started_when_a_process_cannot_start(monkeypatch):
         if made: raise OSError('no yt-dlp')
         made.append(Proc(cmd, None)); return made[-1]
     monkeypatch.setattr(subprocess, 'Popen', popen)
-    killed = []; monkeypatch.setattr(oslib, 'kill_tree', lambda pid: killed.append(pid))
+    killed = []; monkeypatch.setattr(fetcher.oslib, 'kill_tree', lambda pid: killed.append(pid))
     job = fetcher.Job('aaaaaaaaaaa')
     with pytest.raises(OSError, match='no yt-dlp'): fetcher.pipeline(job, 'u', 'v', 'a')
     assert killed == [1] and job.cancelled is True
@@ -258,7 +258,7 @@ def test_pipeline_stops_what_started_when_a_process_cannot_start(monkeypatch):
 def test_watch_stops_a_stalled_fetch(monkeypatch):
     seed(); cache.begin('aaaaaaaaaaa', cache.stamp())
     job = fetcher.Job('aaaaaaaaaaa'); p = Proc(['x'], None); job.procs = [p]
-    killed = []; monkeypatch.setattr(oslib, 'kill_tree', lambda pid: killed.append(pid))
+    killed = []; monkeypatch.setattr(fetcher.oslib, 'kill_tree', lambda pid: killed.append(pid))
     t = [0.0]
     def sleep(s):
         t[0] += 50
@@ -295,14 +295,14 @@ def test_a_stop_while_the_processes_start_reaches_all_of_them(monkeypatch):
         if not job.procs: job.stop()                                                          # the stop lands after ffmpeg started, before the downloads
         return Proc(cmd, None, **kw)
     monkeypatch.setattr(subprocess, 'Popen', popen)
-    killed = []; monkeypatch.setattr(oslib, 'kill_tree', lambda pid: killed.append(pid))
+    killed = []; monkeypatch.setattr(fetcher.oslib, 'kill_tree', lambda pid: killed.append(pid))
     assert fetcher.pipeline(job, 'u', 'v', 'a') == 'The fetch was stopped.'
     assert len(killed) == 3
 
 
 def test_watch_ends_when_the_fetch_is_cancelled(monkeypatch):
     job = fetcher.Job('aaaaaaaaaaa'); job.procs = [Proc(['x'], None)]; job.cancelled = True
-    killed = []; monkeypatch.setattr(oslib, 'kill_tree', lambda pid: killed.append(pid))
+    killed = []; monkeypatch.setattr(fetcher.oslib, 'kill_tree', lambda pid: killed.append(pid))
     assert fetcher.watch(job, sleep=lambda s: pytest.fail('no wait after a stop')) is False and killed == [1]
 
 
@@ -450,12 +450,12 @@ def test_direct_pipeline_runs_ffmpeg_and_reads_the_result(monkeypatch):
     assert fetcher.direct_pipeline(job, 'https://cdn.test/x.m3u8', 8) is None
     assert made[0].cmd[7] == 'https://cdn.test/x.m3u8' and made[0].kw['cwd'] == cache.folder(E)
     job2 = fetcher.Job(E); job2.cancelled = True
-    killed = []; monkeypatch.setattr(oslib, 'kill_tree', lambda pid: killed.append(pid))
+    killed = []; monkeypatch.setattr(fetcher.oslib, 'kill_tree', lambda pid: killed.append(pid))
     assert fetcher.direct_pipeline(job2, 'u', 8) == 'The fetch was stopped.'
 
 
 def test_an_iplayer_fetch_needs_no_pipes(monkeypatch):
-    seed_episode(); monkeypatch.setattr(oslib, 'CAN_PASS_FDS', False)
+    seed_episode(); monkeypatch.setattr(fetcher, 'CAN_PASS_FDS', False)
     monkeypatch.setattr(iplayer, 'stream', lambda pid, h: dict(url='u', label='720p50 H.264 + AAC'))
     monkeypatch.setattr(fetcher, 'direct_pipeline', lambda job, url, d: write_playlist(job.video_id, 1, True))
     assert fetcher.start(E, background=False)['state'] == 'ready'
@@ -582,7 +582,7 @@ def test_prefetches_do_not_hold_up_a_play(monkeypatch):
 def test_watch_stops_a_prefetch_once_its_length_is_covered(monkeypatch):
     seed(); cache.begin('aaaaaaaaaaa', cache.stamp())
     job = fetcher.Job('aaaaaaaaaaa', until=10); p = Proc(['x'], None); job.procs = [p]
-    killed = []; monkeypatch.setattr(oslib, 'kill_tree', lambda pid: killed.append(pid))
+    killed = []; monkeypatch.setattr(fetcher.oslib, 'kill_tree', lambda pid: killed.append(pid))
     grown = iter([1, 3, 4])
     assert fetcher.watch(job, clock=lambda: 0, sleep=lambda s: write_playlist('aaaaaaaaaaa', next(grown), False)) is False
     assert job.reached is True and job.cancelled is False and killed == [1] and cache.covered('aaaaaaaaaaa') == 12.0
@@ -647,7 +647,7 @@ def test_cancel_waits_for_a_prefetch_running_in_another_thread(monkeypatch):
     order = []
     def finish():
         order.append('job ends'); job.ended.set()
-    monkeypatch.setattr(oslib, 'kill_tree', lambda pid: None)
+    monkeypatch.setattr(fetcher.oslib, 'kill_tree', lambda pid: None)
     timer = threading.Timer(0.05, finish); timer.start()
     fetcher.cancel(['aaaaaaaaaaa']); order.append('cancel returns')
     assert order == ['job ends', 'cancel returns']

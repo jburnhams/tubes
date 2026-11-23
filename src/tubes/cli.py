@@ -3,7 +3,7 @@ watch history that suggestions are made from; `related` asks YouTube which chann
 A timer on the server runs `tubes sync; tubes related; tubes evict` every few hours (docs/deploy.md)."""
 import argparse, importlib, json, os, sys
 
-from tubes import __version__, cache, catalogue, fetcher, history, iplayer, iplayer_suggest, library, oslib, quota, related, settings, viewing, youtube, ytdlp
+from tubes import __version__, cache, catalogue, fetcher, history, iplayer, iplayer_suggest, library, quota, related, settings, viewing, youtube, ytdlp
 
 CHECKS = (('fastapi', 'fastapi'), ('uvicorn', 'uvicorn'), ('pydantic', 'pydantic'))
 
@@ -16,7 +16,7 @@ def doctor(args):
     for label, version, fix in (('yt-dlp', ytdlp.version(), 'install yt-dlp, or set ytdlp to its path'), ('ffmpeg', fetcher.ffmpeg_version(), 'install ffmpeg, or set ffmpeg to its path')):
         if version: print(f'  ok       {label} {version}')
         else: ok = False; print(f'  MISSING  {label}: {fix}')
-    if not oslib.CAN_PASS_FDS: ok = False; print('  MISSING  fetching needs Linux or macOS')
+    if not fetcher.CAN_PASS_FDS: ok = False; print('  MISSING  fetching needs Linux or macOS')
     if youtube.configured(): print('  ok       library: YOUTUBE_API_KEY set' + (' (sent with a Referer)' if os.environ.get('YOUTUBE_API_REFERER') else ''))
     else: ok = False; print('  MISSING  library: YOUTUBE_API_KEY is not in the environment, so nothing can be added or synced')
     here, why = iplayer.reachable()                                              # optional: without it only iPlayer episodes cannot be added or played

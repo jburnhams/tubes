@@ -33,11 +33,15 @@ when copied, 2.7 s when a 4K HEVC episode is converted to 1080p H.264 (about 4 t
 Fetches run in background threads of the server process, one per video, at most `MAX_RUNNING` at a time; a play of a video already being fetched
 joins it. A fetch can stop on purpose once `until` seconds are listed: a prefetch of a video's start (prefetch.py), kept as a partial copy
 (cache.keep_prefix) and fetched whole from the same formats when it is played (see cache.py's notes). A play of a video whose prefetch is
-running lets it carry on to the end instead. Prefetches do not count against `MAX_RUNNING`. The pipes need file descriptors passed by number, which Windows lacks, so fetching from YouTube runs on Linux and macOS only (oslib.CAN_PASS_FDS); an iPlayer fetch has no pipes and runs anywhere."""
+running lets it carry on to the end instead. Prefetches do not count against `MAX_RUNNING`. The pipes need file descriptors passed by number, which Windows lacks, so fetching from YouTube runs on Linux and macOS only (CAN_PASS_FDS); an iPlayer fetch has no pipes and runs anywhere."""
 import json, os, shutil, subprocess, sys, threading, time
 from concurrent.futures import ThreadPoolExecutor
 
-from tubes import cache, catalogue, db, iplayer, oslib, plex, settings, ytdlp
+from strata_python import oslib
+
+from tubes import cache, catalogue, db, iplayer, plex, settings, ytdlp
+
+CAN_PASS_FDS = not oslib.WIN          # subprocess pass_fds (an inherited pipe by number, read by ffmpeg as pipe:<fd>) is POSIX only
 
 MAX_RUNNING = 3
 ATTEMPTS = 2                 # a download that fails is run once more before the copy is marked failed (most failures are passing: a retry by hand worked)
@@ -240,7 +244,7 @@ def start(video_id, title=None, channel=None, background=True, until=None):
         st = cache.status(video_id)
         if st['state'] == 'ready' and st['complete']: return st      # a ready row whose files are gone (the cache folder moved, or was cleared by hand) is fetched again
         if st['state'] == 'partial' and until is not None: return st
-        if where == 'youtube' and not oslib.CAN_PASS_FDS: raise FetchError('Fetching needs Linux or macOS.')      # an iPlayer fetch passes no pipes
+        if where == 'youtube' and not CAN_PASS_FDS: raise FetchError('Fetching needs Linux or macOS.')      # an iPlayer fetch passes no pipes
         if until is None and sum(1 for j in _running.values() if j is None or j.until is None) >= MAX_RUNNING: raise FetchError(f'{MAX_RUNNING} videos are already being fetched; try again when one finishes.')
         prefer = cache.prefix(video_id) if st['state'] == 'partial' and st['playable'] else None
         job = _running[video_id] = Job(video_id, until, prefer)
