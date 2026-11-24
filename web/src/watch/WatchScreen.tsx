@@ -105,9 +105,10 @@ export function Player({ src, title, heading, segments, kinds, length, growing, 
   )
 }
 
-/** What the player draws over the picture: the title, and the channel with its picture, leading to the channel's page. */
+/** What the player draws over the picture: the title, and the channel with its picture, leading to the channel's page as a visit from
+ *  this video (as the channel link under the player does). */
 export function headingOf(v: VideoDetail, channel: Channel | undefined): MediaHeading {
-  return { title: v.title, subtitle: v.channel ?? channel?.title, subtitleTo: `/channels/${encodeURIComponent(v.channel_id)}`, avatar: channel?.thumbnail ?? null }
+  return { title: v.title, subtitle: v.channel ?? channel?.title, subtitleTo: `/channels/${encodeURIComponent(v.channel_id)}`, state: fromState({ source: 'watch', detail: v.id }), avatar: channel?.thumbnail ?? null }
 }
 
 /** Until the parts to skip are read: the same empty lists every render, so the player's spans stay put. */

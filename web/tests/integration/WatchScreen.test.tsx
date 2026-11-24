@@ -33,6 +33,7 @@ describe('Watch', () => {
     expect(channel).toHaveLength(2)                          // the picture and the name
     await user.click(channel[1])
     expect(router.state.location.pathname).toBe('/channels/UCworkshop00000000000001')
+    expect(router.state.location.state).toEqual({ from: { source: 'watch', detail: id } })
   })
 
   it('names the channel over the picture by its first letter while the channel list is still coming', async () => {
