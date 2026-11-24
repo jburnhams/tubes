@@ -177,6 +177,7 @@ export default defineVisualConfig({
           general: [],
           appearance: { path: '/admin/settings?tab=appearance' },
           shown: { path: '/admin/settings?tab=shown' },
+          breaks: { path: '/admin/settings?tab=breaks' },
           'shown-invalid': {
             path: '/admin/settings?tab=shown',
             setup: async page => {

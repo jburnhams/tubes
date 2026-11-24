@@ -77,6 +77,40 @@
     "title": "AddedWatched",
     "type": "object"
    },
+   "Break": {
+    "description": "A break the watching side takes from playing: a page shown over the paused video (settings break_*).",
+    "properties": {
+     "limit_minutes": {
+      "description": "The longest a break lasts when its page never says it is done.",
+      "title": "Limit Minutes",
+      "type": "number"
+     },
+     "minutes": {
+      "description": "Minutes of playing between two breaks, counted in each browser across videos.",
+      "title": "Minutes",
+      "type": "number"
+     },
+     "url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "The page to show: an http(s) link or a path on this server. Null: no breaks.",
+      "title": "Url"
+     }
+    },
+    "required": [
+     "url",
+     "minutes",
+     "limit_minutes"
+    ],
+    "title": "Break",
+    "type": "object"
+   },
    "CacheItem": {
     "properties": {
      "bytes": {
@@ -3903,6 +3937,26 @@
    },
    "TubesSettings": {
     "properties": {
+     "break_limit_minutes": {
+      "maximum": 240.0,
+      "minimum": 1.0,
+      "title": "Break Limit Minutes",
+      "type": "number"
+     },
+     "break_minutes": {
+      "maximum": 1440.0,
+      "minimum": 1.0,
+      "title": "Break Minutes",
+      "type": "number"
+     },
+     "break_on": {
+      "title": "Break On",
+      "type": "string"
+     },
+     "break_url": {
+      "title": "Break Url",
+      "type": "string"
+     },
      "cache_dir": {
       "title": "Cache Dir",
       "type": "string"
@@ -4066,6 +4120,10 @@
      "ffmpeg",
      "history_url",
      "history_table",
+     "break_on",
+     "break_url",
+     "break_minutes",
+     "break_limit_minutes",
      "skip_sponsor",
      "skip_selfpromo",
      "skip_interaction",
@@ -4510,6 +4568,25 @@
  },
  "openapi": "3.1.0",
  "paths": {
+  "/api/break": {
+   "get": {
+    "description": "The break the Watch page takes (settings break_*), with no url while it is off or has no page.",
+    "operationId": "get_break_api_break_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/Break"
+        }
+       }
+      },
+      "description": "OK"
+     }
+    },
+    "summary": "Get Break"
+   }
+  },
   "/api/cache": {
    "get": {
     "operationId": "get_cache_api_cache_get",

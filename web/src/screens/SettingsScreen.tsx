@@ -1,5 +1,5 @@
-// The one question: "How is the server set up, and how do I change it?" Four tabs whose choice
-// lives in the URL (?tab=skipping, ?tab=shown, ?tab=appearance). General is one form over the server's settings, grouped by
+// The one question: "How is the server set up, and how do I change it?" Five tabs whose choice
+// lives in the URL (?tab=skipping, ?tab=shown, ?tab=breaks, ?tab=appearance). General is one form over the server's settings, grouped by
 // what they decide (the cache, what is fetched, the tools); the fields start
 // from what the server holds (rendered inside DataView's ready state, so never blank while
 // loading), problems are said under their field, and saving is one AsyncButton. The server checks
@@ -12,7 +12,10 @@
 // spoken languages shown (a Checkbox per language the library has, with its count, so the choice is
 // among real ones) and whether only videos with the uploader's captions are shown. Dubbed audio tracks
 // are not offered: the Data API does not list them. Its finding is how many videos the filters leave
-// out now, which it says again after a save. Appearance is Strata's ColorSchemeChoice.
+// out now, which it says again after a save. Breaks is a form over the break_* settings: whether the Watch page
+// pauses every so many minutes of playing to show another page over the picture (src/watch/break.tsx), which
+// page, how often and the longest a break lasts; it says how the page ends a break, for whoever writes one.
+// Appearance is Strata's ColorSchemeChoice.
 import { useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { AsyncButton, Checkbox, ChoiceGroup, ColorSchemeChoice, DataView, EmptyState, Field, Input, NativeSelect, PageHeader, Skeleton, Tabs, format, useAsyncAction, useLoad, type Choice } from 'strata-react'
@@ -22,6 +25,7 @@ const tabs = [
   { value: 'general', label: 'General' },
   { value: 'skipping', label: 'Skipping' },
   { value: 'shown', label: 'Shown videos' },
+  { value: 'breaks', label: 'Breaks' },
   { value: 'appearance', label: 'Appearance' },
 ]
 
@@ -33,7 +37,7 @@ export function SettingsScreen() {
     <>
       <PageHeader title="Settings" scope="Kept on the server, for every browser that opens the app" />
       <Tabs param="tab" items={tabs} label="Settings">
-        {tab => (tab === 'appearance' ? <Appearance /> : tab === 'skipping' ? <Skipping /> : tab === 'shown' ? <Shown /> : <General />)}
+        {tab => (tab === 'appearance' ? <Appearance /> : tab === 'skipping' ? <Skipping /> : tab === 'shown' ? <Shown /> : tab === 'breaks' ? <Breaks /> : <General />)}
       </Tabs>
     </>
   )
@@ -315,6 +319,76 @@ export function ShownForm({ current }: { current: ShownFilters }) {
       <div className="flex flex-wrap items-center gap-3">
         <AsyncButton type="submit" variant="default" phase={save.phase} error={save.error} labels={{ idle: 'Save filters', pending: 'Saving…', done: 'Saved' }} />
         {save.phase === 'error' && <p className="type-body-sm text-danger">{save.error} The filters were not changed.</p>}
+      </div>
+    </form>
+  )
+}
+
+function Breaks() {
+  const load = useLoad({ queryKey: keys.settings, queryFn: api.settings })
+  return (
+    <DataView state={load} isEmpty={() => false} skeleton={<FormSkeleton />} empty={<EmptyState title="No settings">The server sent none.</EmptyState>}>
+      {s => <BreaksForm current={s} />}
+    </DataView>
+  )
+}
+
+type BreakFields = { on: boolean; url: string; minutes: string; limit: string }
+
+/** What is wrong with the break fields, by field: the page is an http(s) link or a path on this server (needed while breaks are on), the
+ *  minutes are numbers in the server's ranges (settings.py). */
+export function breakProblems(f: BreakFields): Partial<Record<'url' | 'minutes' | 'limit', string>> {
+  const url = f.url.trim()
+  const between = (v: string, lo: number, hi: number, what: string) => {
+    const n = Number(v.trim())
+    return v.trim() && Number.isFinite(n) && n >= lo && n <= hi ? undefined : `Enter ${what} in minutes, from ${lo} to ${hi}.`
+  }
+  return {
+    url: url ? (/^(https?:\/\/[^/\s]+|\/)\S*$/i.test(url) ? undefined : 'Enter a link starting http:// or https://, or a path on this server starting with /.') : f.on ? 'Enter the page to show, or turn breaks off.' : undefined,
+    minutes: between(f.minutes, 1, 1440, 'the time between breaks'),
+    limit: between(f.limit, 1, 240, 'the longest break'),
+  }
+}
+
+export function BreaksForm({ current }: { current: Settings }) {
+  const queryClient = useQueryClient()
+  const [f, setF] = useState<BreakFields>({ on: current.break_on === 'true', url: current.break_url, minutes: String(current.break_minutes), limit: String(current.break_limit_minutes) })
+  const [problems, setProblems] = useState<ReturnType<typeof breakProblems>>({})
+  const set = (k: 'url' | 'minutes' | 'limit') => (e: { target: { value: string } }) => setF(old => ({ ...old, [k]: e.target.value }))
+  const save = useAsyncAction(async () => {
+    await api.saveSettings({ break_on: f.on ? 'true' : 'false', break_url: f.url.trim(), break_minutes: Number(f.minutes), break_limit_minutes: Number(f.limit) })
+    await Promise.all([keys.settings, keys.break].map(queryKey => queryClient.invalidateQueries({ queryKey })))
+  }, { describeError })
+  const onSubmit = (e: FormEvent) => {
+    e.preventDefault()
+    const found = breakProblems(f)
+    setProblems(found)
+    if (!Object.values(found).some(Boolean)) void save.run()
+  }
+  return (
+    <form onSubmit={onSubmit} noValidate className="grid max-w-xl gap-8">
+      <p className="type-body text-muted-foreground">
+        Every so many minutes of playing, the video pauses and another page, such as a short game, is shown over the picture until it is done. Only time spent playing counts, in each browser across videos.
+      </p>
+      <fieldset className="grid gap-5">
+        <legend className="mb-4 type-heading">Break</legend>
+        <Checkbox label="Take breaks" detail="Off keeps the page below for next time." checked={f.on} onCheckedChange={on => setF(old => ({ ...old, on }))} />
+        <Field label="Page to show" hint="An http(s) link, or a path on this server such as /games/play. It fills the picture, so a page made for that size works best." error={problems.url}>
+          <Input value={f.url} onChange={set('url')} autoComplete="off" spellCheck={false} />
+        </Field>
+        <Field label="Minutes of playing between breaks" error={problems.minutes}>
+          <Input value={f.minutes} onChange={set('minutes')} inputMode="decimal" autoComplete="off" />
+        </Field>
+        <Field label="Longest break (minutes)" hint="The video plays on after this even if the page never says it is done, so a page that fails to load cannot hold it." error={problems.limit}>
+          <Input value={f.limit} onChange={set('limit')} inputMode="decimal" autoComplete="off" />
+        </Field>
+      </fieldset>
+      <p className="type-body-sm text-muted-foreground">
+        The page ends the break by sending <code>{"{ type: 'tubes:done' }"}</code> to its parent with <code>postMessage</code>. There is no close button. A page on another server must allow being shown in a frame.
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <AsyncButton type="submit" variant="default" phase={save.phase} error={save.error} labels={{ idle: 'Save breaks', pending: 'Saving…', done: 'Saved' }} />
+        {save.phase === 'error' && <p className="type-body-sm text-danger">{save.error} The breaks were not changed.</p>}
       </div>
     </form>
   )

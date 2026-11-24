@@ -21,6 +21,10 @@
   skip_<category>  what the player does in each kind of segment (segments.py: SponsorBlock's categories, which iPlayer's intro and
                    credits are mapped onto): `off` (nothing, not even drawn), `ask` (a Skip button while it plays) or `auto` (skipped, with
                    Undo). Defaults: sponsor auto; self-promotion, subscribe reminders, intros, credits and previews ask; the rest off.
+  break_on, break_url, break_minutes, break_limit_minutes   a break (GET /api/break, the Watch page's break.ts): with `break_on` true and a page at `break_url` (an
+                   http(s) link, or a path on this server such as `/other-app/page`), the watching side pauses the video after every
+                   `break_minutes` of playing (default 20, counted in each browser across videos) and shows the page over it, until the
+                   page says it is done or `break_limit_minutes` pass (default 10). Off by default.
 
 The file handling, the order (environment, then the file, then the default), validation and the API's shape come from strata-python's
 `Settings`; this module only declares them. Every setting can be overridden by `TUBES_<KEY>` in the environment (handy for tests and one-off
@@ -30,8 +34,18 @@ and a settings file Tubes wrote before strata-python (numbers as JSON numbers) i
 The YouTube key (YOUTUBE_API_KEY) is only ever in the environment."""
 
 import os
+import re
 
-from strata_python.settings import Setting, Settings, absolute_path, non_empty, number_between, positive, whole_between
+from strata_python.settings import (
+    Setting,
+    Settings,
+    absolute_path,
+    boolean,
+    non_empty,
+    number_between,
+    positive,
+    whole_between,
+)
 
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_DATA_DIR = os.path.join(REPO, "data")
@@ -52,6 +66,15 @@ SKIP_MODES = ("off", "ask", "auto")
 
 def trimmed(value: str) -> str:
     return value.strip()
+
+
+def page_url(value: str) -> str:
+    """Normaliser: empty, an http(s) link or a path on this server (`/app/page`): what a break shows in its frame. Anything else
+    (`javascript:`, a bare word that would be read against the watch page's own path) is refused."""
+    v = value.strip()
+    if v and not re.match(r"^(https?://[^/\s]+|/)\S*$", v, re.IGNORECASE):
+        raise ValueError("must be an http(s) link or a path starting with /")
+    return v
 
 
 SETTINGS = Settings(
@@ -76,6 +99,10 @@ SETTINGS = Settings(
         Setting("ffmpeg", default="ffmpeg", normalise=non_empty, env="TUBES_FFMPEG"),
         Setting("history_url", default="", normalise=trimmed, env="TUBES_HISTORY_URL"),
         Setting("history_table", default="", normalise=trimmed, env="TUBES_HISTORY_TABLE"),
+        Setting("break_on", default="false", normalise=boolean),
+        Setting("break_url", default="", normalise=page_url),
+        Setting("break_minutes", default="20", normalise=number_between(1, 1440)),
+        Setting("break_limit_minutes", default="10", normalise=number_between(1, 240)),
         *(Setting(f"skip_{c}", default=mode, choices=SKIP_MODES) for c, mode in SKIP_DEFAULTS.items()),
     ],
     numbers=True,

@@ -22,6 +22,8 @@ export type SegmentKind = Schema<'SegmentKind'>
 
 /** `GET /api/videos/{id}/segments`: what can be skipped, and `error` when its source could not be asked just now. */
 export type Segments = Schema<'Segments'>
+/** `GET /api/break`: the page the Watch page shows over a paused video every so often (settings break_*); `url` null when off. */
+export type Break = Schema<'Break'>
 
 /** `GET /api/library`: what the library holds. `synced` is when every followed channel was last synced, null before the first. */
 export type LibraryStatus = Schema<'LibraryStatus'>
@@ -271,6 +273,7 @@ export const paths = {
   stream: (id: string) => `/api/videos/${encodeURIComponent(id)}/stream`,
   segments: (id: string) => `/api/videos/${encodeURIComponent(id)}/segments`,
   skipping: '/api/skipping',
+  break: '/api/break',
   check: '/api/videos/check',
   playlist: (id: string) => `/api/media/${encodeURIComponent(id)}/index.m3u8`,
   cache: '/api/cache',
@@ -315,6 +318,7 @@ export const keys = {
   stream: (id: string) => ['stream', id],
   segments: (id: string) => ['segments', id],
   skipping: ['settings', 'skipping'],
+  break: ['settings', 'break'],
   cache: ['cache'],
   suggestions: ['suggestions'],
   history: (f: HistoryFilter) => ['suggestions', 'history', f.start ?? '', f.end ?? '', f.source ?? ''],
@@ -393,6 +397,7 @@ export const api = {
   stream: (id: string) => fetchJson<Stream>(withBase(paths.stream(id))),
   segments: (id: string) => fetchJson<Segments>(withBase(paths.segments(id))),
   skipping: () => fetchJson<SegmentKind[]>(withBase(paths.skipping)),
+  break: () => fetchJson<Break>(withBase(paths.break)),
   cache: () => fetchJson<CacheReport>(withBase(paths.cache)),
   pin: (id: string, pinned: boolean) => fetchJson<unknown>(withBase(paths.cacheItem(id)), send('PUT', { pinned } satisfies In<'PinIn'>)),
   dropCopy: (id: string) => fetchJson<{ video_id: string; freed: number }>(withBase(paths.cacheItem(id)), { method: 'DELETE' }),

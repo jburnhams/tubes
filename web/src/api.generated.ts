@@ -3,6 +3,26 @@
 // regenerate with `strata-api-types <schema> -o <this file>`; CI runs it with --check.
 
 export interface paths {
+    "/api/break": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Break
+         * @description The break the Watch page takes (settings break_*), with no url while it is off or has no page.
+         */
+        get: operations["get_break_api_break_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/cache": {
         parameters: {
             query?: never;
@@ -854,6 +874,27 @@ export interface components {
             already: number;
             /** Missing */
             missing: number;
+        };
+        /**
+         * Break
+         * @description A break the watching side takes from playing: a page shown over the paused video (settings break_*).
+         */
+        Break: {
+            /**
+             * Limit Minutes
+             * @description The longest a break lasts when its page never says it is done.
+             */
+            limit_minutes: number;
+            /**
+             * Minutes
+             * @description Minutes of playing between two breaks, counted in each browser across videos.
+             */
+            minutes: number;
+            /**
+             * Url
+             * @description The page to show: an http(s) link or a path on this server. Null: no breaks.
+             */
+            url: string | null;
         };
         /** CacheItem */
         CacheItem: {
@@ -2122,6 +2163,14 @@ export interface components {
         };
         /** TubesSettings */
         TubesSettings: {
+            /** Break Limit Minutes */
+            break_limit_minutes: number;
+            /** Break Minutes */
+            break_minutes: number;
+            /** Break On */
+            break_on: string;
+            /** Break Url */
+            break_url: string;
             /** Cache Dir */
             cache_dir: string;
             /** Cache Limit Gb */
@@ -2318,6 +2367,26 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_break_api_break_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Break"];
+                };
+            };
+        };
+    };
     get_cache_api_cache_get: {
         parameters: {
             query?: never;

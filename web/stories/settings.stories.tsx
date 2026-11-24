@@ -19,6 +19,8 @@ export const ShownVideosLoading: Story = { render: () => <AppAt route="/admin/se
 export const ShownVideosError: Story = { render: () => <AppAt route="/admin/settings?tab=shown" />, beforeEach: ({ msw }) => msw.use(shownError) }
 /** Off, Ask or Skip for each kind of segment (SponsorBlock's categories; iPlayer's intros and credits come in as two of them). */
 export const Skipping: Story = { render: () => <AppAt route="/admin/settings?tab=skipping" /> }
+/** A break every 20 minutes of playing, as a new server has it: off, with no page yet. */
+export const Breaks: Story = { render: () => <AppAt route="/admin/settings?tab=breaks" /> }
 export const Appearance: Story = { render: () => <AppAt route="/admin/settings?tab=appearance" /> }
 export const Loading: Story = { beforeEach: ({ msw }) => msw.use(settingsLoading) }
 export const ServerError: Story = { beforeEach: ({ msw }) => msw.use(settingsError) }
