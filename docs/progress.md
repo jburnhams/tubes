@@ -1,5 +1,11 @@
 # Progress log
 
+## 2026-11-24: the video's title and channel over the player
+
+- Asked for: show the current video's title and channel over the player when it is paused or the mouse moves, with strata-react doing the drawing so Tubes only gives the data.
+- strata-react 1.3.12 (#330, issue #329) adds `MediaPlayer heading` (title, subtitle, a route for each, an avatar): white words on a dark fade across the top of the picture, shown while paused and for 3 s after a move, a key or the start of playing, gone when the pointer leaves. Tubes passes the title, the channel's name (from the video, else the channel list), its picture and its page (`headingOf` in `WatchScreen.tsx`); none while a break's page is over the picture.
+- Moving from strata-react 1.1.4 to 1.3.12 changed other shots too: the playback speed is React Aria's Select (strata-react #324), the undo bar sits differently on the cache screen, and suggestion avatars below the fold are now drawn (strata-visual scrolls tall pages through). Baselines for those, and the Watch shots, were written in this container's Chromium 158.
+
 ## 2026-11-24: Breaks, another page over the video every so often
 
 - Asked for: a generic way to show another page (a short game from another app on the same server) as a frame over the video every so many minutes. Tubes stays generic: it knows a link, an interval and a time limit, nothing about the page.

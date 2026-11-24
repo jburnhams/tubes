@@ -21,8 +21,8 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
-import { Button, DataView, describeHttpError, HttpError, type Load, type MediaSpanData, MediaPlayer, type PlayerWarningEvent, type SpanOutcome, useAsyncAction, useLoad, usePlayerWarnings } from 'strata-react'
-import { api, describeError, keys, paths, withBase, type Segment, type SegmentKind, type Segments, type Stream, type Video, type VideoDetail } from '../api'
+import { Button, DataView, describeHttpError, HttpError, type Load, type MediaHeading, type MediaSpanData, MediaPlayer, type PlayerWarningEvent, type SpanOutcome, useAsyncAction, useLoad, usePlayerWarnings } from 'strata-react'
+import { api, describeError, keys, paths, withBase, type Channel, type Segment, type SegmentKind, type Segments, type Stream, type Video, type VideoDetail } from '../api'
 import { attachStream, startingAt } from '../player'
 import { decodes } from '../decodes'
 import { Avatar, RowsSkeleton, VideoRow, useChannelsById } from './cards'
@@ -70,8 +70,9 @@ export const RESUME_MARGIN = 10
  *  saying a failure with Try again. The parts that can be skipped are its `spans` (skip.ts): drawn on the seek bar, an "ask" part offers
  *  Skip over the picture, an "auto" part is skipped (or muted) as it starts with Undo; a part skipped counts as seen. It reports how much
  *  is seen against `playId` (progress.ts), from the <video> inside it (MediaPlayer hands out its state, not its element). `start` is where
- *  it picks up, with "Picked up at" and Start over over the picture for a few seconds. */
-export function Player({ src, title, segments, kinds, length, growing, playId, start, warning }: { src: string; title: string; segments: Segment[]; kinds: SegmentKind[]; length: number | null; growing?: string; playId: number; start: number; warning?: PlayerWarningEvent }) {
+ *  it picks up, with "Picked up at" and Start over over the picture for a few seconds. `heading` is the title and channel the player draws
+ *  across the top of the picture while it is paused or the pointer moves (strata-react #329). */
+export function Player({ src, title, heading, segments, kinds, length, growing, playId, start, warning }: { src: string; title: string; heading?: MediaHeading; segments: Segment[]; kinds: SegmentKind[]; length: number | null; growing?: string; playId: number; start: number; warning?: PlayerWarningEvent }) {
   const box = useRef<HTMLDivElement>(null)
   // The <video> as a ref for the progress report, read when its effect runs (the player is in the page by then).
   const element = useMemo(() => ({ get current() { return box.current!.querySelector('video')! } }), [])
@@ -93,7 +94,7 @@ export function Player({ src, title, segments, kinds, length, growing, playId, s
   return (
     <div ref={box}>
       <MediaPlayer kind="video" label={title} sources={[{ src, title, duration: length ?? undefined }]} attach={attach} autoPlay growing={growing !== undefined ? { status: growing } : undefined}
-        spans={spans} spanKinds={spanKinds} onSpan={onSpan} warning={warning}
+        spans={spans} spanKinds={spanKinds} onSpan={onSpan} warning={warning} heading={pause.due && breakNow?.url ? undefined : heading}
         overlay={media => pause.due && breakNow?.url ? <BreakFrame url={breakNow.url} limitMinutes={breakNow.limit_minutes} onDone={pause.end} /> : picked && (
           <p role="status" className="absolute bottom-3 left-3 flex items-center gap-2 rounded-overlay border border-border bg-background px-3 py-1 type-body-sm text-foreground shadow-overlay">
             Picked up at {runningTime(from)}
@@ -102,6 +103,11 @@ export function Player({ src, title, segments, kinds, length, growing, playId, s
         )} />
     </div>
   )
+}
+
+/** What the player draws over the picture: the title, and the channel with its picture, leading to the channel's page. */
+export function headingOf(v: VideoDetail, channel: Channel | undefined): MediaHeading {
+  return { title: v.title, subtitle: v.channel ?? channel?.title, subtitleTo: `/channels/${encodeURIComponent(v.channel_id)}`, avatar: channel?.thumbnail ?? null }
 }
 
 /** Until the parts to skip are read: the same empty lists every render, so the player's spans stay put. */
@@ -176,7 +182,7 @@ function Stage({ v }: { v: VideoDetail }) {
           </div>
         </Frame>
       ) : s.playable ? (
-        <Player src={withBase(paths.playlist(copy))} title={v.title} segments={skips.status === 'ready' ? skips.data.segments : NONE} kinds={skips.status === 'ready' ? skips.data.categories : NO_KINDS} length={v.duration}
+        <Player src={withBase(paths.playlist(copy))} title={v.title} heading={headingOf(v, channel)} segments={skips.status === 'ready' ? skips.data.segments : NONE} kinds={skips.status === 'ready' ? skips.data.categories : NO_KINDS} length={v.duration}
           growing={s.complete ? undefined : savedText(s, v.duration)} playId={started!.play_id} start={startAt(started!.resume, s)}
           warning={warning} />
       ) : (

@@ -25,6 +25,24 @@ describe('Watch', () => {
     expect(router.state.location.pathname).toBe('/channels/UCworkshop00000000000001')
   })
 
+  it('names the video and its channel over the picture, the channel leading to its page', async () => {
+    const { user, router } = openApp(`/watch/${id}`)
+    const player = await screen.findByRole('group', { name: 'Building a bird box' })
+    expect(within(player).getByText('Building a bird box')).toBeInTheDocument()
+    const channel = within(player).getAllByRole('link', { name: 'Workshop Notes' })
+    expect(channel).toHaveLength(2)                          // the picture and the name
+    await user.click(channel[1])
+    expect(router.state.location.pathname).toBe('/channels/UCworkshop00000000000001')
+  })
+
+  it('names the channel over the picture by its first letter while the channel list is still coming', async () => {
+    server.use(channelsLoading)
+    openApp(`/watch/${id}`)
+    const player = await screen.findByRole('group', { name: 'Building a bird box' })
+    expect(within(player).getAllByRole('link', { name: 'Workshop Notes' })).toHaveLength(2)
+    expect(within(player).getByText('W')).toBeInTheDocument()
+  })
+
   it('offers other videos up next, not this one', async () => {
     const { user, router } = openApp(`/watch/${id}`)
     const next = await screen.findByRole('list', { name: 'Up next' })
@@ -87,6 +105,7 @@ describe('Watch', () => {
     server.use(http.get(`*/api/videos/${id}`, () => HttpResponse.json({ ...videos[0], channel: null, plays: 0, last_played: null })))
     openApp(`/watch/${id}`)
     expect(await screen.findByRole('link', { name: /^Workshop Notes\s*6 videos$/ })).toBeInTheDocument()
+    expect(within(await screen.findByRole('group', { name: 'Building a bird box' })).getAllByRole('link', { name: 'Workshop Notes' })).toHaveLength(2)
   })
 
   it('says the fetch stopped when it gave no reason', async () => {
