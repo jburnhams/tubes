@@ -28,11 +28,37 @@ show_missing = false
 fail_under = 99
 
 [tool.ruff]
-line-length = 400            # long, dense lines on purpose, as in strata-360 and strata-stills
+line-length = 120            # strata-python's gate: `ruff format` at 120, as every strata app
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E9", "F63", "F7", "F82"]
+select = ["E", "F", "I", "B", "UP", "SIM", "RUF", "C4", "PT", "S", "TID"]     # python-app-template's set
+ignore = [
+    "E501",    # the formatter wraps code; long comments and docstrings stay (the house style comments the why)
+    "C408",    # dict(id=..., title=...) for a row: the keys read as the API's field names, as they always have here
+    "RUF001",  # typographic quotes and dashes in sentences a person reads (’, –) are meant
+]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"pytest.importorskip".msg = "Do not skip when a dependency is missing: install it (locally and in CI) and let the test fail if it is not there."
+
+[tool.ruff.lint.per-file-ignores]
+# SQL is built only from names in the code (columns, tables, `?` lists) and the owner's own history_table setting; every value is a bound parameter.
+"src/tubes/{catalogue,history,iplayer_suggest,library,metadata,paste,related,viewing}.py" = ["S608"]
+"src/tubes/server/app.py" = ["S608"]
+# yt-dlp and ffmpeg are the programs the settings name, run with arguments built here (never through a shell).
+"src/tubes/{fetcher,plex,ytdlp}.py" = ["S603"]
+"tests/**" = ["S101", "S104", "S105", "S106", "S108", "S603", "S607", "PT018", "E731"]    # asserts, fake secrets, tmp paths, subprocess of our own CLI; a row's fields checked in one assert; one-line helpers
+
+[tool.pyright]
+include = ["src"]
+pythonVersion = "3.11"
+typeCheckingMode = "strict"
+
+# scripts/check runs strata-python's gate: ruff, ruff format, pyright (strict) and ty over these, then the unit tests with coverage.
+[tool.strata-check]
+paths = ["src", "tests", "scripts"]
+tests = "tests/unit"
 
 # The database (strata_python.db, strata-python's [db] extra): models in src/tubes/models.py, Alembic revisions in migrations/.
 # `strata-db revision -m "..."` after changing a model (against Postgres, so server defaults come out portable), `strata-db check` before a PR.

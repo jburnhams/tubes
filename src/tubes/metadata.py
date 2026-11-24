@@ -20,83 +20,146 @@ What each source gives (2026-11-14):
 A source row (youtube.video_row, iplayer.channel_row...) carries these lists under `meta` ({table: [rows]}); `save` replaces, for each table a
 row names, whatever the owner had there before, and leaves the tables it does not name alone, so a source that never gives credits never
 clears another's. `get` reads them back for one owner, as lists."""
+
 import json
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 from tubes import db
+from tubes.db import Row
+from tubes.shape import obj
 
-IMAGE_KINDS = ('thumb', 'poster', 'backdrop', 'logo', 'square', 'banner', 'avatar', 'portrait')
-TAG_KINDS = ('genre', 'category', 'topic', 'keyword', 'label', 'country')
-TABLES = {    # table: (its columns past the owner's, in order; whether it is keyed by video_id alone)
-    'images': (('kind', 'rank', 'url', 'width', 'height'), False),
-    'tags': (('kind', 'value', 'rank'), False),
-    'credits': (('role', 'rank', 'name', 'character', 'photo'), False),
-    'ratings': (('source', 'value'), False),
-    'external_ids': (('source', 'value'), False),
-    'chapters': (('start', 'end', 'title', 'image'), True),
-    'tracks': (('kind', 'rank', 'language', 'label', 'codec', 'ref', 'is_default', 'forced'), True),
+IMAGE_KINDS = ("thumb", "poster", "backdrop", "logo", "square", "banner", "avatar", "portrait")
+TAG_KINDS = ("genre", "category", "topic", "keyword", "label", "country")
+TABLES = {  # table: (its columns past the owner's, in order; whether it is keyed by video_id alone)
+    "images": (("kind", "rank", "url", "width", "height"), False),
+    "tags": (("kind", "value", "rank"), False),
+    "credits": (("role", "rank", "name", "character", "photo"), False),
+    "ratings": (("source", "value"), False),
+    "external_ids": (("source", "value"), False),
+    "chapters": (("start", "end", "title", "image"), True),
+    "tracks": (("kind", "rank", "language", "label", "codec", "ref", "is_default", "forced"), True),
 }
-PRIMARY = dict(images=('kind', 'rank'), tags=('kind', 'value'), credits=('role', 'rank'), ratings=('source',), external_ids=('source',), chapters=('start',), tracks=('kind', 'rank'))
-ORDER = dict(images='kind, rank', tags='kind, rank, value', credits='role, rank', ratings='source', external_ids='source', chapters='start', tracks='kind, rank')
-DEFAULTS = dict(width=None, height=None, rank=0, character=None, photo=None, end=None, title=None, image=None, language=None, label=None, codec=None, ref=None, is_default=False, forced=False)
+PRIMARY = dict(
+    images=("kind", "rank"),
+    tags=("kind", "value"),
+    credits=("role", "rank"),
+    ratings=("source",),
+    external_ids=("source",),
+    chapters=("start",),
+    tracks=("kind", "rank"),
+)
+ORDER = dict(
+    images="kind, rank",
+    tags="kind, rank, value",
+    credits="role, rank",
+    ratings="source",
+    external_ids="source",
+    chapters="start",
+    tracks="kind, rank",
+)
+DEFAULTS = dict(
+    width=None,
+    height=None,
+    rank=0,
+    character=None,
+    photo=None,
+    end=None,
+    title=None,
+    image=None,
+    language=None,
+    label=None,
+    codec=None,
+    ref=None,
+    is_default=False,
+    forced=False,
+)
 
 
-def _col(c): return f'"{c}"' if c == 'end' else c       # `end` is a keyword in SQL (segments quotes it too)
+def _col(c: str) -> str:
+    return f'"{c}"' if c == "end" else c  # `end` is a keyword in SQL (segments quotes it too)
 
 
-def colours(blur):
+def colours(blur: object) -> str | None:
     """Plex's UltraBlurColors (or any such dict of four hex colours) as the JSON kept in `colours`, or None."""
-    keys = ('topLeft', 'topRight', 'bottomRight', 'bottomLeft')
-    if not isinstance(blur, dict) or not all(isinstance(blur.get(k), str) for k in keys): return None
-    return json.dumps({k: '#' + blur[k].lstrip('#')[:6] for k in keys})
+    keys = ("topLeft", "topRight", "bottomRight", "bottomLeft")
+    if not isinstance(blur, dict):
+        return None
+    got: dict[str, Any] = dict(blur)  # pyright: ignore[reportUnknownArgumentType] - JSON from a source
+    if not all(isinstance(got.get(k), str) for k in keys):
+        return None
+    return json.dumps({k: "#" + str(got[k]).lstrip("#")[:6] for k in keys})
 
 
-def strip(row):
+def strip(row: Mapping[str, Any]) -> Row:
     """A source row without its `meta`, for the row's own table."""
-    return {k: v for k, v in row.items() if k != 'meta'}
+    return {k: v for k, v in row.items() if k != "meta"}
 
 
-def save(con, owner, rows):
+def save(con: db.Connection, owner: str, rows: Iterable[Mapping[str, Any]]) -> None:
     """Write the `meta` of these source rows (each with `id`) for this owner ('channel' or 'video'): each table a row names is replaced for it."""
     for row in rows:
-        meta = row.get('meta') or {}
+        meta: dict[str, Any] = obj(row.get("meta"))
         for table, items in meta.items():
-            if table not in TABLES: raise ValueError(f'{table} is not a metadata table')
+            if table not in TABLES:
+                raise ValueError(f"{table} is not a metadata table")
             cols, by_video = TABLES[table]
-            key = ('video_id',) if by_video else ('owner', 'owner_id')
-            if by_video and owner != 'video': raise ValueError(f'only a video has {table}')
-            where = ' AND '.join(f'{k} = :{k}' for k in key)
-            ids = dict(video_id=row['id']) if by_video else dict(owner=owner, owner_id=row['id'])
-            con.execute(f'DELETE FROM {table} WHERE {where}', ids)
-            seen, out = set(), []
+            key = ("video_id",) if by_video else ("owner", "owner_id")
+            if by_video and owner != "video":
+                raise ValueError(f"only a video has {table}")
+            where = " AND ".join(f"{k} = :{k}" for k in key)
+            ids = dict(video_id=row["id"]) if by_video else dict(owner=owner, owner_id=row["id"])
+            con.execute(f"DELETE FROM {table} WHERE {where}", ids)
+            seen: set[tuple[Any, ...]] = set()
+            out: list[Row] = []
             for i, item in enumerate(items or []):
-                r = dict(DEFAULTS, **({'rank': i} if 'rank' in cols and 'rank' not in item else {}), **item, **ids)
+                r = dict(DEFAULTS, **({"rank": i} if "rank" in cols and "rank" not in item else {}), **item, **ids)
                 pk = tuple(r.get(c) for c in PRIMARY[table])
-                if pk in seen: continue                                   # a source that repeats itself (the same tag twice) keeps the first
-                seen.add(pk); out.append({c: r.get(c) for c in (*key, *cols)})
-            if out: con.executemany(f"INSERT INTO {table} ({', '.join(_col(c) for c in (*key, *cols))}) VALUES ({', '.join(':' + c for c in (*key, *cols))})", out)
+                if pk in seen:
+                    continue  # a source that repeats itself (the same tag twice) keeps the first
+                seen.add(pk)
+                out.append({c: r.get(c) for c in (*key, *cols)})
+            if out:
+                con.executemany(
+                    f"INSERT INTO {table} ({', '.join(_col(c) for c in (*key, *cols))}) VALUES ({', '.join(':' + c for c in (*key, *cols))})",
+                    out,
+                )
 
 
-def get(owner, owner_id):
+def get(owner: str, owner_id: str) -> dict[str, list[Row]]:
     """Every metadata table's rows for one channel or video, as {table: [rows]} (a video's chapters and tracks too); empty lists where none."""
-    out = {}
+    out: dict[str, list[Row]] = {}
     with db.connect() as con:
         for table, (cols, by_video) in TABLES.items():
-            if by_video and owner != 'video': continue
-            where, args = ('video_id = ?', (owner_id,)) if by_video else ('owner = ? AND owner_id = ?', (owner, owner_id))
-            rows = db.rows(con.execute(f"SELECT {', '.join(_col(c) for c in cols)} FROM {table} WHERE {where} ORDER BY {ORDER[table]}", args))
+            if by_video and owner != "video":
+                continue
+            where, args = (
+                ("video_id = ?", (owner_id,)) if by_video else ("owner = ? AND owner_id = ?", (owner, owner_id))
+            )
+            rows = db.rows(
+                con.execute(
+                    f"SELECT {', '.join(_col(c) for c in cols)} FROM {table} WHERE {where} ORDER BY {ORDER[table]}",
+                    args,
+                )
+            )
             for r in rows:
-                for b in ('is_default', 'forced'):
-                    if b in r: r[b] = bool(r[b])                          # SQLite answers 0 and 1
+                for b in ("is_default", "forced"):
+                    if b in r:
+                        r[b] = bool(r[b])  # SQLite answers 0 and 1
             out[table] = rows
     return out
 
 
-def delete(con, owner, ids):
+def delete(con: db.Connection, owner: str, ids: Iterable[str]) -> None:
     """Forget the metadata of these channels or videos (they left the library)."""
     ids = list(ids)
-    if not ids: return
-    marks = ', '.join('?' * len(ids))
+    if not ids:
+        return
+    marks = ", ".join("?" * len(ids))
     for table, (_cols, by_video) in TABLES.items():
-        if by_video and owner != 'video': continue
-        if by_video: con.execute(f'DELETE FROM {table} WHERE video_id IN ({marks})', tuple(ids))
-        else: con.execute(f'DELETE FROM {table} WHERE owner = ? AND owner_id IN ({marks})', (owner, *ids))
+        if by_video and owner != "video":
+            continue
+        if by_video:
+            con.execute(f"DELETE FROM {table} WHERE video_id IN ({marks})", tuple(ids))
+        else:
+            con.execute(f"DELETE FROM {table} WHERE owner = ? AND owner_id IN ({marks})", (owner, *ids))

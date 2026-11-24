@@ -1,144 +1,343 @@
 import urllib.error
+
 import pytest
 from strata_python.testing import http_error
+
 from tubes import youtube
 
 
-@pytest.mark.parametrize('text, want', [
-    ('https://www.youtube.com/watch?v=Ab1-Cd2_Ef3&t=10', ('video', 'Ab1-Cd2_Ef3')),
-    ('youtu.be/Ab1-Cd2_Ef3', ('video', 'Ab1-Cd2_Ef3')),
-    ('https://m.youtube.com/shorts/Ab1-Cd2_Ef3', ('video', 'Ab1-Cd2_Ef3')),
-    ('https://www.youtube.com/live/Ab1-Cd2_Ef3?si=x', ('video', 'Ab1-Cd2_Ef3')),
-    ('https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa/videos', ('channel', 'UCaaaaaaaaaaaaaaaaaaaaaa')),
-    ('https://www.youtube.com/@Some.Maker/featured', ('handle', '@Some.Maker')),
-    ('www.youtube.com/c/oldname', ('handle', '@oldname')),
-    ('https://youtube.com/user/oldername', ('handle', '@oldername')),
-    ('UCaaaaaaaaaaaaaaaaaaaaaa', ('channel', 'UCaaaaaaaaaaaaaaaaaaaaaa')),
-    (' @workshop ', ('handle', '@workshop')),
-    ('Ab1-Cd2_Ef3', ('video', 'Ab1-Cd2_Ef3')),
-    ('workshop', ('handle', '@workshop')),
-])
+@pytest.mark.parametrize(
+    ("text", "want"),
+    [
+        ("https://www.youtube.com/watch?v=Ab1-Cd2_Ef3&t=10", ("video", "Ab1-Cd2_Ef3")),
+        ("youtu.be/Ab1-Cd2_Ef3", ("video", "Ab1-Cd2_Ef3")),
+        ("https://m.youtube.com/shorts/Ab1-Cd2_Ef3", ("video", "Ab1-Cd2_Ef3")),
+        ("https://www.youtube.com/live/Ab1-Cd2_Ef3?si=x", ("video", "Ab1-Cd2_Ef3")),
+        ("https://www.youtube.com/channel/UCaaaaaaaaaaaaaaaaaaaaaa/videos", ("channel", "UCaaaaaaaaaaaaaaaaaaaaaa")),
+        ("https://www.youtube.com/@Some.Maker/featured", ("handle", "@Some.Maker")),
+        ("www.youtube.com/c/oldname", ("handle", "@oldname")),
+        ("https://youtube.com/user/oldername", ("handle", "@oldername")),
+        ("UCaaaaaaaaaaaaaaaaaaaaaa", ("channel", "UCaaaaaaaaaaaaaaaaaaaaaa")),
+        (" @workshop ", ("handle", "@workshop")),
+        ("Ab1-Cd2_Ef3", ("video", "Ab1-Cd2_Ef3")),
+        ("workshop", ("handle", "@workshop")),
+    ],
+)
 def test_parse_reads_links_ids_and_handles(text, want):
     assert youtube.parse(text) == want
 
 
-@pytest.mark.parametrize('text, message', [('', 'Enter a channel or video'), ('https://example.com/watch', 'not to a YouTube channel or video'), ('two words', 'paste its link')])
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ("", "Enter a channel or video"),
+        ("https://example.com/watch", "not to a YouTube channel or video"),
+        ("two words", "paste its link"),
+    ],
+)
 def test_parse_says_what_it_wanted(text, message):
-    with pytest.raises(ValueError, match=message): youtube.parse(text)
+    with pytest.raises(ValueError, match=message):
+        youtube.parse(text)
 
 
 def test_seconds_and_best_thumbnail():
-    assert [youtube.seconds(d) for d in ('PT4M5S', 'PT1H', 'P1DT2S', 'P0D', 'PT', 'bad', None)] == [245, 3600, 86402, 0, 0, None, None]
-    sized = dict(default=dict(url='s', width=120, height=90), high=dict(url='h', width=480, height=360), medium=dict(url='m', width=320, height=180))
-    assert youtube.best_thumbnail(sized) == 'h'
-    assert youtube.best_thumbnail(dict(default=dict(url='d'), high=dict(url='h'))) == 'h'                   # no sizes: by name
-    listed = dict(high=dict(url='h', width=480, height=360), maxres=dict(url='mx', width=1280, height=720), fhd=dict(url='f', width=1920, height=1080), uhd=dict(url='u', width=3840, height=2160))
-    assert youtube.best_thumbnail(listed) == 'mx'                                                                   # sizes YouTube lists but i.ytimg.com does not serve are passed over
-    assert youtube.best_thumbnail(dict(odd=dict(url='o'))) == 'o' and youtube.best_thumbnail(None) is None and youtube.best_thumbnail(dict(x=dict())) is None
+    assert [youtube.seconds(d) for d in ("PT4M5S", "PT1H", "P1DT2S", "P0D", "PT", "bad", None)] == [
+        245,
+        3600,
+        86402,
+        0,
+        0,
+        None,
+        None,
+    ]
+    sized = dict(
+        default=dict(url="s", width=120, height=90),
+        high=dict(url="h", width=480, height=360),
+        medium=dict(url="m", width=320, height=180),
+    )
+    assert youtube.best_thumbnail(sized) == "h"
+    assert youtube.best_thumbnail(dict(default=dict(url="d"), high=dict(url="h"))) == "h"  # no sizes: by name
+    listed = dict(
+        high=dict(url="h", width=480, height=360),
+        maxres=dict(url="mx", width=1280, height=720),
+        fhd=dict(url="f", width=1920, height=1080),
+        uhd=dict(url="u", width=3840, height=2160),
+    )
+    assert youtube.best_thumbnail(listed) == "mx"  # sizes YouTube lists but i.ytimg.com does not serve are passed over
+    assert (
+        youtube.best_thumbnail(dict(odd=dict(url="o"))) == "o"
+        and youtube.best_thumbnail(None) is None
+        and youtube.best_thumbnail(dict(x=dict())) is None
+    )
 
 
 def test_rows_from_resources():
-    ch = dict(id='UCx', snippet=dict(title='T', customUrl='@t', publishedAt='2015', thumbnails={}), statistics=dict(hiddenSubscriberCount=True, subscriberCount='9', videoCount='3', viewCount='x'), contentDetails={})
-    row = youtube.channel_row(ch, 'now')
-    assert (row['subscribers'], row['total_videos'], row['views'], row['uploads'], row['description'], row['added']) == (None, 3, None, None, None, 'now')
-    v = youtube.video_row(dict(id='abcdefghijk', snippet={}, contentDetails={}, statistics={}), 'now')
-    assert (v['title'], v['published'], v['duration'], v['channel_id'], v['live']) == ('abcdefghijk', 'now', None, '', None)
-    assert (v['language'], v['captions'], v['regions_allowed'], v['regions_blocked'], row['language']) == (None, None, None, None, None)
-    v = youtube.video_row(dict(id='abcdefghijk', snippet=dict(defaultLanguage='fr', defaultAudioLanguage='en-GB'), contentDetails=dict(caption='true', regionRestriction=dict(blocked=['us', 'DE', 'bad1']))), 'now')
-    assert (v['language'], v['captions'], v['regions_allowed'], v['regions_blocked']) == ('en-GB', True, None, 'DE,US')
-    v = youtube.video_row(dict(id='abcdefghijk', snippet=dict(defaultLanguage='zxx'), contentDetails=dict(caption='false', regionRestriction=dict(allowed=[]))), 'now')
-    assert (v['language'], v['captions'], v['regions_allowed'], v['regions_blocked']) == (None, False, '-', None)      # plays nowhere
-    assert youtube.video_row(dict(id='abcdefghijk', snippet=dict(defaultLanguage='es_419'), contentDetails=dict(regionRestriction=dict(allowed=['gb']))), 'now')['regions_allowed'] == 'GB'
-    assert youtube.language('es_419') == 'es-419' and youtube.language('English') is None and youtube.language(' de ') == 'de'
-    assert youtube.channel_row(dict(id='UCx', snippet=dict(defaultLanguage='pt-BR')), 'now')['language'] == 'pt-BR'
+    ch = dict(
+        id="UCx",
+        snippet=dict(title="T", customUrl="@t", publishedAt="2015", thumbnails={}),
+        statistics=dict(hiddenSubscriberCount=True, subscriberCount="9", videoCount="3", viewCount="x"),
+        contentDetails={},
+    )
+    row = youtube.channel_row(ch, "now")
+    assert (
+        row["subscribers"],
+        row["total_videos"],
+        row["views"],
+        row["uploads"],
+        row["description"],
+        row["added"],
+    ) == (None, 3, None, None, None, "now")
+    v = youtube.video_row(dict(id="abcdefghijk", snippet={}, contentDetails={}, statistics={}), "now")
+    assert (v["title"], v["published"], v["duration"], v["channel_id"], v["live"]) == (
+        "abcdefghijk",
+        "now",
+        None,
+        "",
+        None,
+    )
+    assert (v["language"], v["captions"], v["regions_allowed"], v["regions_blocked"], row["language"]) == (
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    v = youtube.video_row(
+        dict(
+            id="abcdefghijk",
+            snippet=dict(defaultLanguage="fr", defaultAudioLanguage="en-GB"),
+            contentDetails=dict(caption="true", regionRestriction=dict(blocked=["us", "DE", "bad1"])),
+        ),
+        "now",
+    )
+    assert (v["language"], v["captions"], v["regions_allowed"], v["regions_blocked"]) == ("en-GB", True, None, "DE,US")
+    v = youtube.video_row(
+        dict(
+            id="abcdefghijk",
+            snippet=dict(defaultLanguage="zxx"),
+            contentDetails=dict(caption="false", regionRestriction=dict(allowed=[])),
+        ),
+        "now",
+    )
+    assert (v["language"], v["captions"], v["regions_allowed"], v["regions_blocked"]) == (
+        None,
+        False,
+        "-",
+        None,
+    )  # plays nowhere
+    assert (
+        youtube.video_row(
+            dict(
+                id="abcdefghijk",
+                snippet=dict(defaultLanguage="es_419"),
+                contentDetails=dict(regionRestriction=dict(allowed=["gb"])),
+            ),
+            "now",
+        )["regions_allowed"]
+        == "GB"
+    )
+    assert (
+        youtube.language("es_419") == "es-419"
+        and youtube.language("English") is None
+        and youtube.language(" de ") == "de"
+    )
+    assert youtube.channel_row(dict(id="UCx", snippet=dict(defaultLanguage="pt-BR")), "now")["language"] == "pt-BR"
 
 
 def test_live_streams_now_scheduled_and_past():
-    live = lambda content, details=None: youtube.live(dict(id='x', snippet=dict(liveBroadcastContent=content), **({'liveStreamingDetails': details} if details is not None else {})))
-    assert live('live', dict(actualStartTime='t')) == 'live' and live('upcoming', dict(scheduledStartTime='t')) == 'upcoming'
-    assert live('none', dict(actualStartTime='t', actualEndTime='u')) == 'was'                              # ended: YouTube says none, but keeps the details
-    assert live('none') is None and live(None) is None and youtube.live(dict(id='x')) is None
-    assert 'liveStreamingDetails' in youtube.VIDEO_PARTS
+    live = lambda content, details=None: youtube.live(
+        dict(
+            id="x",
+            snippet=dict(liveBroadcastContent=content),
+            **({"liveStreamingDetails": details} if details is not None else {}),
+        )
+    )
+    assert (
+        live("live", dict(actualStartTime="t")) == "live"
+        and live("upcoming", dict(scheduledStartTime="t")) == "upcoming"
+    )
+    assert (
+        live("none", dict(actualStartTime="t", actualEndTime="u")) == "was"
+    )  # ended: YouTube says none, but keeps the details
+    assert live("none") is None and live(None) is None and youtube.live(dict(id="x")) is None
+    assert "liveStreamingDetails" in youtube.VIDEO_PARTS
 
 
 def test_call_sends_the_key_and_referer(monkeypatch, fake_urlopen):
-    with pytest.raises(youtube.YoutubeError, match='without YOUTUBE_API_KEY'): youtube.call('channels', id='x')
+    with pytest.raises(youtube.YoutubeError, match="without YOUTUBE_API_KEY"):
+        youtube.call("channels", id="x")
     assert youtube.configured() is False
-    monkeypatch.setenv('YOUTUBE_API_KEY', 'k&y'); monkeypatch.setenv('YOUTUBE_API_REFERER', 'https://site.test/')
+    monkeypatch.setenv("YOUTUBE_API_KEY", "k&y")
+    monkeypatch.setenv("YOUTUBE_API_REFERER", "https://site.test/")
     fake_urlopen.reply(dict(items=[]))
-    assert youtube.call('channels', id='UCx', part='id') == dict(items=[])
+    assert youtube.call("channels", id="UCx", part="id") == dict(items=[])
     call = fake_urlopen.calls[0]
-    assert call['url'] == 'https://www.googleapis.com/youtube/v3/channels?id=UCx&part=id&key=k%26y' and call['headers']['referer'] == 'https://site.test/'
+    assert (
+        call["url"] == "https://www.googleapis.com/youtube/v3/channels?id=UCx&part=id&key=k%26y"
+        and call["headers"]["referer"] == "https://site.test/"
+    )
 
 
-@pytest.mark.parametrize('reply, message', [
-    (http_error(403, dict(error=dict(message='Requests from referer <empty> are blocked.', errors=[dict(reason='forbidden')]))), r'YouTube refused the request \(403: Requests from referer'),
-    (http_error(403, dict(error=dict(message='quota', errors=[dict(reason='quotaExceeded')]))), r'\(403: the key has used its quota for today'),
-    (http_error(500, b'<html>'), r'YouTube refused the request \(500\)\.'),
-    (urllib.error.URLError('no route'), 'YouTube could not be reached: no route'),
-    (b'not json', 'YouTube did not answer with JSON'),
-])
+@pytest.mark.parametrize(
+    ("reply", "message"),
+    [
+        (
+            http_error(
+                403,
+                dict(
+                    error=dict(message="Requests from referer <empty> are blocked.", errors=[dict(reason="forbidden")])
+                ),
+            ),
+            r"YouTube refused the request \(403: Requests from referer",
+        ),
+        (
+            http_error(403, dict(error=dict(message="quota", errors=[dict(reason="quotaExceeded")]))),
+            r"\(403: the key has used its quota for today",
+        ),
+        (http_error(500, b"<html>"), r"YouTube refused the request \(500\)\."),
+        (urllib.error.URLError("no route"), "YouTube could not be reached: no route"),
+        (b"not json", "YouTube did not answer with JSON"),
+    ],
+)
 def test_call_failures(monkeypatch, fake_urlopen, reply, message):
-    monkeypatch.setenv('YOUTUBE_API_KEY', 'k'); fake_urlopen.reply(reply)
-    with pytest.raises(youtube.YoutubeError, match=message): youtube.call('videos', id='x')
+    monkeypatch.setenv("YOUTUBE_API_KEY", "k")
+    fake_urlopen.reply(reply)
+    with pytest.raises(youtube.YoutubeError, match=message):
+        youtube.call("videos", id="x")
 
 
 def test_the_three_calls_against_the_stand_in(fake_youtube):
-    fake_youtube.channel('UCaaaaaaaaaaaaaaaaaaaaaa', 'Workshop', handle='@workshop', videos=120)
-    assert youtube.channel('handle', '@Workshop')['id'] == 'UCaaaaaaaaaaaaaaaaaaaaaa' and youtube.channel('channel', 'UCzzzzzzzzzzzzzzzzzzzzzz') is None
-    ids, token = youtube.uploads_page('UUaaaaaaaaaaaaaaaaaaaaaa')
-    assert len(ids) == 50 and token == 'P50' and ids[0] == 'aaaa0000119'
-    assert youtube.uploads_page('UUaaaaaaaaaaaaaaaaaaaaaa', 'P100') == (['aaaa%07d' % n for n in range(19, -1, -1)], None)
-    got = youtube.videos(ids + ids[:10] + ['missingxxxx'])                       # 61 ids: two calls; YouTube leaves out what it lacks
-    assert len(got) == 60 and fake_youtube.count('videos') == 2
-    fake_youtube.referer = 'https://site.test/'
-    with pytest.raises(youtube.YoutubeError, match='403'): youtube.channel('channel', 'UCaaaaaaaaaaaaaaaaaaaaaa')
+    fake_youtube.channel("UCaaaaaaaaaaaaaaaaaaaaaa", "Workshop", handle="@workshop", videos=120)
+    assert (
+        youtube.channel("handle", "@Workshop")["id"] == "UCaaaaaaaaaaaaaaaaaaaaaa"
+        and youtube.channel("channel", "UCzzzzzzzzzzzzzzzzzzzzzz") is None
+    )
+    ids, token = youtube.uploads_page("UUaaaaaaaaaaaaaaaaaaaaaa")
+    assert len(ids) == 50 and token == "P50" and ids[0] == "aaaa0000119"
+    assert youtube.uploads_page("UUaaaaaaaaaaaaaaaaaaaaaa", "P100") == (
+        [f"aaaa{n:07d}" for n in range(19, -1, -1)],
+        None,
+    )
+    got = youtube.videos(ids + ids[:10] + ["missingxxxx"])  # 61 ids: two calls; YouTube leaves out what it lacks
+    assert len(got) == 60 and fake_youtube.count("videos") == 2
+    fake_youtube.referer = "https://site.test/"
+    with pytest.raises(youtube.YoutubeError, match="403"):
+        youtube.channel("channel", "UCaaaaaaaaaaaaaaaaaaaaaa")
 
 
 def test_channels_and_lookup_rows(fake_youtube):
-    ids = [f'UC{n:022d}' for n in range(60)]
-    for i in ids[:55]: fake_youtube.channel(i, f'Channel {i[-2:]}', topics=['Music', 'Pop_music'], kids=i.endswith('1'))
+    ids = [f"UC{n:022d}" for n in range(60)]
+    for i in ids[:55]:
+        fake_youtube.channel(i, f"Channel {i[-2:]}", topics=["Music", "Pop_music"], kids=i.endswith("1"))
     found = youtube.channels(ids)
-    assert len(found) == 55 and [p['part'] for e, p in fake_youtube.calls] == [youtube.LOOKUP_PARTS] * 2
+    assert len(found) == 55 and [p["part"] for e, p in fake_youtube.calls] == [youtube.LOOKUP_PARTS] * 2
     r = youtube.lookup_row(found[1])
-    assert r == dict(channel_id=ids[1], title='Channel 01', handle=None, thumbnail=f'https://img.test/{ids[1]}/l.jpg', subscribers=50, total_videos=0, topics='Music|Pop music', made_for_kids=True)
-    assert youtube.lookup_row(dict(id='UCx'))['topics'] is None and youtube.lookup_row(dict(id='UCx'))['made_for_kids'] is None
+    assert r == dict(
+        channel_id=ids[1],
+        title="Channel 01",
+        handle=None,
+        thumbnail=f"https://img.test/{ids[1]}/l.jpg",
+        subscribers=50,
+        total_videos=0,
+        topics="Music|Pop music",
+        made_for_kids=True,
+    )
+    assert (
+        youtube.lookup_row(dict(id="UCx"))["topics"] is None
+        and youtube.lookup_row(dict(id="UCx"))["made_for_kids"] is None
+    )
 
 
 def test_video_metadata():
-    item = dict(id='abcdefghijk', snippet=dict(publishedAt='2012-01-13T16:21:38Z', categoryId='24', tags=['song', ' ', 'dance', 'song'],
-                                               thumbnails=dict(default=dict(url='d', width=120, height=90), maxres=dict(url='x', width=1280, height=720), fhddefault=dict(url='f', width=1920, height=1080)),
-                                               description='Sing along\n0:00 Intro\n0:15 - The song\n(1:02) Goodbye'),
-                contentDetails=dict(duration='PT1M30S', contentRating=dict(ytRating='ytAgeRestricted')), status=dict(madeForKids=True),
-                topicDetails=dict(topicCategories=['https://en.wikipedia.org/wiki/Music', 'https://en.wikipedia.org/wiki/Pop_music', 'https://en.wikipedia.org/wiki/Music']))
-    v = youtube.video_row(item, 'now')
-    assert (v['kind'], v['year'], v['kids'], v['content_rating'], v['min_age']) == ('video', 2012, True, '18', 18)
-    assert v['meta']['images'] == [dict(kind='thumb', url='x', width=1280, height=720), dict(kind='thumb', url='d', width=120, height=90)]     # not the sizes i.ytimg.com does not serve
-    assert v['meta']['tags'] == [dict(kind='keyword', value='song'), dict(kind='keyword', value='dance'), dict(kind='keyword', value='song'), dict(kind='category', value='Entertainment'),
-                                 dict(kind='topic', value='Music'), dict(kind='topic', value='Pop music')]      # metadata.save keeps the first of a repeat
-    assert v['meta']['chapters'] == [dict(start=0.0, end=15.0, title='Intro'), dict(start=15.0, end=62.0, title='The song'), dict(start=62.0, end=90.0, title='Goodbye')]
-    bare = youtube.video_row(dict(id='abcdefghijk'), 'now')
-    assert (bare['year'], bare['kids'], bare['content_rating'], bare['meta']) == (None, None, None, dict(images=[], tags=[], chapters=[]))
+    item = dict(
+        id="abcdefghijk",
+        snippet=dict(
+            publishedAt="2012-01-13T16:21:38Z",
+            categoryId="24",
+            tags=["song", " ", "dance", "song"],
+            thumbnails=dict(
+                default=dict(url="d", width=120, height=90),
+                maxres=dict(url="x", width=1280, height=720),
+                fhddefault=dict(url="f", width=1920, height=1080),
+            ),
+            description="Sing along\n0:00 Intro\n0:15 - The song\n(1:02) Goodbye",
+        ),
+        contentDetails=dict(duration="PT1M30S", contentRating=dict(ytRating="ytAgeRestricted")),
+        status=dict(madeForKids=True),
+        topicDetails=dict(
+            topicCategories=[
+                "https://en.wikipedia.org/wiki/Music",
+                "https://en.wikipedia.org/wiki/Pop_music",
+                "https://en.wikipedia.org/wiki/Music",
+            ]
+        ),
+    )
+    v = youtube.video_row(item, "now")
+    assert (v["kind"], v["year"], v["kids"], v["content_rating"], v["min_age"]) == ("video", 2012, True, "18", 18)
+    assert v["meta"]["images"] == [
+        dict(kind="thumb", url="x", width=1280, height=720),
+        dict(kind="thumb", url="d", width=120, height=90),
+    ]  # not the sizes i.ytimg.com does not serve
+    assert v["meta"]["tags"] == [
+        dict(kind="keyword", value="song"),
+        dict(kind="keyword", value="dance"),
+        dict(kind="keyword", value="song"),
+        dict(kind="category", value="Entertainment"),
+        dict(kind="topic", value="Music"),
+        dict(kind="topic", value="Pop music"),
+    ]  # metadata.save keeps the first of a repeat
+    assert v["meta"]["chapters"] == [
+        dict(start=0.0, end=15.0, title="Intro"),
+        dict(start=15.0, end=62.0, title="The song"),
+        dict(start=62.0, end=90.0, title="Goodbye"),
+    ]
+    bare = youtube.video_row(dict(id="abcdefghijk"), "now")
+    assert (bare["year"], bare["kids"], bare["content_rating"], bare["meta"]) == (
+        None,
+        None,
+        None,
+        dict(images=[], tags=[], chapters=[]),
+    )
 
 
-@pytest.mark.parametrize('description, n', [
-    ('0:00 a\n0:10 b\n0:20 c', 3),
-    ('0:05 a\n0:10 b\n0:20 c', 0),                  # the first is not at 0:00
-    ('0:00 a\n0:10 b', 0),                          # fewer than three
-    ('0:00 a\n0:05 b\n0:20 c', 0),                  # one shorter than 10 s
-    ('0:00 a\n0:30 b\n0:20 c', 0),                  # not in order
-    ('0:00 a\n1:00:00 b\n1:10:00 c', 3),
-    ('0:00\n0:10\n0:20', 0),                        # times without names
-])
+@pytest.mark.parametrize(
+    ("description", "n"),
+    [
+        ("0:00 a\n0:10 b\n0:20 c", 3),
+        ("0:05 a\n0:10 b\n0:20 c", 0),  # the first is not at 0:00
+        ("0:00 a\n0:10 b", 0),  # fewer than three
+        ("0:00 a\n0:05 b\n0:20 c", 0),  # one shorter than 10 s
+        ("0:00 a\n0:30 b\n0:20 c", 0),  # not in order
+        ("0:00 a\n1:00:00 b\n1:10:00 c", 3),
+        ("0:00\n0:10\n0:20", 0),  # times without names
+    ],
+)
 def test_chapters_follow_youtubes_rule(description, n):
     assert len(youtube.chapters(description, 5000)) == n
 
 
 def test_channel_metadata():
-    item = dict(id='UCx', snippet=dict(thumbnails=dict(high=dict(url='h', width=800, height=800))), status=dict(madeForKids=False),
-                brandingSettings=dict(channel=dict(keywords='"Harbour Lights" kids  puppets kids'), image=dict(bannerExternalUrl='https://yt3.test/banner')),
-                topicDetails=dict(topicCategories=['https://en.wikipedia.org/wiki/Entertainment']))
-    c = youtube.channel_row(item, 'now')
-    assert (c['kind'], c['kids']) == ('channel', False)
-    assert c['meta'] == dict(images=[dict(kind='avatar', url='h', width=800, height=800), dict(kind='banner', url='https://yt3.test/banner')],
-                             tags=[dict(kind='keyword', value='Harbour Lights'), dict(kind='keyword', value='kids'), dict(kind='keyword', value='puppets'), dict(kind='topic', value='Entertainment')])
+    item = dict(
+        id="UCx",
+        snippet=dict(thumbnails=dict(high=dict(url="h", width=800, height=800))),
+        status=dict(madeForKids=False),
+        brandingSettings=dict(
+            channel=dict(keywords='"Harbour Lights" kids  puppets kids'),
+            image=dict(bannerExternalUrl="https://yt3.test/banner"),
+        ),
+        topicDetails=dict(topicCategories=["https://en.wikipedia.org/wiki/Entertainment"]),
+    )
+    c = youtube.channel_row(item, "now")
+    assert (c["kind"], c["kids"]) == ("channel", False)
+    assert c["meta"] == dict(
+        images=[
+            dict(kind="avatar", url="h", width=800, height=800),
+            dict(kind="banner", url="https://yt3.test/banner"),
+        ],
+        tags=[
+            dict(kind="keyword", value="Harbour Lights"),
+            dict(kind="keyword", value="kids"),
+            dict(kind="keyword", value="puppets"),
+            dict(kind="topic", value="Entertainment"),
+        ],
+    )

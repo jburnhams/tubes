@@ -16,11 +16,11 @@ pytest tests/unit -n auto                  # in parallel
 pytest tests/integration -n auto           # the CLI and HTTP API end-to-end
 pytest -p randomly -p "randomly_seed=N"    # reproduce a failure from a CI run (the seed is in the header of every run)
 pytest tests/unit/test_x.py -k name        # one test
-ruff check src tests
+scripts/check --fast                       # strata-python's gate without the tests: ruff, ruff format, pyright strict, ty (scripts/check runs the unit suite too)
 diff-cover coverage.xml --compare-branch origin/main    # after `--cov-report=xml`: coverage of just the lines your change touches
 ```
 
-CI (`.github/workflows/`): `unit.yml` (lint, unit tests with coverage on Linux for Python 3.11-3.13 plus macOS and Windows; web typecheck, coverage gate and build) and `integration.yml` (integration tests on Linux, macOS and Windows; the web component tests; also weekly and on demand).
+CI (`.github/workflows/`): `unit.yml` (`scripts/check --fast` once, unit tests with coverage on Linux for Python 3.11-3.13 plus macOS and Windows; web typecheck, coverage gate and build) and `integration.yml` (integration tests on Linux, macOS and Windows; the web component tests; also weekly and on demand).
 
 ## Layout
 
