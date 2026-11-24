@@ -8,6 +8,7 @@ API (JSON):
   GET  /api/health                         {ok, version, commit} (strata-python's web.base_app)
   GET  /api/system                         versions (app, Python, yt-dlp, ffmpeg), folders, disk, cache use, the library copy's state, prefetching (prefetch.py)
   GET  /api/skipping                      [{id, label, detail, mode}]: every kind of segment, with what the player does in it (settings skip_<id>)
+  GET  /api/break                         {url, minutes, limit_minutes}: the break the watching side takes from playing (settings break_*); url null when off
   GET  /api/videos/{id}/segments          {segments: [{category, start, end, action}], categories: [{id, label, detail, mode}], error}: what can be skipped
   GET  /api/settings, PUT /api/settings    every setting (settings.py, through web.base_app); PUT takes any subset, a null resets one
   GET  /api/library                       {synced, channels, videos, hidden, live, filtered, configured}: when every followed channel was last synced, and whether the YouTube key is set
@@ -456,6 +457,16 @@ def create_app(recover: bool = True) -> FastAPI:
     def get_skipping():
         """Every kind of segment the player can skip, with its setting (`skip_<id>`, saved through PUT /api/settings)."""
         return segments.categories()
+
+    @app.get("/api/break", responses=answer(A.Break))
+    def get_break():
+        """The break the Watch page takes (settings break_*), with no url while it is off or has no page."""
+        on = settings.get("break_on") == "true" and settings.get("break_url")
+        return dict(
+            url=settings.get("break_url") if on else None,
+            minutes=settings.get_float("break_minutes"),
+            limit_minutes=settings.get_float("break_limit_minutes"),
+        )
 
     @app.get("/api/videos/{video_id}/segments", responses=answer(A.Segments))
     def get_segments(video_id: str):

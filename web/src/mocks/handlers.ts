@@ -11,6 +11,9 @@ import { testcardPlaylist, testcardSegment } from './testcard'
 import { cursorOf, cursorOfRow, paths, type ChannelVisit, type Play, type CacheItem, type Channel, type From, type Progress, type HistorySource, type Pasted, type Settings, type ShownFilters, type Stream, type Suggestion, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Video, type VideoPage, type PlexItem } from '../api'
 import { cacheItems, channelHistory, channels, defaultSettings, defaultShown, kindsFor, sampleSegments, episodes, programme, historyDays, historySources, historyStats, library, libraryNew, longChannel, pasteable, quotaNoKey, quotaSpent, quotaUnused, quotaUsage, relatedStatus, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, unfinished, videos, plays, manyPlays, playSummary, playSummaryEmpty, channelVisits, plexFilm, plexGenres, plexRatings, plexStatus, plexTitles } from './fixtures'
 
+/** GET /api/break from the settings, as src/tubes/server/app.py `get_break` makes it. */
+export const breakOf = (s: Settings) => ({ url: s.break_on === 'true' && s.break_url ? s.break_url : null, minutes: s.break_minutes, limit_minutes: s.break_limit_minutes })
+
 /** What the mock server holds. Writes change it, so a test can pin a copy and see it pinned. */
 export const mock = {
   settings: { ...defaultSettings } as Settings,
@@ -49,12 +52,15 @@ export const mock = {
   /** Plex keys followed, and each listing followed as a channel. */
   plexFollowed: ['101'] as string[],
   plexListings: [] as { section: string; params: Record<string, string>; title: string }[],
+  /** How many times the break was read (GET /api/break). */
+  breakReads: 0,
 }
 
 /** Back to the healthy state: call between tests and stories. */
 export function resetMock() {
   mock.settings = { ...defaultSettings }
   mock.shown = { ...defaultShown }
+  mock.breakReads = 0
   mock.items = [...cacheItems]
   mock.plays = []
   mock.playsFrom = []
@@ -203,6 +209,8 @@ export const handlers = [
     return HttpResponse.json(mock.shown)
   }),
   http.get(at(paths.skipping), () => HttpResponse.json(kindsFor(mock.settings))),
+  // The break, as the server reads it from the settings: no page while it is off.
+  http.get(at(paths.break), () => { mock.breakReads++; return HttpResponse.json(breakOf(mock.settings)) }),
   // The first video has an intro, a sponsor read and end cards; the rest have nothing to skip.
   http.get(at('/api/videos/:id/segments'), ({ params }) => HttpResponse.json({ segments: params.id === 'wo000000000' ? sampleSegments : [], categories: kindsFor(mock.settings), error: null })),
   http.put(at(paths.settings), async ({ request }) => {

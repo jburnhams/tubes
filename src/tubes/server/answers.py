@@ -249,6 +249,14 @@ class Segment(Answer):
     action: Literal["skip", "mute"]
 
 
+class Break(Answer):
+    """A break the watching side takes from playing: a page shown over the paused video (settings break_*)."""
+
+    url: str | None = Field(description="The page to show: an http(s) link or a path on this server. Null: no breaks.")
+    minutes: float = Field(description="Minutes of playing between two breaks, counted in each browser across videos.")
+    limit_minutes: float = Field(description="The longest a break lasts when its page never says it is done.")
+
+
 class SegmentKind(Answer):
     id: str
     label: str

@@ -1,5 +1,13 @@
 # Progress log
 
+## 2026-11-24: Breaks, another page over the video every so often
+
+- Asked for: a generic way to show another page (a short game from another app on the same server) as a frame over the video every so many minutes. Tubes stays generic: it knows a link, an interval and a time limit, nothing about the page.
+- Settings `break_on`, `break_url` (an http(s) link or a path on this server; `javascript:` and bare words refused), `break_minutes` (default 20) and `break_limit_minutes` (default 10), edited on Admin > Settings > Breaks. `GET /api/break` gives the Watch page only what it needs (`url` null while off).
+- The clock counts seconds of playing (forward steps of up to 2 s between time updates, as progress.ts), not wall time, kept in each browser's localStorage across videos so short videos do not dodge it; it starts again after each break.
+- The break is drawn in MediaPlayer's `overlay` (the picture's own box: the video's size, and in full screen too). The video is paused and a play from the controls or keys is paused again. The page ends it with `postMessage({ type: 'tubes:done' })` to its parent, accepted only from that frame and the link's origin; no close button, and the time limit ends a page that never answers (or failed to load).
+- Not done: a per-device override (one setting for the server for now), and a story of the Watch page mid-break (its frame would load a page Storybook does not have).
+
 ## 2026-11-23: strata-python 0.2.10, the rest of it
 
 - Asked for: finish the move onto strata-python, now at 0.2.10 with the fixes Tubes asked for (#52 to #55): the HTTP client, the prefetch loop and the strata-check gate with its reformat, and anything else it offers that Tubes still did itself.

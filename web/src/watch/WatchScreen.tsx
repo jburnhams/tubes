@@ -16,7 +16,8 @@
 // reports how much of it is seen as it goes (progress.ts), which is what Continue watching and later
 // suggestions are made from. A video part watched lately picks up where it stopped, if that part is
 // already on the server, with Start over beside the picture for a few seconds. Up next offers the part
-// watched videos first, then a shuffle of the library.
+// watched videos first, then a shuffle of the library. Every so many minutes of playing, a break may pause it
+// and show another page over the picture until that page says it is done (break.tsx, Admin > Settings > Breaks).
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
@@ -28,6 +29,7 @@ import { Avatar, RowsSkeleton, VideoRow, useChannelsById } from './cards'
 import { countFor, iplayerText, runningTime, viewsAndAge } from './format'
 import { FromHere, fromState, useArrivedFrom } from './from'
 import { useWatchReport } from './progress'
+import { BreakFrame, useBreak } from './break'
 import { reportMissing, useHidden } from './missing'
 import { spanKindsOf, spansOf } from './skip'
 import { trouble } from './Shown'
@@ -85,11 +87,14 @@ export function Player({ src, title, segments, kinds, length, growing, playId, s
   const spans = useMemo(() => spansOf(segments, kinds), [segments, kinds])
   const spanKinds = useMemo(() => spanKindsOf(kinds), [kinds])
   const onSpan = useCallback((s: MediaSpanData, what: SpanOutcome) => { if (what === 'skipped') seen.mark(s.start, s.end) }, [seen])
+  const breakLoad = useLoad({ queryKey: keys.break, queryFn: api.break })    // no break (not an error) until it answers, or if it fails
+  const breakNow = breakLoad.status === 'ready' ? breakLoad.data : undefined
+  const pause = useBreak(element, breakNow)
   return (
     <div ref={box}>
       <MediaPlayer kind="video" label={title} sources={[{ src, title, duration: length ?? undefined }]} attach={attach} autoPlay growing={growing !== undefined ? { status: growing } : undefined}
         spans={spans} spanKinds={spanKinds} onSpan={onSpan} warning={warning}
-        overlay={media => picked && (
+        overlay={media => pause.due && breakNow?.url ? <BreakFrame url={breakNow.url} limitMinutes={breakNow.limit_minutes} onDone={pause.end} /> : picked && (
           <p role="status" className="absolute bottom-3 left-3 flex items-center gap-2 rounded-overlay border border-border bg-background px-3 py-1 type-body-sm text-foreground shadow-overlay">
             Picked up at {runningTime(from)}
             <Button variant="ghost" size="sm" onClick={() => { setPicked(false); media.seek(0) }}>Start over</Button>

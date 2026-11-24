@@ -528,6 +528,46 @@ def test_segments_endpoint(client, monkeypatch):
     assert next(k for k in client.get("/api/skipping").json() if k["id"] == "intro")["mode"] == "auto"
 
 
+def test_break_is_off_until_switched_on_with_a_page(client):
+    assert client.get("/api/break").json() == dict(url=None, minutes=20, limit_minutes=10)
+    client.put("/api/settings", json=dict(break_on="true"))
+    assert client.get("/api/break").json()["url"] is None  # on, but no page: still no break
+    r = client.put(
+        "/api/settings", json=dict(break_url=" /other/play?embed=1 ", break_minutes=15, break_limit_minutes=5)
+    )
+    assert r.status_code == 200, r.text
+    assert client.get("/api/break").json() == dict(url="/other/play?embed=1", minutes=15, limit_minutes=5)
+    client.put("/api/settings", json=dict(break_on="false"))
+    assert client.get("/api/break").json()["url"] is None  # off keeps the page for next time
+    assert client.get("/api/settings").json()["break_url"] == "/other/play?embed=1"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "javascript:alert(1)",
+        "play",
+        "ftp://host/x",
+        "https://",
+        "/a b",
+        "//",
+        "//host/x",
+        "https://[host/play",
+        "https://?embed=1",
+        "http://host:port/",
+        "https://host/a b",
+    ],
+)
+def test_break_page_must_be_a_link_or_a_path(client, url):
+    assert client.put("/api/settings", json=dict(break_url=url)).status_code in (400, 422)
+    assert client.get("/api/settings").json()["break_url"] == ""
+
+
+@pytest.mark.parametrize("url", ["https://host/play?x=1", "HTTP://host", "/app/play", "http://[::1]:8361/break", "/"])
+def test_break_page_takes_links_and_paths(client, url):
+    assert client.put("/api/settings", json=dict(break_url=url)).status_code == 200
+
+
 def test_plays_say_where_they_came_from_and_how_they_went(client, monkeypatch):
     seed()
     monkeypatch.setattr(fetcher, "start", lambda vid, title, channel: cache.status(vid))
