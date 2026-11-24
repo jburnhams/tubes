@@ -542,13 +542,28 @@ def test_break_is_off_until_switched_on_with_a_page(client):
     assert client.get("/api/settings").json()["break_url"] == "/other/play?embed=1"
 
 
-@pytest.mark.parametrize("url", ["javascript:alert(1)", "play", "ftp://host/x", "https://", "/a b"])
+@pytest.mark.parametrize(
+    "url",
+    [
+        "javascript:alert(1)",
+        "play",
+        "ftp://host/x",
+        "https://",
+        "/a b",
+        "//",
+        "//host/x",
+        "https://[host/play",
+        "https://?embed=1",
+        "http://host:port/",
+        "https://host/a b",
+    ],
+)
 def test_break_page_must_be_a_link_or_a_path(client, url):
     assert client.put("/api/settings", json=dict(break_url=url)).status_code in (400, 422)
     assert client.get("/api/settings").json()["break_url"] == ""
 
 
-@pytest.mark.parametrize("url", ["https://host/play?x=1", "HTTP://host", "/app/play"])
+@pytest.mark.parametrize("url", ["https://host/play?x=1", "HTTP://host", "/app/play", "http://[::1]:8361/break", "/"])
 def test_break_page_takes_links_and_paths(client, url):
     assert client.put("/api/settings", json=dict(break_url=url)).status_code == 200
 

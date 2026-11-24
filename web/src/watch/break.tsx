@@ -35,15 +35,16 @@ export function writePlayed(seconds: number) {
   try { localStorage.setItem(PLAYED_KEY, String(Math.round(seconds))) } catch { /* as readPlayed: kept for this page only */ }
 }
 
-/** The origin a break's page answers from: a path is on this server. */
-export function pageOrigin(url: string, base = document.baseURI): string {
-  return new URL(url, base).origin
+/** The origin a break's page answers from (a path is on this server), or null for a link that cannot be parsed: the server refuses
+ *  those, but a frame that throws would also lose its time limit, so nothing answers it and the limit ends the break. */
+export function pageOrigin(url: string, base = document.baseURI): string | null {
+  try { return new URL(url, base).origin } catch { return null }
 }
 
 /** Whether `e` is the break's page saying it is done: from that frame, from the page's origin, with the done message. */
-export function isDone(e: MessageEvent, frame: Window | null | undefined, origin: string): boolean {
+export function isDone(e: MessageEvent, frame: Window | null | undefined, origin: string | null): boolean {
   const data: unknown = e.data
-  return !!frame && e.source === frame && e.origin === origin && typeof data === 'object' && data !== null && (data as { type?: unknown }).type === DONE
+  return !!frame && origin !== null && e.source === frame && e.origin === origin && typeof data === 'object' && data !== null && (data as { type?: unknown }).type === DONE
 }
 
 /** Counts seconds of playing: a step from one place to the next counts if it is forward and no longer than MAX_STEP. */
@@ -111,10 +112,10 @@ export function useBreak(ref: RefObject<HTMLVideoElement | null>, b: Break | und
 export function BreakFrame({ url, limitMinutes, onDone }: { url: string; limitMinutes: number; onDone: () => void }) {
   const frame = useRef<HTMLIFrameElement>(null)
   useEffect(() => {
+    const timer = setTimeout(onDone, limitMinutes * 60_000)     // first: nothing below can stop the break ending
     const origin = pageOrigin(url)
     const onMessage = (e: MessageEvent) => { if (isDone(e, frame.current?.contentWindow, origin)) onDone() }
     window.addEventListener('message', onMessage)
-    const timer = setTimeout(onDone, limitMinutes * 60_000)
     return () => { window.removeEventListener('message', onMessage); clearTimeout(timer) }
   }, [url, limitMinutes, onDone])
   return <iframe ref={frame} src={url} title="Break" allow="autoplay; fullscreen" className="absolute inset-0 size-full border-0 bg-tube-screen" />

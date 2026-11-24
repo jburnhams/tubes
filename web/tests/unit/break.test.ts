@@ -26,6 +26,7 @@ describe('the break page', () => {
   it('answers from its own origin, a path from this server', () => {
     expect(pageOrigin('/games/play', 'http://tv.example/tubes/watch/x')).toBe('http://tv.example')
     expect(pageOrigin('https://games.example:8443/play', 'http://tv.example/')).toBe('https://games.example:8443')
+    expect(pageOrigin('https://[host/play', 'http://tv.example/')).toBeNull()      // the server refuses these; the frame does not throw on one
   })
 
   it('is done only when its own frame says so, from its origin', () => {
@@ -38,6 +39,7 @@ describe('the break page', () => {
     expect(isDone(message(DONE), frame, 'http://tv.example')).toBe(false)
     expect(isDone(message(null), frame, 'http://tv.example')).toBe(false)
     expect(isDone(message({ type: DONE }), null, 'http://tv.example')).toBe(false)
+    expect(isDone(message({ type: DONE }), frame, null)).toBe(false)
   })
 })
 
@@ -48,7 +50,8 @@ describe('the Breaks form', () => {
     expect(breakProblems({ ...f, url: 'https://games.example/play?x=1' }).url).toBeUndefined()
     expect(breakProblems({ ...f, url: '' }).url).toBe('Enter the page to show, or turn breaks off.')
     expect(breakProblems({ ...f, on: false, url: '' }).url).toBeUndefined()
-    expect(breakProblems({ ...f, url: 'javascript:alert(1)' }).url).toMatch(/^Enter a link/)
+    for (const url of ['javascript:alert(1)', '//', '//host/x', 'https://[host/play', 'https://?embed=1', 'ftp://host/x', '/a b'])
+      expect(breakProblems({ ...f, url }).url).toMatch(/^Enter a link/)
     expect(breakProblems({ ...f, minutes: '0' }).minutes).toBe('Enter the time between breaks in minutes, from 1 to 1440.')
     expect(breakProblems({ ...f, minutes: ' ' }).minutes).toBeDefined()
     expect(breakProblems({ ...f, limit: 'ten' }).limit).toBe('Enter the longest break in minutes, from 1 to 240.')

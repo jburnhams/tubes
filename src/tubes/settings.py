@@ -35,6 +35,7 @@ The YouTube key (YOUTUBE_API_KEY) is only ever in the environment."""
 
 import os
 import re
+from urllib.parse import urlsplit
 
 from strata_python.settings import (
     Setting,
@@ -70,9 +71,25 @@ def trimmed(value: str) -> str:
 
 def page_url(value: str) -> str:
     """Normaliser: empty, an http(s) link or a path on this server (`/app/page`): what a break shows in its frame. Anything else
-    (`javascript:`, a bare word that would be read against the watch page's own path) is refused."""
+    (`javascript:`, a bare word that would be read against the watch page's own path, `//host`, a link a browser cannot parse such as
+    `https://[host`) is refused, so the Watch page never meets a link it cannot open."""
     v = value.strip()
-    if v and not re.match(r"^(https?://[^/\s]+|/)\S*$", v, re.IGNORECASE):
+    if not v:
+        return v
+    if re.match(r"^/(?!/)\S*$", v):
+        return v
+    try:
+        parts = urlsplit(v)
+        ok = parts.port is None or parts.port >= 0  # reading a port that is not a number raises
+    except ValueError:
+        parts, ok = None, False
+    if (
+        not ok
+        or not parts
+        or parts.scheme.lower() not in ("http", "https")
+        or not parts.hostname
+        or re.search(r"\s", v)
+    ):
         raise ValueError("must be an http(s) link or a path starting with /")
     return v
 

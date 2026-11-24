@@ -333,6 +333,16 @@ function Breaks() {
   )
 }
 
+/** Whether `url` is a path on this server (not `//host`) or an http(s) link a browser can parse, with a host and no spaces (settings.py `page_url`). */
+export function pageLink(url: string): boolean {
+  if (/\s/.test(url)) return false
+  if (url.startsWith('/')) return !url.startsWith('//')
+  try {
+    const u = new URL(url)
+    return (u.protocol === 'http:' || u.protocol === 'https:') && u.hostname !== ''
+  } catch { return false }
+}
+
 type BreakFields = { on: boolean; url: string; minutes: string; limit: string }
 
 /** What is wrong with the break fields, by field: the page is an http(s) link or a path on this server (needed while breaks are on), the
@@ -344,7 +354,7 @@ export function breakProblems(f: BreakFields): Partial<Record<'url' | 'minutes' 
     return v.trim() && Number.isFinite(n) && n >= lo && n <= hi ? undefined : `Enter ${what} in minutes, from ${lo} to ${hi}.`
   }
   return {
-    url: url ? (/^(https?:\/\/[^/\s]+|\/)\S*$/i.test(url) ? undefined : 'Enter a link starting http:// or https://, or a path on this server starting with /.') : f.on ? 'Enter the page to show, or turn breaks off.' : undefined,
+    url: url ? (pageLink(url) ? undefined : 'Enter a link starting http:// or https://, or a path on this server starting with /.') : f.on ? 'Enter the page to show, or turn breaks off.' : undefined,
     minutes: between(f.minutes, 1, 1440, 'the time between breaks'),
     limit: between(f.limit, 1, 240, 'the longest break'),
   }
