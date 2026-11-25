@@ -1882,10 +1882,25 @@ export interface components {
              */
             captions: "any" | "only";
             /**
+             * Clips
+             * @enum {string}
+             */
+            clips: "show" | "hide";
+            /**
              * Filtered
              * @description How many videos these leave out now.
              */
             filtered: number;
+            /**
+             * Known Clips
+             * @description Videos known to be a clip: part of something longer.
+             */
+            known_clips: number;
+            /**
+             * Known Promos
+             * @description Videos known to be a trailer, an advert or an announcement.
+             */
+            known_promos: number;
             /** Language Counts */
             language_counts: components["schemas"]["LanguageCount"][];
             /**
@@ -1897,6 +1912,11 @@ export interface components {
             max_seconds: number | null;
             /** Min Seconds */
             min_seconds: number | null;
+            /**
+             * Promos
+             * @enum {string}
+             */
+            promos: "show" | "hide";
             /**
              * Region
              * @description The country the server watches from (GB): a video YouTube says does not play there is left out. Null: not checked.

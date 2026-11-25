@@ -45,6 +45,8 @@ carry them, so they sort and compare as text on both engines.
   video_groups,      groups of videos (groups.py), which may overlap: each with its name, and its videos with how well each represents it. Made
   video_group_       outside and loaded whole (`tubes groups load`); a load keeps a group's id, and the name someone gave it, for the group
   members            that shares most videos with it. No foreign keys: a video that left the library is not counted or shown.
+  video_extents      how much of a thing each video is (extents.py): a full episode, several joined, a clip, a promo, or complete on its own, and
+                     what said so. No foreign key: a video that left the library is not counted.
   segments           parts of a video the player can skip (segments.py): from SponsorBlock for YouTube, from iPlayer's own intro and credits
                      points for an episode, under SponsorBlock's categories; `segment_checks` says when each video's source was last asked."""
 
@@ -481,6 +483,15 @@ class VideoGroupMember(Base):
     score: Mapped[float] = mapped_column(
         Float, server_default="0", default=0.0
     )  # how well it represents the group: higher is better, compared only within the group
+
+
+class VideoExtent(Base):
+    __tablename__ = "video_extents"
+    __table_args__ = (Index("ix_video_extents_extent", "extent"),)
+    video_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    extent: Mapped[str] = mapped_column(String(24))  # extents.EXTENTS
+    said_by: Mapped[str] = mapped_column(String(16))  # extents.BY
+    at: Mapped[str] = mapped_column(String(40))
 
 
 class ApiUsage(Base):

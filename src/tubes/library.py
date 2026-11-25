@@ -48,14 +48,23 @@ FILTERS = dict(
     languages=[],
     unknown_language="show",
     captions="any",
+    clips="show",
+    promos="show",
 )
 # streams: 'current' hides those live now or scheduled (they cannot be played); 'all' hides past streams and premieres too
 # region: the country the server watches from (`GB`); a video YouTube says does not play there is left out. None: not checked
 # languages: base language codes (`en`) a video's spoken language must be one of (`en-GB` counts as `en`); empty: every language
 # unknown_language: 'show' or 'hide' a video whose language neither it nor its channel says (only with `languages` chosen)
+# clips, promos: 'show', or 'hide' the videos known to be one (extents.py); a video nothing is known of is shown
 # captions: 'any', or 'only' those with captions the uploader added (a video it is not known for, such as an iPlayer episode, is kept)
 STREAMS = ("current", "all")
-CHOICES = dict(streams=STREAMS, unknown_language=("show", "hide"), captions=("any", "only"))
+CHOICES = dict(
+    streams=STREAMS,
+    unknown_language=("show", "hide"),
+    captions=("any", "only"),
+    clips=("show", "hide"),
+    promos=("show", "hide"),
+)
 LANGUAGE = "COALESCE(LOWER(COALESCE(v.language, c.language)), '')"  # a video's spoken language, else its channel's, '' when neither says (never NULL, so NOT works; needs the channels joined as c)
 
 
@@ -98,6 +107,12 @@ def _chosen(f: Mapping[str, Any]) -> tuple[str, list[Any]]:
     if f.get("captions") == "only":
         parts.append("(v.captions IS NULL OR v.captions = ?)")
         args.append(True)
+    hidden = [extent for extent, k in (("clip", "clips"), ("promo", "promos")) if f.get(k) == "hide"]
+    if hidden:  # never NULL: both ids are always there; one set, read once, where a join would touch every list's SQL
+        parts.append(
+            f"v.id NOT IN (SELECT e.video_id FROM video_extents e WHERE e.extent IN ({', '.join('?' * len(hidden))}))"
+        )
+        args += hidden
     return ("(" + " AND ".join(parts) + ")" if parts else "(1 = 1)"), args
 
 

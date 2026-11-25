@@ -142,7 +142,7 @@ export const syncJobs = {
 
 /** Admin's filters as a new server has them: nothing left out but streams live now or scheduled. */
 export const defaultShown: ShownFilters = {
-  min_seconds: null, max_seconds: null, streams: 'current', region: null, languages: [], unknown_language: 'show', captions: 'any', filtered: 0,
+  min_seconds: null, max_seconds: null, streams: 'current', region: null, languages: [], unknown_language: 'show', captions: 'any', clips: 'show', promos: 'show', known_clips: 1840, known_promos: 126, filtered: 0,
   language_counts: [{ code: 'en', videos: 41_200 }, { code: null, videos: 5_400 }, { code: 'fr', videos: 380 }, { code: 'de', videos: 95 }],
 }
 

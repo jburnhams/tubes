@@ -373,7 +373,7 @@ export const api = {
   library: () => fetchJson<LibraryStatus>(withBase(paths.library)),
   quota: () => fetchJson<QuotaUsage>(withBase(paths.quota)),
   shown: () => fetchJson<ShownFilters>(withBase(paths.shown)),
-  saveShown: (f: Partial<Omit<ShownFilters, 'filtered' | 'language_counts'>>) => callJson<ShownFilters>(withBase(paths.shown), send('PUT', f)),
+  saveShown: (f: Partial<Omit<ShownFilters, 'filtered' | 'language_counts' | 'known_clips' | 'known_promos'>>) => callJson<ShownFilters>(withBase(paths.shown), send('PUT', f)),
   add: (input: string) => callJson<Added>(withBase(paths.library), send('POST', { input } satisfies In<'AddIn'>)),
   syncJob: () => fetchJson<SyncJob>(withBase(paths.sync)),
   /** Sync these channels, or every followed one. */

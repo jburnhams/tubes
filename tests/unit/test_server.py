@@ -85,6 +85,10 @@ def test_system_and_settings(client, monkeypatch):
         languages=[],
         unknown_language="show",
         captions="any",
+        clips="show",
+        promos="show",
+        known_clips=0,
+        known_promos=0,
         filtered=0,
         language_counts=[],
     )
@@ -96,6 +100,10 @@ def test_system_and_settings(client, monkeypatch):
         languages=[],
         unknown_language="show",
         captions="any",
+        clips="show",
+        promos="show",
+        known_clips=0,
+        known_promos=0,
         filtered=0,
         language_counts=[],
     )
@@ -120,6 +128,10 @@ def test_shown_filters_narrow_the_watching_side(client):
             languages=[],
             unknown_language="show",
             captions="any",
+            clips="show",
+            promos="show",
+            known_clips=0,
+            known_promos=0,
             filtered=4,
             language_counts=[dict(code=None, videos=4)],
         )
