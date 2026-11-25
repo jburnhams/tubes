@@ -288,13 +288,13 @@ export function ShownForm({ current }: { current: ShownFilters }) {
       </fieldset>
       <fieldset className="grid gap-5">
         <legend className="mb-4 type-heading">Clips and promos</legend>
-        <Field label="Clips" hint={`Part of something longer: a scene, a moment, a short cut from an episode. ${format.count(current.known_clips, 'video is', 'videos are')} known to be one. Several episodes joined are not clips, and a video nothing is known of is always shown.`}>
+        <Field label="Clips" hint={`Part of something longer: a scene, a moment, a short cut from an episode. ${format.count(current.known_clips, 'video is', 'videos are')} known to be one. Several episodes joined are not clips, and a video nothing is known of is always shown. A channel’s own page shows its clips whatever is chosen here.`}>
           <NativeSelect value={f.clips} onChange={set('clips')}>
             <option value="show">Show them</option>
             <option value="hide">Leave them out</option>
           </NativeSelect>
         </Field>
-        <Field label="Promos" hint={`Trailers, adverts and announcements. ${format.count(current.known_promos, 'video is', 'videos are')} known to be one.`}>
+        <Field label="Promos" hint={`Trailers, adverts and announcements. ${format.count(current.known_promos, 'video is', 'videos are')} known to be one. A channel’s own page shows them too.`}>
           <NativeSelect value={f.promos} onChange={set('promos')}>
             <option value="show">Show them</option>
             <option value="hide">Leave them out</option>

@@ -2,7 +2,7 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
-from library import seed
+from library import CHANNELS, seed
 
 from tubes import catalogue, cli, db, extents, groups, library
 from tubes.server.app import create_app
@@ -41,10 +41,31 @@ def test_clips_and_promos_are_left_out_only_when_chosen():
     assert shown() == [B, C, D] and library.status()["filtered"] == 1
     catalogue.save_filters(dict(promos="hide"))
     assert shown() == [C, D] and library.status()["filtered"] == 2
-    assert [(c["videos"], c["hidden"]) for c in library.channels()] == [(2, 0), (0, 2)]
     assert library.video(A)["id"] == A  # a link still opens
     catalogue.save_filters(dict(clips="show"))
     assert shown() == [A, C, D]
+
+
+def test_a_channels_own_page_shows_everything_and_is_counted_so():
+    seed()
+    extents.save([(A, "clip", "llm"), (B, "promo", "llm"), (C, "clip", "llm")])
+    catalogue.save_filters(dict(clips="hide", promos="hide"))
+    workshop, sky = CHANNELS[0]["id"], CHANNELS[1]["id"]
+    assert [v["id"] for v in library.videos(workshop)["videos"]] == [A, B]
+    assert [v["id"] for v in library.videos(sky)["videos"]] == [C, D]
+    assert [v["id"] for v in library.videos(workshop, search="sanding")["videos"]] == [B]
+    page = library.videos(workshop, limit=1)
+    assert page["has_more"] and [
+        v["id"] for v in library.videos(workshop, after=library.cursor(page["videos"][0]))["videos"]
+    ] == [B]
+    assert [(c["title"], c["videos"], c["hidden"]) for c in library.channels()] == [
+        ("night sky", 2, 0),
+        ("Workshop", 2, 0),
+    ]
+    assert shown() == [D] and library.status()["filtered"] == 3  # everywhere else they are left out
+    assert library.videos(search="shelf")["videos"] == []
+    catalogue.save_filters(dict(min_seconds=700))  # the other filters hold there too: every seeded video is 10 minutes
+    assert library.videos(workshop)["videos"] == [] and [c["videos"] for c in library.channels()] == [0, 0]
 
 
 def test_a_group_leaves_them_out_too():

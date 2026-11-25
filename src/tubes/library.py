@@ -55,7 +55,7 @@ FILTERS = dict(
 # region: the country the server watches from (`GB`); a video YouTube says does not play there is left out. None: not checked
 # languages: base language codes (`en`) a video's spoken language must be one of (`en-GB` counts as `en`); empty: every language
 # unknown_language: 'show' or 'hide' a video whose language neither it nor its channel says (only with `languages` chosen)
-# clips, promos: 'show', or 'hide' the videos known to be one (extents.py); a video nothing is known of is shown
+# clips, promos: 'show', or 'hide' the videos known to be one (extents.py); a video nothing is known of is shown, and so is every one on its channel's own page (whole_channel)
 # captions: 'any', or 'only' those with captions the uploader added (a video it is not known for, such as an iPlayer episode, is kept)
 STREAMS = ("current", "all")
 CHOICES = dict(
@@ -139,6 +139,12 @@ def shown(now: str | None = None, f: Mapping[str, Any] | None = None) -> tuple[s
     return f"({AVAILABLE} AND {NOT_STREAMING} AND {chosen})", [_now(now), *args]
 
 
+def whole_channel(now: str | None = None) -> tuple[str, list[Any]]:
+    """What a channel's own page lists, as `shown` gives it: the clips and promos too, which Admin may leave out of every other list. Someone who
+    opened the channel came for all of it, and some channels publish little else."""
+    return shown(now, dict(filters(), clips="show", promos="show"))
+
+
 CHANNEL_COLUMNS = """c.id, c.platform, c.title, c.handle, c.thumbnail, c.synced, c.published, c.country, c.subscribers, c.total_videos, c.views, c.complete, c.follow,
                      c.added, c.sync_token IS NOT NULL AS resumable, c.kind, c.tagline, c.network, c.content_rating, c.min_age, c.kids, c.colours"""
 
@@ -178,7 +184,7 @@ def status(now: str | None = None) -> Row:
 def channels(now: str | None = None) -> list[Row]:
     """Every channel with how many videos it has here to watch, how many are hidden (gone, streams not over yet, expired from iPlayer, or
     left out by Admin's filters) and its newest one's date, by title."""
-    ok, args = shown(now)
+    ok, args = whole_channel(now)  # as its page lists them
     with db.connect() as con:
         rows = db.rows(
             con.execute(
@@ -236,10 +242,11 @@ def videos(
     now: str | None = None,
     group_id: int | None = None,
 ) -> Row:
-    """One page of videos, newest first: `{videos, has_more}`. `search` matches words in the title, in any order; `after` is a cursor. `group_id`
+    """One page of videos, newest first: `{videos, has_more}`. `search` matches words in the title, in any order; `after` is a cursor. A channel's
+    videos (`channel_id`) are all of them, clips and promos too (whole_channel). `group_id`
     keeps to a group's videos (groups.py), those that represent it best first, so the ones that may picture it are at the top; a cursor then
     says which video to read on from (its place is its score), and one that has left the group ends the list."""
-    ok, args = shown(now)
+    ok, args = whole_channel(now) if channel_id else shown(now)
     where = [ok]
     if channel_id:
         where.append("v.channel_id = ?")
