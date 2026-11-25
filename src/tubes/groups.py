@@ -14,6 +14,7 @@ Between loads, `place` (`tubes sort`, after a sync) puts videos added since into
 group's own (its centre: the words its videos share, weighed by how rare they are across all groups), and those whose title says the group's
 name, when that is how its videos are titled. It makes no group and takes nothing out; a thing that is new waits for the next load."""
 
+import datetime
 import json
 import math
 import random
@@ -30,6 +31,8 @@ THUMB_SHARE = 20  # one video in this many (5%) may picture its group...
 THUMB_MIN = 10  # ...or this many, whichever is more
 LAST_ID = "video_group_last_id"  # the key in `meta` of the highest id a group ever had
 PLACED = "video_groups_placed"  # the key in `meta` of when videos were last placed: those added since are still to be
+WAITING = "video_groups_waiting"  # ...and of those added before that were not shown then (a premiere, say): their ids, as JSON
+WAIT_DAYS = 60  # how long one is waited for
 WORD = re.compile(r"[^\W_]+")
 PLAIN = frozenset(
     [
@@ -183,10 +186,7 @@ def load(text: str) -> Row:
                 "INSERT INTO video_group_members (group_id, video_id, score) VALUES (:g, :v, :s)",
                 [dict(g=gid, v=vid, s=score) for vid, score in g["videos"].items()],
             )
-        con.execute(
-            "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-            (LAST_ID, str(free)),
-        )
+        _keep(con, LAST_ID, str(free))
         _placed(con, cache.stamp())  # the file has every video its maker knew of
     return dict(
         groups=len(new),
@@ -252,11 +252,15 @@ def group(group_id: int, now: str | None = None) -> Row | None:
 # --- placing new videos --------------------------------------------------------------------------------------------------------------
 
 
-def _placed(con: db.Connection, at: str) -> None:
+def _keep(con: db.Connection, key: str, value: str) -> None:
     con.execute(
         "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
-        (PLACED, at),
+        (key, value),
     )
+
+
+def _placed(con: db.Connection, at: str) -> None:
+    _keep(con, PLACED, at)
 
 
 def terms(title: str, description: str | None) -> dict[str, float]:
@@ -344,25 +348,30 @@ def _dot(a: Mapping[str, float], b: Mapping[str, float]) -> float:
 
 
 def place(now: str | None = None) -> Row:
-    """Put the videos added since the last time into the groups they belong in: `{new, placed, memberships}`. Only those the watching side
-    shows, and none known to be a clip or a promo. The first time, with no time kept, only notes the time."""
+    """Put the videos added since the last time into the groups they belong in: `{new, placed, memberships, waiting}`. Only those the watching
+    side shows, and none known to be a clip or a promo; one not shown yet (a premiere still to come, a stream not over) waits, up to WAIT_DAYS,
+    and is placed when it is. The first time, with no time kept, only notes the time."""
     at = now or cache.stamp()
+    since = (datetime.datetime.fromisoformat(at) - datetime.timedelta(days=WAIT_DAYS)).isoformat(timespec="seconds")
     ok, args = library.shown(now)
     with db.connect() as con:
-        row = con.execute("SELECT value FROM meta WHERE key = ?", (PLACED,)).fetchone()
-        new = (
+        kept = {r[0]: r[1] for r in con.execute("SELECT key, value FROM meta WHERE key IN (?, ?)", (PLACED, WAITING))}
+        waited = {str(x) for x in arr(json.loads(kept.get(WAITING) or "[]"))}
+        found = (
             db.rows(
                 con.execute(
-                    f"""SELECT v.id, v.title, v.description FROM videos v LEFT JOIN channels c ON c.id = v.channel_id
-                        LEFT JOIN copies k ON k.video_id = v.id
-                        WHERE {ok} AND v.added >= ? AND v.id NOT IN (SELECT m.video_id FROM video_group_members m)
+                    f"""SELECT v.id, v.title, v.description, v.added, CASE WHEN {ok} THEN 1 ELSE 0 END AS shown FROM videos v
+                        LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = v.id
+                        WHERE v.gone IS NULL AND v.added >= ? AND v.id NOT IN (SELECT m.video_id FROM video_group_members m)
                         AND v.id NOT IN (SELECT e.video_id FROM video_extents e WHERE e.extent IN ('clip', 'promo')) ORDER BY v.id""",
-                    [*args, row[0]],
+                    [*args, min(since, kept[PLACED])],
                 )
             )
-            if row
+            if PLACED in kept
             else []
         )
+        found = [v for v in found if v["id"] in waited or v["added"] >= kept[PLACED]]
+        new = [v for v in found if v["shown"]]
         members: dict[int, dict[str, float]] = {}
         names: dict[int, str] = {}
         videos: dict[str, tuple[str, str | None]] = {}
@@ -377,10 +386,12 @@ def place(now: str | None = None) -> Row:
     places = Places(names, members, videos)
     into = {v["id"]: places.of(v["title"], v["description"]) for v in new}
     rows = [dict(g=gid, v=vid, s=score) for vid, where in into.items() for gid, score in where.items()]
+    waiting = sorted(v["id"] for v in found if not v["shown"] and v["added"] >= since)
     with db.connect() as con:
         con.executemany(
             "INSERT INTO video_group_members (group_id, video_id, score) VALUES (:g, :v, :s) ON CONFLICT DO NOTHING",
             rows,
         )
         _placed(con, at)
-    return dict(new=len(new), placed=sum(1 for w in into.values() if w), memberships=len(rows))
+        _keep(con, WAITING, json.dumps(waiting))
+    return dict(new=len(new), placed=sum(1 for w in into.values() if w), memberships=len(rows), waiting=len(waiting))

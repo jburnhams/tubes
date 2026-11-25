@@ -314,6 +314,8 @@ def work_out() -> Row:
     asked: set[str] = set()  # asked about in this run, answered or not: one left out is not asked again at once
     budget, with_llm = settings.get_float("sort_usd"), bool(settings.get("sort_model"))
     while True:
+        if model is None and done["llm"]:  # a new library: enough may have been answered in this run
+            model = train(known, typical)
         wanted: list[Row] = []
         more = False  # the model has videos it had no turn for
         for cid, vs in todo.items():
@@ -356,6 +358,7 @@ def work_out() -> Row:
                 if said is None or said == "unclear":  # left out, or it cannot say: nothing to learn
                     continue
                 answers.setdefault(v["channel_id"], []).insert(0, (guesses[v["id"]], said))
+                known.append(dict(v, extent=said))
                 if model:
                     model.learn(at[v["id"]], said in PARTS)
             for v in some:

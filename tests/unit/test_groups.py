@@ -286,7 +286,7 @@ def test_a_new_video_goes_where_its_words_or_its_title_say():
         "n2", "Shelf Stories: an unlikely tale of glue", channel=1
     )  # says the name its group's titles say, from another channel
     add("n3", "Cooking a pie")
-    assert groups.place(TIMES[2]) == dict(new=3, placed=2, memberships=2)
+    assert groups.place(TIMES[2]) == dict(new=3, placed=2, memberships=2, waiting=0)
     assert (where("n1"), where("n2"), where("n3")) == ([2], [1], [])
 
 
@@ -319,13 +319,30 @@ def test_only_new_shown_videos_that_are_not_clips_are_placed():
     extents.save([("clip", "clip", "llm"), ("promo", "promo", "llm"), ("whole", "whole", "model")])
     assert groups.place(TIMES[2])["new"] == 1
     assert [v for v in ("old", "gone", "clip", "promo", "whole") if where(v)] == ["whole"]
-    assert groups.place("2026-11-04T00:00:00+00:00") == dict(new=0, placed=0, memberships=0)
+    assert groups.place("2026-11-04T00:00:00+00:00") == dict(new=0, placed=0, memberships=0, waiting=0)
+
+
+def test_a_premiere_waits_until_it_is_shown_and_not_for_ever():
+    library_of_two()
+    for v in ("soon", "never"):
+        add(v, "Bright stars maple tonight")
+    with db.connect() as con:
+        con.execute("UPDATE videos SET live = 'upcoming' WHERE id IN ('soon', 'never')")
+    assert groups.place(TIMES[2]) == dict(new=0, placed=0, memberships=0, waiting=2)
+    with db.connect() as con:
+        con.execute("UPDATE videos SET live = 'was' WHERE id = 'soon'")
+    assert groups.place("2026-11-20T00:00:00+00:00") == dict(new=1, placed=1, memberships=1, waiting=1)
+    assert where("soon") == [2]
+    assert groups.place("2027-01-20T00:00:00+00:00")["waiting"] == 0
+    with db.connect() as con:
+        con.execute("UPDATE videos SET live = 'was' WHERE id = 'never'")
+    assert groups.place("2027-01-21T00:00:00+00:00")["new"] == 0
 
 
 def test_the_first_time_only_the_time_is_noted():
     seed()
     add("n1", "Bright stars")
-    assert groups.place(TIMES[2]) == dict(new=0, placed=0, memberships=0)
+    assert groups.place(TIMES[2]) == dict(new=0, placed=0, memberships=0, waiting=0)
     with db.connect() as con:
         assert con.execute("SELECT value FROM meta WHERE key = ?", (groups.PLACED,)).fetchone()[0] == TIMES[2]
 
@@ -334,7 +351,7 @@ def test_a_library_without_groups_places_nothing():
     seed()
     groups.place(TIMES[0])
     add("n1", "Bright stars")
-    assert groups.place(TIMES[2]) == dict(new=1, placed=0, memberships=0)
+    assert groups.place(TIMES[2]) == dict(new=1, placed=0, memberships=0, waiting=0)
 
 
 def test_a_group_whose_videos_have_gone_is_no_place():

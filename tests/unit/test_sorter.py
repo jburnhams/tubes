@@ -203,6 +203,12 @@ def test_with_nothing_to_learn_from_every_video_is_asked_about(llm):
     assert set(guesses().values()) == {None}  # no guess yet
 
 
+def test_a_library_with_nothing_to_learn_from_starts_the_handover_in_its_first_run(llm):
+    seed(videos=some(1500))
+    r = sorter.work_out()
+    assert r["llm"] + r["model"] == 1500 and r["model"] > 900 and r["trusted"] == 1
+
+
 def test_the_model_answers_a_trusted_channel_without_a_language_model(llm):
     seed(videos=some(900))
     extents.save([(vid(i), "clip" if i % 2 == 0 else "full_episode", "person") for i in range(300)])
