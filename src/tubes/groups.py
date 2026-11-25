@@ -10,6 +10,8 @@ What is shown follows library.shown(), as every list does: a group counts, and i
 group with none is not listed. Its picture is one of the videos that represent it best, the top THUMB_SHARE of them (at least THUMB_MIN),
 picked anew on every read, so the page looks different each time it is opened.
 
+A load that makes them again now and then (scripts/regroup.py, `tubes groups renew`) is careful with those there (`renew`).
+
 Between loads, `place` (`tubes sort`, after a sync) puts videos added since into the groups they belong to: those whose words are like the
 group's own (its centre: the words its videos share, weighed by how rare they are across all groups), and those whose title says the group's
 name, when that is how its videos are titled. It makes no group and takes nothing out; a thing that is new waits for the next load."""
@@ -97,6 +99,9 @@ LEAST = 0.12  # how alike a video and a centre must be at least (cosine)
 LIKE_OWN = 0.2  # ...and at least as alike as this part of the group's own least alike videos
 NEAR_BEST = 0.75  # ...and not much less alike than the group it is most like
 SAMPLE = 200  # videos of a group that say how alike its own are
+CARRY = 30  # videos a group must have to be carried over when it is cut in pieces (renew)
+CARRY_SHARE = 0.6  # of its videos that one new group must hold for it not to be
+RENEW = 0.5  # of the groups there are that must be in the new ones for those to be loaded
 MATCH = 0.3  # of the videos two groups hold between them, how many they must share to be the same group
 
 
@@ -193,6 +198,73 @@ def load(text: str) -> Row:
         videos=len({vid for g in new for vid in g["videos"]}),
         kept=sum(1 for i in ids if i is not None),
     )
+
+
+def members() -> dict[int, set[str]]:
+    """Each group's videos, those that left the library among them."""
+    out: dict[int, set[str]] = {}
+    with db.connect() as con:
+        for gid in con.execute("SELECT id FROM video_groups").scalars():
+            out[gid] = set()
+        for gid, vid in con.execute("SELECT group_id, video_id FROM video_group_members"):
+            out.setdefault(gid, set()).add(vid)
+    return out
+
+
+def every() -> list[Row]:
+    """Every group, shown or not: `[{id, name, kind}]`."""
+    with db.connect() as con:
+        return db.rows(con.execute("SELECT id, name, kind FROM video_groups ORDER BY id"))
+
+
+def dump() -> str:
+    """The groups as a file `load` takes, to go back to."""
+    with db.connect() as con:
+        rows = con.execute(
+            "SELECT group_id, video_id, score FROM video_group_members ORDER BY group_id, score DESC, video_id"
+        )
+        videos: dict[int, list[tuple[str, float]]] = {}
+        for gid, vid, score in rows:
+            videos.setdefault(gid, []).append((vid, score))
+    return json.dumps(
+        dict(groups=[dict(name=g["name"], kind=g["kind"], videos=videos.get(g["id"], [])) for g in every()]),
+        ensure_ascii=False,
+    )
+
+
+class TooDifferent(Exception):
+    """New groups that share too little with those there to be put in their place."""
+
+
+def renew(text: str) -> Row:
+    """Load groups made again (scripts/regroup.py) in place of those there: `{groups, videos, kept, carried}`. A group of CARRY videos or more
+    that no new group holds CARRY_SHARE of is carried over as it is: making groups again can cut a thing in pieces that was whole. Raises
+    TooDifferent, changing nothing, when less than RENEW of the groups there are are in the new ones."""
+    new = read(text)
+    old = json.loads(dump())["groups"]
+    held = [{vid for vid, _ in g["videos"]} for g in old]
+    if not held:
+        return dict(load(text), carried=[])
+    sets = [set(g["videos"]) for g in new]
+    ids = same([g["videos"] for g in new], dict(enumerate(held)))
+    matched = sum(1 for i in ids if i is not None)
+    if matched < RENEW * len(held):
+        raise TooDifferent(f"Only {matched} of the {len(held)} groups there are in the new ones: nothing is changed.")
+    carried = [
+        g
+        for g, videos in zip(old, held, strict=True)
+        if len(videos) >= CARRY and max((len(videos & s) for s in sets), default=0) < CARRY_SHARE * len(videos)
+    ]
+    back = {g["name"].casefold(): dict(g["videos"]) for g in carried}
+    whole: list[Row] = []
+    for g in new:  # a piece under the name of the group it was cut from goes back into it
+        into = back.get(g["name"].casefold())
+        if into is None:
+            whole.append(dict(name=g["name"], kind=g["kind"], videos=sorted(g["videos"].items())))
+        else:
+            into.update({vid: score for vid, score in g["videos"].items() if vid not in into})
+    again = [dict(name=g["name"], kind=g["kind"], videos=sorted(back[g["name"].casefold()].items())) for g in carried]
+    return dict(load(json.dumps(dict(groups=whole + again))), carried=sorted(g["name"] for g in carried))
 
 
 def _rows(now: str | None, group_id: int | None = None) -> list[Row]:

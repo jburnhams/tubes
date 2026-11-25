@@ -164,20 +164,28 @@ def cmd_channels(args: argparse.Namespace) -> int:
 
 
 def cmd_groups(args: argparse.Namespace) -> int:
-    if args.action == "load":
+    if args.action != "list":
         if not args.file:
-            print("  Name the file of groups to load.", file=sys.stderr)
+            print("  Name the file of groups.", file=sys.stderr)
             return 2
         try:
+            if args.action == "dump":
+                text = groups.dump()
+                with open(args.file, "w", encoding="utf8") as f:
+                    f.write(text)
+                return out(args, dict(file=args.file), f"  written to {args.file}")
             with open(args.file, encoding="utf8") as f:
-                r = groups.load(f.read())
-        except (OSError, UnicodeDecodeError, groups.BadFile) as e:
+                text = f.read()
+            r = groups.renew(text) if args.action == "renew" else groups.load(text)
+        except (OSError, UnicodeDecodeError, groups.BadFile, groups.TooDifferent) as e:
             print(f"  {e}", file=sys.stderr)
             return 1
+        carried = r.get("carried")
         return out(
             args,
             r,
-            f"  {r['groups']} group(s) of {r['videos']} video(s) loaded, {r['kept']} in place of an earlier one",
+            f"  {r['groups']} group(s) of {r['videos']} video(s) loaded, {r['kept']} in place of an earlier one"
+            + (f", {len(carried)} carried over as they were: {', '.join(carried)}" if carried else ""),
         )
     items = groups.listing()
     return out(
@@ -438,8 +446,11 @@ def main(argv: list[str] | None = None) -> int:
     h = sub.add_parser("channels", help="list the channels in the library")
     h.add_argument("--json", action="store_true")
     h.set_defaults(fn=cmd_channels)
-    v = sub.add_parser("groups", help="list the groups of videos, or load them from a file in place of those there")
-    v.add_argument("action", nargs="?", choices=("list", "load"), default="list")
+    v = sub.add_parser(
+        "groups",
+        help="list the groups of videos; load them from a file in place of those there, renew them (a load that is careful with those there), or dump them to one",
+    )
+    v.add_argument("action", nargs="?", choices=("list", "load", "renew", "dump"), default="list")
     v.add_argument("file", nargs="?")
     v.add_argument("--json", action="store_true")
     v.set_defaults(fn=cmd_groups)
