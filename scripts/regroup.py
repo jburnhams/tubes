@@ -127,6 +127,7 @@ STOP = sorted(PLAIN | EDGE)
 NEIGHBOURS = 16
 USEFUL = ("show or franchise", "topic", "occasion", "activity or format")
 LEAST = 15  # videos in a group
+FEWEST = 300  # videos in the library
 SAID = re.compile(r"[a-z0-9][a-z0-9']+")
 
 
@@ -251,7 +252,7 @@ class Finder:
             stop_words=STOP,
         )
         self.matrix = tf.fit_transform([v["said"] for v in videos])
-        self.z = vectors(self.matrix, 200)
+        self.z = vectors(self.matrix, min(200, self.matrix.shape[1] - 1, len(videos) - 1))
         self.uses = collections.Counter(p for v in videos for p in v["phrases"])
         self.found: list[dict[str, Any]] = []
         self.build(self.joined(thick(self.z, NEIGHBOURS, 0.35, 10)))
@@ -486,6 +487,9 @@ def main(argv: Iterable[str]) -> int:
         return 2
     videos = read()
     print(f"  {len(videos)} videos", flush=True)
+    if len(videos) < FEWEST:
+        print(f"  Too few to make groups of (under {FEWEST}): nothing is written.", file=sys.stderr)
+        return 1
     finder = Finder(videos)
     kept = {g["id"]: (g["name"], g["kind"]) for g in groups.every()}
     done = settle(finder.found, finder, kept)
