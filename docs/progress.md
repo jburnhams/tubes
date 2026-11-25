@@ -1,5 +1,10 @@
 # Progress log
 
+## 2026-11-25: a channel's own page shows everything
+
+- Asked for: viewing a channel's page should still show everything. Some channels publish mostly segments, and lost over half their videos to the clips filter.
+- `library.whole_channel()` is `shown()` with clips and promos let through; `videos(channel_id)` and the channel counts use it, so a channel's page and its count agree. The other filters (length, language, country, streams, captions) still hold there, and Home, Search, Up next, groups and Continue watching leave clips out as before.
+
 ## 2026-11-25: new videos sorted and placed
 
 - Asked for: new videos put in groups at each sync, and a language model answering for a new channel until the small model can be trusted with it.

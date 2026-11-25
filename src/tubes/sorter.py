@@ -191,7 +191,7 @@ COLUMNS = "v.id, v.channel_id, c.title AS channel, v.title, v.duration, v.live, 
 
 def unknown() -> list[Row]:
     """The YouTube videos the watching side would show, clips or not, that nothing is known of, newest first."""
-    ok, args = library.shown(f=dict(library.filters(), clips="show", promos="show"))
+    ok, args = library.whole_channel()
     with db.connect() as con:
         return db.rows(
             con.execute(
