@@ -2296,6 +2296,10 @@ export interface components {
              * @enum {string}
              */
             skip_sponsor: "off" | "ask" | "auto";
+            /** Sort Model */
+            sort_model: string;
+            /** Sort Usd */
+            sort_usd: number;
             /** Ytdlp */
             ytdlp: string;
         };

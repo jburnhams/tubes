@@ -25,6 +25,7 @@ from tubes import (
     quota,
     related,
     settings,
+    sorter,
     viewing,
     youtube,
     ytdlp,
@@ -201,6 +202,19 @@ def cmd_extents(args: argparse.Namespace) -> int:
         return out(args, r, f"  {r['videos']} video(s) read, {r['kept']} kept (the rest have a stronger answer)")
     n = extents.counts()
     return out(args, n, "\n".join(f"  {k.replace('_', ' '):18} {v:>7}" for k, v in n.items()))
+
+
+def cmd_sort(args: argparse.Namespace) -> int:
+    r = dict(extents=sorter.work_out(), groups=groups.place())
+    e, g = r["extents"], r["groups"]
+    lines = [
+        f"  {e['rules']} by a rule, {e['model']} by the model, {e['llm']} by the language model, {e['left']} left"
+        f" ({e['trusted']} of {e['channels']} channel(s) are the model's; ${e['spent']:.2f} this month)",
+        f"  {g['placed']} of {g['new']} new video(s) placed in groups ({g['memberships']} places)",
+    ]
+    if e["problem"]:
+        lines.append(f"  {e['problem']}")
+    return out(args, r, "\n".join(lines))
 
 
 def cmd_quota(args: argparse.Namespace) -> int:
@@ -436,6 +450,12 @@ def main(argv: list[str] | None = None) -> int:
     x.add_argument("file", nargs="?")
     x.add_argument("--json", action="store_true")
     x.set_defaults(fn=cmd_extents)
+    o = sub.add_parser(
+        "sort",
+        help="work out whether new videos are whole or a clip or promo, and put them in their groups (run after a sync)",
+    )
+    o.add_argument("--json", action="store_true")
+    o.set_defaults(fn=cmd_sort)
     w = sub.add_parser(
         "history",
         help="import a Google Takeout watch history (suggestions are made from it), sync the one in the history database (history_url, history_table), list them, remove one, or refresh the suggestions",

@@ -4130,6 +4130,16 @@
       "title": "Skip Sponsor",
       "type": "string"
      },
+     "sort_model": {
+      "title": "Sort Model",
+      "type": "string"
+     },
+     "sort_usd": {
+      "maximum": 1000.0,
+      "minimum": 0.0,
+      "title": "Sort Usd",
+      "type": "number"
+     },
      "ytdlp": {
       "title": "Ytdlp",
       "type": "string"
@@ -4150,6 +4160,8 @@
      "ffmpeg",
      "history_url",
      "history_table",
+     "sort_model",
+     "sort_usd",
      "break_on",
      "break_url",
      "break_minutes",
