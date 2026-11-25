@@ -1,5 +1,6 @@
 """How much of a thing a video is: one full episode (or film), several episodes joined, a clip (part of something longer: a scene, a moment,
-a short cut from an episode), a promo (a trailer, an advert, an announcement), or complete on its own (a lesson, a how-to, a song). Admin >
+a short cut from an episode), a promo (a trailer, an advert, an announcement), complete on its own (a lesson, a how-to, a song), or whole:
+one of those that is not part of something, without knowing which. Admin >
 Settings > Shown videos can leave clips and promos out of every list; a video nothing is known of is always shown.
 
 What said so is kept too (`by`, BY, weakest first): a local model, a language model, a rule (a title that says it is a full episode), or a
@@ -12,7 +13,7 @@ from tubes import cache, db
 from tubes.db import Row
 from tubes.shape import arr, obj
 
-EXTENTS = ("full_episode", "several_episodes", "clip", "promo", "standalone")
+EXTENTS = ("full_episode", "several_episodes", "clip", "promo", "standalone", "whole")
 BY = ("model", "llm", "rule", "person")  # weakest first
 
 

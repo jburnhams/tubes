@@ -61,7 +61,7 @@ def test_counts_are_of_videos_still_in_the_library():
     extents.save([(A, "clip", "llm"), (B, "clip", "model"), (C, "promo", "llm"), ("notthere000", "clip", "llm")])
     with db.connect() as con:
         con.execute("UPDATE videos SET gone = 'then' WHERE id = ?", (B,))
-    assert extents.counts() == dict(full_episode=0, several_episodes=0, clip=1, promo=1, standalone=0)
+    assert extents.counts() == dict(full_episode=0, several_episodes=0, clip=1, promo=1, standalone=0, whole=0)
 
 
 def test_the_api_says_how_many_are_known_and_how_many_are_left_out():
