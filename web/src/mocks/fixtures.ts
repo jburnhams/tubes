@@ -2,7 +2,7 @@
 // tests, every Storybook story and the visual suite's screenshots, so a screen looks the same in
 // each. Dates are fixed, so screenshots do not change from day to day. Pictures are flat SVG
 // tiles as data URLs, so nothing is fetched from outside.
-import type { SkipMode, PlexChoice, PlexSection, PlexStatus, CacheItem, CacheReport, Channel, ChannelVisit, Outcome, Play, PlaySource, PlaySummary, Segment, SegmentKind, ChannelOverview, HistorySource, HistoryStats, LibraryStatus, QuotaTotals, QuotaUsage, RelatedStatus, Settings, ShownFilters, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video, ContinueVideo } from '../api'
+import type { SkipMode, PlexChoice, PlexSection, PlexStatus, CacheItem, CacheReport, Channel, ChannelVisit, Outcome, Play, PlaySource, PlaySummary, Segment, SegmentKind, ChannelOverview, HistorySource, HistoryStats, LibraryStatus, QuotaTotals, QuotaUsage, RelatedStatus, Settings, ShownFilters, Stream, Suggestion, SuggestionGroup, SyncJob, SystemStatus, Video, VideoGroup, ContinueVideo } from '../api'
 
 export const GB = 1e9
 
@@ -99,6 +99,18 @@ export const unfinished: ContinueVideo[] = (['ri000000002', 'wo000000003', 'ni00
   const resume = Math.round(v.duration! * [0.62, 0.25, 0.4][i])
   return { ...v, resume, progress: Math.round((resume / v.duration!) * 1e4) / 1e4 }
 })
+
+/** Groups of videos, which may overlap, largest first as the server lists them: one across three channels, one within one, one without a picture. */
+export const groupMembers: Record<number, string[]> = {
+  3: videos.filter(v => /star|moon|space|wave|sea|tide/i.test(v.title)).map(v => v.id),
+  1: videos.filter(v => v.id.startsWith('wo')).map(v => v.id).slice(0, 4),
+  2: videos.filter(v => /bird|bread/i.test(v.title)).map(v => v.id),
+}
+const groupOf = (id: number, name: string, kind: string, pictured = true): VideoGroup => {
+  const best = videos.find(v => v.id === groupMembers[id][0])!
+  return { id, name, kind, videos: groupMembers[id].length, thumbnail: pictured ? best.thumbnail : null, thumbnail_video: pictured ? best.id : null }
+}
+export const groups: VideoGroup[] = [groupOf(3, 'Sky and sea', 'topic'), groupOf(1, 'Workshop basics', 'show or franchise'), groupOf(2, 'Birds and bread', 'mixed', false)]
 
 /** A long channel, for paging: 60 videos, so its list needs three pages of 24. */
 export const longChannel: Video[] = Array.from({ length: 60 }, (_, i) => ({

@@ -219,13 +219,18 @@ def videos(
     after: str | None = None,
     limit: int = 24,
     now: str | None = None,
+    group_id: int | None = None,
 ) -> Row:
-    """One page of videos, newest first: `{videos, has_more}`. `search` matches words in the title, in any order; `after` is a cursor."""
+    """One page of videos, newest first: `{videos, has_more}`. `search` matches words in the title, in any order; `after` is a cursor; `group_id`
+    keeps to a group's videos (groups.py)."""
     ok, args = shown(now)
     where = [ok]
     if channel_id:
         where.append("v.channel_id = ?")
         args.append(channel_id)
+    if group_id is not None:
+        where.append("v.id IN (SELECT m.video_id FROM video_group_members m WHERE m.group_id = ?)")
+        args.append(group_id)
     for word in (search or "").split():
         where.append("LOWER(v.title) LIKE LOWER(?) ESCAPE '\\'")
         args.append("%" + word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%")

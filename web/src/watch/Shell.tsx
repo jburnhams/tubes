@@ -1,14 +1,9 @@
 // The watching side's frame, as the old Tubes app laid it out: a fixed top bar (menu button, the
-// mark, a search box in the middle), a left rail (Home, Channels, then every channel with its
-// picture, then Admin) and the page. The menu button folds the rail to icons; on a phone it starts
+// mark, a search box in the middle), a left rail (Home, Channels, Groups, then Admin) and the page. The menu button folds the rail to icons; on a phone it starts
 // folded. The admin area has its own frame (screens/Layout.tsx) in Strata's look.
-import { Home, Menu, Search, Settings, Tv } from 'lucide-react'
+import { Home, Layers, Menu, Search, Settings, Tv } from 'lucide-react'
 import { useState, type FormEvent, type ReactNode } from 'react'
 import { Link, NavLink, Outlet, useNavigate, useSearchParams } from 'react-router'
-import { useLoad } from 'strata-react'
-import { api, keys } from '../api'
-import { Avatar } from './cards'
-import { fromState } from './from'
 import { useReconcile } from './missing'
 
 export function Mark() {
@@ -43,10 +38,10 @@ export function SearchBox() {
   )
 }
 
-function RailLink({ to, icon, label, wide, end, state }: { to: string; icon: ReactNode; label: string; wide: boolean; end?: boolean; state?: unknown }) {
+function RailLink({ to, icon, label, wide, end }: { to: string; icon: ReactNode; label: string; wide: boolean; end?: boolean }) {
   return (
     <NavLink
-      to={to} end={end} state={state}
+      to={to} end={end}
       className={({ isActive }) => `flex items-center rounded-tube-sm text-tube-ink hover:bg-tube-chip ${isActive ? 'bg-tube-chip font-medium' : ''} ${wide ? 'h-10 gap-6 px-3 text-tube-sm' : 'flex-col justify-center gap-1 py-4 text-tube-xs'}`}
     >
       {icon}<span className={wide ? 'truncate' : 'text-center'}>{label}</span>
@@ -55,18 +50,12 @@ function RailLink({ to, icon, label, wide, end, state }: { to: string; icon: Rea
 }
 
 function Rail({ wide }: { wide: boolean }) {
-  const channels = useLoad({ queryKey: keys.channels, queryFn: api.channels })
   const icon = 'size-6 shrink-0'
   return (
     <nav aria-label="Main" className={`fixed top-14 bottom-0 left-0 overflow-y-auto bg-tube-page px-1 py-2 ${wide ? 'w-60 px-3' : 'w-18'}`}>
       <RailLink to="/" end icon={<Home className={icon} strokeWidth={1.75} />} label="Home" wide={wide} />
-      <RailLink to="/channels" end icon={<Tv className={icon} strokeWidth={1.75} />} label="Channels" wide={wide} />
-      {wide && channels.status === 'ready' && channels.data.length > 0 && (
-        <section aria-labelledby="rail-channels" className="mt-3 border-t border-tube-line pt-3">
-          <h2 id="rail-channels" className="px-3 pb-1 text-tube-base font-medium text-tube-ink">Channels</h2>
-          {channels.data.map((c, i) => <RailLink key={c.id} to={`/channels/${encodeURIComponent(c.id)}`} state={fromState({ source: 'rail' }, i)} icon={<Avatar channel={c} size="size-6" />} label={c.title} wide />)}
-        </section>
-      )}
+      <RailLink to="/channels" icon={<Tv className={icon} strokeWidth={1.75} />} label="Channels" wide={wide} />
+      <RailLink to="/groups" icon={<Layers className={icon} strokeWidth={1.75} />} label="Groups" wide={wide} />
       <div className={wide ? 'mt-3 border-t border-tube-line pt-3' : ''}>
         <RailLink to="/admin" icon={<Settings className={icon} strokeWidth={1.75} />} label="Admin" wide={wide} />
       </div>

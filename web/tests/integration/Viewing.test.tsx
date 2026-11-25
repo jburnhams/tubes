@@ -81,17 +81,13 @@ describe('Where a play was started from', () => {
 })
 
 describe('Channel visits', () => {
-  it('are kept with where they came from: the Channels page, the watch page, the rail', async () => {
+  it('are kept with where they came from: the Channels page, the watch page', async () => {
     const { user, router } = openApp('/channels')
     await user.click(within(await screen.findByRole('list', { name: 'Channels' })).getAllByRole('link')[1])
     await waitFor(() => expect(mock.channelViews).toEqual([{ id: channels[1].id, from: { source: 'channels', rank: 1 } }]))
     await router.navigate(`/watch/${id}`)
     await user.click(await screen.findByRole('link', { name: /Workshop Notes\s*6 videos/ }))
     await waitFor(() => expect(mock.channelViews.at(-1)).toEqual({ id: 'UCworkshop00000000000001', from: { source: 'watch', detail: id } }))
-    await user.click(within(screen.getByRole('list', { name: 'Videos from Workshop Notes' })).getAllByRole('link')[0])
-    await screen.findByRole('list', { name: 'Up next' })
-    await user.click(within(screen.getByRole('navigation', { name: 'Main' })).getByRole('link', { name: channels[1].title }))
-    await waitFor(() => expect(mock.channelViews.at(-1)).toEqual({ id: channels[1].id, from: { source: 'rail', rank: 1 } }))
   })
 
   it('count a typed address as one visit, and a second visit again', async () => {

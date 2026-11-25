@@ -8,8 +8,10 @@ The web app of Tubes. It has two looks, on purpose:
 
 - **Watching** (`src/watch/`): the old Tubes look, a video site's layout drawn with Tubes' own
   mark and `tube-*` tokens (`src/styles/tube.css`): a top bar with the search box, a rail of
-  pages and channels, rounded thumbnails with the running time, "views · age" under each title.
+  pages, rounded thumbnails with the running time, "views · age" under each title.
   - **Home**: a chip per channel over the newest videos, read a page at a time as the page scrolls.
+  - **Groups**: every group of videos with a picture that changes each time the page is opened; a
+    group's videos from all their channels.
   - **Search** and **Channels**: results as wide rows; every channel as a round picture; a
     channel's page with its videos, a page at a time over a cursor (`useInfiniteLoad`).
   - **Watch**: opening the page is the play; the frame says what it waits for while the first

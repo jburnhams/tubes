@@ -1,5 +1,5 @@
 // Where a click came from, so a play or a channel visit can be kept with it (src/tubes/viewing.py): which list
-// (Home, Continue watching, a channel, a search, Up next...), which one, and the item's place in it. A list says
+// (Home, Continue watching, a channel, a group, a search, Up next...), which one, and the item's place in it. A list says
 // what it is once, with <FromHere>; every link in it reads that and hands it on in the router's location
 // state, which the watch page and the channel page send with the play or the visit. Location state rather than
 // a query string, so the address stays clean to share; a shared or typed address then has none, and the

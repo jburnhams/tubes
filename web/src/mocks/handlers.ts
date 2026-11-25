@@ -9,7 +9,7 @@
 import { delay, http, HttpResponse } from 'msw'
 import { testcardPlaylist, testcardSegment } from './testcard'
 import { cursorOf, cursorOfRow, paths, type ChannelVisit, type Play, type CacheItem, type Channel, type From, type Progress, type HistorySource, type Pasted, type Settings, type ShownFilters, type Stream, type Suggestion, type SuggestionGroup, type SuggestionSummary, type SyncJob, type Video, type VideoPage, type PlexItem } from '../api'
-import { cacheItems, channelHistory, channels, defaultSettings, defaultShown, kindsFor, sampleSegments, episodes, programme, historyDays, historySources, historyStats, library, libraryNew, longChannel, pasteable, quotaNoKey, quotaSpent, quotaUnused, quotaUsage, relatedStatus, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, unfinished, videos, plays, manyPlays, playSummary, playSummaryEmpty, channelVisits, plexFilm, plexGenres, plexRatings, plexStatus, plexTitles } from './fixtures'
+import { cacheItems, channelHistory, channels, groupMembers, groups, defaultSettings, defaultShown, kindsFor, sampleSegments, episodes, programme, historyDays, historySources, historyStats, library, libraryNew, longChannel, pasteable, quotaNoKey, quotaSpent, quotaUnused, quotaUsage, relatedStatus, report, streams, suggestionGroups, suggestions, syncJobs, systemStatus, systemTrouble, tile, unfinished, videos, plays, manyPlays, playSummary, playSummaryEmpty, channelVisits, plexFilm, plexGenres, plexRatings, plexStatus, plexTitles } from './fixtures'
 
 /** GET /api/break from the settings, as src/tubes/server/app.py `get_break` makes it. */
 export const breakOf = (s: Settings) => ({ url: s.break_on === 'true' && s.break_url ? s.break_url : null, minutes: s.break_minutes, limit_minutes: s.break_limit_minutes })
@@ -158,6 +158,7 @@ export function videoPage(url: string, list: Video[]): VideoPage {
   const limit = Number(p.get('limit') ?? 24)
   const rest = list
     .filter(v => !p.get('channel') || v.channel_id === p.get('channel'))
+    .filter(v => !p.get('group') || (groupMembers[Number(p.get('group'))] ?? []).includes(v.id))
     .filter(v => words.every(w => v.title.toLowerCase().includes(w)))
     .filter(v => !after || cursorOf(v) < after)
   return { videos: rest.slice(0, limit), has_more: rest.length > limit }
@@ -253,6 +254,11 @@ export const handlers = [
       group: suggestion?.group_id ? mock.groups.find(g => g.id === suggestion.group_id) ?? null : null, configured: true,
       history: suggestion || library?.id === 'UCworkshop00000000000001' ? channelHistory(title) : { watches: 0, videos: 0, first: null, last: null, sources: [], periods: [], videos_top: [] },
     })
+  }),
+  http.get(at(paths.groups), () => HttpResponse.json(groups)),
+  http.get(at('/api/groups/:id'), ({ params }) => {
+    const g = groups.find(x => x.id === Number(params.id))
+    return g ? HttpResponse.json(g) : refused(`There is no group ${String(params.id)}.`, 404)
   }),
   http.get(at('/api/channels/:id'), ({ params }) => {
     const c = mock.channels.find(c => c.id === params.id)
@@ -428,6 +434,10 @@ export const removeChannelFails = http.delete(at('/api/channels/:id'), down)
 export const channelsLoading = http.get(at(paths.channels), () => delay('infinite'))
 export const channelsEmpty = http.get(at(paths.channels), () => HttpResponse.json([]))
 export const channelsError = http.get(at(paths.channels), down)
+
+export const groupsLoading = http.get(at(paths.groups), () => delay('infinite'))
+export const groupsEmpty = http.get(at(paths.groups), () => HttpResponse.json([]))
+export const groupsError = http.get(at(paths.groups), down)
 
 export const shuffleLoading = http.get(at(paths.shuffle), () => delay('infinite'))
 export const shuffleEmpty = http.get(at(paths.shuffle), () => HttpResponse.json([]))

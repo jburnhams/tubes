@@ -187,6 +187,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Groups */
+        get: operations["get_groups_api_groups_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/groups/{group_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Group */
+        get: operations["get_group_api_groups__group_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -2346,6 +2380,33 @@ export interface components {
             /** Views */
             views: number | null;
         };
+        /** VideoGroup */
+        VideoGroup: {
+            /** Id */
+            id: number;
+            /**
+             * Kind
+             * @description What it is of, such as a show or a topic, in the words of whoever made it.
+             */
+            kind: string | null;
+            /** Name */
+            name: string;
+            /**
+             * Thumbnail
+             * @description The picture of one of the videos that represent it best, picked anew each time it is asked for.
+             */
+            thumbnail: string | null;
+            /**
+             * Thumbnail Video
+             * @description The video whose picture that is.
+             */
+            thumbnail_video: string | null;
+            /**
+             * Videos
+             * @description Its videos that can be watched.
+             */
+            videos: number;
+        };
         /** VideoPage */
         VideoPage: {
             /** Has More */
@@ -2704,6 +2765,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Visited"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_groups_api_groups_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoGroup"][];
+                };
+            };
+        };
+    };
+    get_group_api_groups__group_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                group_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoGroup"];
                 };
             };
             /** @description Validation Error */
@@ -3676,6 +3788,7 @@ export interface operations {
                 q?: string | null;
                 after?: string | null;
                 limit?: number;
+                group?: number | null;
             };
             header?: never;
             path?: never;

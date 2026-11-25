@@ -42,6 +42,9 @@ carry them, so they sort and compare as text on both engines.
   chapters, tracks   `credits` its cast and crew in order, `ratings` scores from elsewhere (IMDb, Rotten Tomatoes, TMDB) out of 10, `external_ids`
                      its ids elsewhere (imdb, tmdb, tvdb, plex), `chapters` (videos only) its named parts and `tracks` (videos only) its audio
                      and subtitle tracks and other versions (audio-described, signed). A source's sync replaces what it gave before.
+  video_groups,      groups of videos (groups.py), which may overlap: each with its name, and its videos with how well each represents it. Made
+  video_group_       outside and loaded whole (`tubes groups load`); a load keeps a group's id, and the name someone gave it, for the group
+  members            that shares most videos with it. No foreign keys: a video that left the library is not counted or shown.
   segments           parts of a video the player can skip (segments.py): from SponsorBlock for YouTube, from iPlayer's own intro and credits
                      points for an episode, under SponsorBlock's categories; `segment_checks` says when each video's source was last asked."""
 
@@ -458,6 +461,26 @@ class SuggestionGroup(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
     name: Mapped[str]
     named: Mapped[bool] = mapped_column(server_default=false(), default=False)
+
+
+class VideoGroup(Base):
+    __tablename__ = "video_groups"
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    name: Mapped[str]
+    kind: Mapped[str | None] = mapped_column(String(32), default=None)  # what it is of, in the words of whoever made it
+    named: Mapped[bool] = mapped_column(
+        server_default=false(), default=False
+    )  # someone named it: a load keeps the name
+
+
+class VideoGroupMember(Base):
+    __tablename__ = "video_group_members"
+    __table_args__ = (Index("ix_video_group_members_video", "video_id"),)
+    group_id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    video_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    score: Mapped[float] = mapped_column(
+        Float, server_default="0", default=0.0
+    )  # how well it represents the group: higher is better, compared only within the group
 
 
 class ApiUsage(Base):
