@@ -116,6 +116,8 @@ SETTINGS = Settings(
         Setting("ffmpeg", default="ffmpeg", normalise=non_empty, env="TUBES_FFMPEG"),
         Setting("history_url", default="", normalise=trimmed, env="TUBES_HISTORY_URL"),
         Setting("history_table", default="", normalise=trimmed, env="TUBES_HISTORY_TABLE"),
+        Setting("sort_model", default="", normalise=trimmed),
+        Setting("sort_usd", default="2", normalise=number_between(0, 1000)),
         Setting("break_on", default="false", normalise=boolean),
         Setting("break_url", default="", normalise=page_url),
         Setting("break_minutes", default="20", normalise=number_between(1, 1440)),

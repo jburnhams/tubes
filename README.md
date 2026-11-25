@@ -33,6 +33,7 @@ Tubes keeps its own tables (the library, cache copies, plays) in a database thro
 | Admin > Suggestions: Paste channels to follow | YouTube links, @handles, iPlayer programme or episode links, or names (looked up on both), one a line, become suggestions to follow |
 | `tubes groups [load FILE]` | lists the groups of videos the Groups page shows, or loads them from a JSON file in place of those there |
 | `tubes extents [load FILE]` | counts the videos known to be a full episode, a clip, a promo..., or loads answers from a JSON file |
+| `tubes sort` | works out whether new videos are whole or a clip or promo (a small model, and a language model through strata-models: `sort_model`, `sort_usd`), and puts them in their groups; run after a sync |
 | `tubes fetch <id>` | fetches one video into the cache now |
 | `tubes cache` / `tubes evict [--dry-run]` | shows the cache with each copy's score / trims it |
 | `tubes set [key [value]]` | shows or changes a setting (`default` resets one) |

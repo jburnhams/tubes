@@ -1,5 +1,13 @@
 # Progress log
 
+## 2026-11-25: new videos sorted and placed
+
+- Asked for: new videos put in groups at each sync, and a language model answering for a new channel until the small model can be trusted with it.
+- `tubes sort` (run after the sync): `sorter.py` works out whether each new YouTube video is whole or part of something, then `groups.place` puts videos added since the last time in the groups they belong to. Rules first, then a logistic regression over hashed words, written here (no scikit-learn): trained from every LLM and person's answer on each run (41,000 in about 10 s). Measured against the same answers: 97% right where it is sure, as good as scikit-learn's with a list of shows.
+- The handover is per channel. Every question to the LLM carries the model's guess made before it; a channel is trusted when, of its last 75 guessed answers, at least 50 were sure (0.9) and 95% of those right, after 75 in all. One in 20 of a trusted channel's videos is still asked about, so trust is lost the way it was won, and at most 100 are answered between looks. On eight channels hidden from it (copy of a real library, the LLM stood in by kept answers): 1,889 of 3,853 videos went to the LLM ($0.23) and 1,652 to the model, 98.1% right; with trust at 50 answers, sure at 0.8 and an audit of 1 in 50, 94.7%, and one channel with half its videos clips was trusted too soon (66%).
+- The LLM is asked for the programme, its episode length and why before the extent; asked for the extent alone it agreed less with a stronger model's labels (92% against 93%, 219 videos). Calls go through strata-python's client to strata-models (`sort_model`, empty: none asked), counted against `sort_usd` a month.
+- Placing: a group's centre is the words its videos share; a video goes where it is as like the centre as the group's own least alike fifth, or where its title says the group's name. Groups made from videos before June, newer ones placed: 87% of the memberships right, 80% found. It makes no group: a new programme waits for the next load.
+
 ## 2026-11-25: clips and promos can be left out
 
 - Asked for: a setting in Shown videos that hides clips and promos. Several episodes joined in one long video are fine; only clips and incomplete episodes are bad.
