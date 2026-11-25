@@ -491,6 +491,9 @@ class VideoExtent(Base):
     video_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     extent: Mapped[str] = mapped_column(String(24))  # extents.EXTENTS
     said_by: Mapped[str] = mapped_column(String(16))  # extents.BY
+    guess: Mapped[float | None] = mapped_column(
+        Float, default=None, kw_only=True
+    )  # how likely the model thought it part of something, before a language model was asked (sorter.py)
     at: Mapped[str] = mapped_column(String(40))
 
 

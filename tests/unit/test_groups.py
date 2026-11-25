@@ -6,7 +6,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 from library import VIDEOS, seed, video
 
-from tubes import cli, db, groups, library, viewing
+from tubes import cli, db, extents, groups, library, viewing
 from tubes.server.app import create_app
 
 A, B, C, D = "aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc", "ddddddddddd"
@@ -224,3 +224,120 @@ def test_the_command_says_what_is_wrong_with_a_file(tmp_path, capsys):
     assert (
         cli.main(["groups", "load", str(tmp_path / "bad.json")]) == 1 and "no list of groups" in capsys.readouterr().err
     )
+
+
+# --- placing new videos -----------------------------------------------------------------------------------------------------------
+
+TIMES = ("2026-11-01T00:00:00+00:00", "2026-11-02T00:00:00+00:00", "2026-11-03T00:00:00+00:00")
+
+
+def library_of_two():
+    """Twenty videos of a programme and twenty of a topic, grouped, as it was before TIMES[0]."""
+    odd = [
+        "amber",
+        "birch",
+        "cedar",
+        "delta",
+        "ember",
+        "flint",
+        "grove",
+        "heron",
+        "iris",
+        "juniper",
+        "kelp",
+        "larch",
+        "maple",
+        "nettle",
+        "olive",
+        "poplar",
+        "quartz",
+        "reed",
+        "spruce",
+        "thorn",
+    ]
+    shelf = [video(f"s{n:010d}", 0, title=f"Shelf Stories: the {w} and {odd[-n]}") for n, w in enumerate(odd)]
+    stars = [video(f"t{n:010d}", 1, title=f"Bright stars {w} {odd[n - 7]}") for n, w in enumerate(odd)]
+    seed(videos=shelf + stars)
+    load(
+        ("Shelf Stories", "show", [[v["id"], 1 - n / 20] for n, v in enumerate(shelf)]),
+        ("Bright stars", "topic", [[v["id"], 1 - n / 20] for n, v in enumerate(stars)]),
+    )
+    groups.place(TIMES[0])
+
+
+def add(vid, title, channel=1, at=TIMES[1], description=None):
+    v = video(vid, channel, title=title)
+    with db.connect() as con:
+        con.execute(
+            "INSERT INTO videos (id, channel_id, title, published, duration, thumbnail, views, added, description) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (vid, v["channel_id"], title, v["published"], 600, v["thumbnail"], 10, at, description),
+        )
+
+
+def where(vid):
+    with db.connect() as con:
+        return sorted(r[0] for r in con.execute("SELECT group_id FROM video_group_members WHERE video_id = ?", (vid,)))
+
+
+def test_a_new_video_goes_where_its_words_or_its_title_say():
+    library_of_two()
+    add("n1", "Bright stars maple tonight")
+    add(
+        "n2", "Shelf Stories: an unlikely tale of glue", channel=1
+    )  # says the name its group's titles say, from another channel
+    add("n3", "Cooking a pie")
+    assert groups.place(TIMES[2]) == dict(new=3, placed=2, memberships=2)
+    assert (where("n1"), where("n2"), where("n3")) == ([2], [1], [])
+
+
+def test_a_video_can_go_into_two_groups():
+    library_of_two()
+    add("n1", "Bright stars over Shelf Stories")
+    groups.place(TIMES[2])
+    assert where("n1") == [1, 2]
+
+
+def test_a_video_is_placed_with_a_score_its_group_has():
+    library_of_two()
+    add("n1", "Bright stars maple")
+    groups.place(TIMES[2])
+    with db.connect() as con:
+        (score,) = con.execute("SELECT score FROM video_group_members WHERE video_id = 'n1'").fetchone()
+    assert 0 < score <= 1
+
+
+def test_only_new_shown_videos_that_are_not_clips_are_placed():
+    library_of_two()
+    title = "Bright stars maple tonight"
+    add("old", title, at="2026-10-01T00:00:00+00:00")
+    add("gone", title)
+    add("clip", title)
+    add("promo", title)
+    add("whole", title)
+    with db.connect() as con:
+        con.execute("UPDATE videos SET gone = 'then' WHERE id = 'gone'")
+    extents.save([("clip", "clip", "llm"), ("promo", "promo", "llm"), ("whole", "whole", "model")])
+    assert groups.place(TIMES[2])["new"] == 1
+    assert [v for v in ("old", "gone", "clip", "promo", "whole") if where(v)] == ["whole"]
+    assert groups.place("2026-11-04T00:00:00+00:00") == dict(new=0, placed=0, memberships=0)
+
+
+def test_the_first_time_only_the_time_is_noted():
+    seed()
+    add("n1", "Bright stars")
+    assert groups.place(TIMES[2]) == dict(new=0, placed=0, memberships=0)
+    with db.connect() as con:
+        assert con.execute("SELECT value FROM meta WHERE key = ?", (groups.PLACED,)).fetchone()[0] == TIMES[2]
+
+
+def test_a_library_without_groups_places_nothing():
+    seed()
+    groups.place(TIMES[0])
+    add("n1", "Bright stars")
+    assert groups.place(TIMES[2]) == dict(new=1, placed=0, memberships=0)
+
+
+def test_a_group_whose_videos_have_gone_is_no_place():
+    places = groups.Places({1: "Gone", 2: "!"}, {1: {"x": 1.0}, 2: {"y": 1.0}}, {"y": ("A shelf of oak", None)})
+    assert set(places.centres) == {2} and places.named == {}  # a name with no words is in no title
+    assert places.of("Nothing alike", None) == {}

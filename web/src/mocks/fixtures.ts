@@ -21,6 +21,7 @@ export const defaultSettings: Settings = {
   ffmpeg: 'ffmpeg',
   history_url: '',
   history_table: '',
+  sort_model: '', sort_usd: 2,
   break_on: 'false', break_url: '', break_minutes: 20, break_limit_minutes: 10,
   skip_sponsor: 'auto', skip_selfpromo: 'ask', skip_interaction: 'ask', skip_intro: 'ask', skip_outro: 'ask', skip_preview: 'ask', skip_hook: 'off', skip_filler: 'off', skip_music_offtopic: 'off',
 }

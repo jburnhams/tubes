@@ -1,19 +1,19 @@
 """How much of a thing a video is: one full episode (or film), several episodes joined, a clip (part of something longer: a scene, a moment,
 a short cut from an episode), a promo (a trailer, an advert, an announcement), complete on its own (a lesson, a how-to, a song), or whole:
-one of those that is not part of something, without knowing which. Admin >
+one of those that is not part of something, without knowing which; or unclear, when it was asked about and nothing says. Admin >
 Settings > Shown videos can leave clips and promos out of every list; a video nothing is known of is always shown.
 
 What said so is kept too (`by`, BY, weakest first): a local model, a language model, a rule (a title that says it is a full episode), or a
 person. A later answer replaces an earlier one unless the earlier one was the stronger kind, so a person's answer stays."""
 
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 
 from tubes import cache, db
 from tubes.db import Row
 from tubes.shape import arr, obj
 
-EXTENTS = ("full_episode", "several_episodes", "clip", "promo", "standalone", "whole")
+EXTENTS = ("full_episode", "several_episodes", "clip", "promo", "standalone", "whole", "unclear")
 BY = ("model", "llm", "rule", "person")  # weakest first
 
 
@@ -40,9 +40,11 @@ def read(text: str) -> list[tuple[str, str, str]]:
     return out
 
 
-def save(answers: Iterable[tuple[str, str, str]], now: str | None = None) -> int:
+def save(
+    answers: Iterable[tuple[str, str, str]], now: str | None = None, guesses: Mapping[str, float | None] | None = None
+) -> int:
     """Keep these answers (`(video id, extent, by)`), each unless a stronger one is kept already; returns how many were. The last one wins when a
-    video comes twice."""
+    video comes twice. `guesses`: what the model thought of each before it was asked about (sorter.py), kept beside the answer."""
     new = {vid: (extent, by) for vid, extent, by in answers}
     if not new:
         return 0
@@ -51,9 +53,9 @@ def save(answers: Iterable[tuple[str, str, str]], now: str | None = None) -> int
         held = {r[0]: r[1] for r in con.execute("SELECT video_id, said_by FROM video_extents")}
         keep = {vid: x for vid, x in new.items() if vid not in held or BY.index(x[1]) >= BY.index(held[vid])}
         con.executemany(
-            "INSERT INTO video_extents (video_id, extent, said_by, at) VALUES (:v, :e, :b, :at) "
-            "ON CONFLICT (video_id) DO UPDATE SET extent = excluded.extent, said_by = excluded.said_by, at = excluded.at",
-            [dict(v=vid, e=extent, b=by, at=at) for vid, (extent, by) in keep.items()],
+            "INSERT INTO video_extents (video_id, extent, said_by, guess, at) VALUES (:v, :e, :b, :g, :at) "
+            "ON CONFLICT (video_id) DO UPDATE SET extent = excluded.extent, said_by = excluded.said_by, guess = excluded.guess, at = excluded.at",
+            [dict(v=vid, e=extent, b=by, g=(guesses or {}).get(vid), at=at) for vid, (extent, by) in keep.items()],
         )
     return len(keep)
 

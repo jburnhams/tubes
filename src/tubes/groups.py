@@ -8,20 +8,92 @@ videos with (at least MATCH of the two together), so a link to it still opens it
 
 What is shown follows library.shown(), as every list does: a group counts, and is pictured by, only videos the watching side shows, and a
 group with none is not listed. Its picture is one of the videos that represent it best, the top THUMB_SHARE of them (at least THUMB_MIN),
-picked anew on every read, so the page looks different each time it is opened."""
+picked anew on every read, so the page looks different each time it is opened.
+
+Between loads, `place` (`tubes sort`, after a sync) puts videos added since into the groups they belong to: those whose words are like the
+group's own (its centre: the words its videos share, weighed by how rare they are across all groups), and those whose title says the group's
+name, when that is how its videos are titled. It makes no group and takes nothing out; a thing that is new waits for the next load."""
 
 import json
+import math
 import random
+import re
+from bisect import bisect_left
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from tubes import db, library
+from tubes import cache, db, library
 from tubes.db import Row
 from tubes.shape import arr, obj
 
 THUMB_SHARE = 20  # one video in this many (5%) may picture its group...
 THUMB_MIN = 10  # ...or this many, whichever is more
 LAST_ID = "video_group_last_id"  # the key in `meta` of the highest id a group ever had
+PLACED = "video_groups_placed"  # the key in `meta` of when videos were last placed: those added since are still to be
+WORD = re.compile(r"[^\W_]+")
+PLAIN = frozenset(
+    [
+        "the",
+        "and",
+        "of",
+        "to",
+        "in",
+        "a",
+        "for",
+        "with",
+        "on",
+        "is",
+        "from",
+        "by",
+        "at",
+        "it",
+        "its",
+        "you",
+        "your",
+        "this",
+        "that",
+        "are",
+        "how",
+        "s",
+        "full",
+        "episode",
+        "episodes",
+        "kids",
+        "cartoon",
+        "cartoons",
+        "children",
+        "official",
+        "video",
+        "videos",
+        "compilation",
+        "season",
+        "new",
+        "best",
+        "learn",
+        "learning",
+        "fun",
+        "play",
+        "watch",
+        "more",
+        "youtube",
+        "subscribe",
+        "live",
+        "part",
+        "minutes",
+        "hour",
+        "hours",
+        "clip",
+        "clips",
+        "short",
+        "shorts",
+        "show",
+    ]
+)  # words that say nothing of what a video is about
+CENTRE = 300  # words kept of a group's centre
+LEAST = 0.12  # how alike a video and a centre must be at least (cosine)
+LIKE_OWN = 0.2  # ...and at least as alike as this part of the group's own least alike videos
+NEAR_BEST = 0.75  # ...and not much less alike than the group it is most like
+SAMPLE = 200  # videos of a group that say how alike its own are
 MATCH = 0.3  # of the videos two groups hold between them, how many they must share to be the same group
 
 
@@ -115,6 +187,7 @@ def load(text: str) -> Row:
             "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
             (LAST_ID, str(free)),
         )
+        _placed(con, cache.stamp())  # the file has every video its maker knew of
     return dict(
         groups=len(new),
         videos=len({vid for g in new for vid in g["videos"]}),
@@ -174,3 +247,140 @@ def group(group_id: int, now: str | None = None) -> Row | None:
     with db.connect() as con:
         r = db.row(con.execute("SELECT id, name, kind FROM video_groups WHERE id = ?", (group_id,)))
     return dict(r, videos=0, thumbnail=None, thumbnail_video=None) if r else None
+
+
+# --- placing new videos --------------------------------------------------------------------------------------------------------------
+
+
+def _placed(con: db.Connection, at: str) -> None:
+    con.execute(
+        "INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        (PLACED, at),
+    )
+
+
+def terms(title: str, description: str | None) -> dict[str, float]:
+    """The words that say what a video is about: its title's, and the title's pairs, at three times its description's first ones."""
+    words = [w for w in WORD.findall(title.lower()) if w not in PLAIN and not w.isdigit()]
+    said = [w for w in WORD.findall((description or "")[:160].lower()) if w not in PLAIN and not w.isdigit()][:15]
+    heavy = words + [" ".join(words[i : i + 2]) for i in range(len(words) - 1)]
+    return {**dict.fromkeys(said, 1.0), **dict.fromkeys(heavy, 1 + math.log(3))}
+
+
+def spoken(text: str) -> str:
+    """Text as its words, for finding a name in a title."""
+    return f" {' '.join(WORD.findall(text.lower().replace('’', '').replace(chr(39), '')))} "
+
+
+class Places:
+    """The groups as places a video can go, made from their videos: `members` {group id: {video id: score}}, `videos` {id: (title, description)}."""
+
+    def __init__(
+        self,
+        names: Mapping[int, str],
+        members: Mapping[int, Mapping[str, float]],
+        videos: Mapping[str, tuple[str, str | None]],
+    ) -> None:
+        found = {vid: terms(*videos[vid]) for vid in {v for m in members.values() for v in m} if vid in videos}
+        seen: dict[str, int] = {}
+        for t in found.values():
+            for w in t:
+                seen[w] = seen.get(w, 0) + 1
+        self.rare = {w: math.log(1 + len(found) / n) for w, n in seen.items() if n >= 2}
+        self.centres: dict[int, dict[str, float]] = {}
+        self.where: dict[str, list[tuple[int, float]]] = {}
+        self.least: dict[int, float] = {}
+        self.own: dict[
+            int, tuple[list[float], list[float]]
+        ] = {}  # how alike its videos are, and their scores, both sorted
+        self.named: dict[int, str] = {}
+        for gid, m in members.items():
+            here = [v for v in m if v in found]
+            if not here:
+                continue
+            total: dict[str, float] = {}
+            for vid in here:
+                for w, x in self._vector(found[vid]).items():
+                    total[w] = total.get(w, 0.0) + x
+            self.centres[gid] = _unit(dict(sorted(total.items(), key=lambda p: (-p[1], p[0]))[:CENTRE]))
+            for w, x in self.centres[gid].items():
+                self.where.setdefault(w, []).append((gid, x))
+            some = sorted(here)[:: max(1, len(here) // SAMPLE)]
+            alike = sorted(_dot(self._vector(found[vid]), self.centres[gid]) for vid in some)
+            self.least[gid] = max(LEAST, alike[int(len(alike) * LIKE_OWN)])
+            self.own[gid] = (alike, sorted(m[vid] for vid in some))
+            name = spoken(names[gid])
+            if name.strip() and 2 * sum(name in spoken(videos[vid][0]) for vid in here) >= len(here):
+                self.named[gid] = name
+
+    def _vector(self, found: Mapping[str, float]) -> dict[str, float]:
+        return _unit({w: x * self.rare[w] for w, x in found.items() if w in self.rare})
+
+    def of(self, title: str, description: str | None) -> dict[int, float]:
+        """The groups a video belongs in, each with its score there: the score the group's own video of that likeness has."""
+        mine = self._vector(terms(title, description))
+        alike: dict[int, float] = {}
+        for w, x in mine.items():
+            for gid, y in self.where.get(w, ()):
+                alike[gid] = alike.get(gid, 0.0) + x * y
+        best = max(alike.values(), default=0.0)
+        said = spoken(title)
+        into = {g for g, x in alike.items() if x >= self.least[g] and x >= NEAR_BEST * best}
+        into |= {g for g, name in self.named.items() if name in said}
+        return {g: self._score(g, alike.get(g, 0.0)) for g in sorted(into)}
+
+    def _score(self, gid: int, alike: float) -> float:
+        own, scores = self.own[gid]
+        return scores[min(bisect_left(own, alike), len(scores) - 1)]
+
+
+def _unit(x: Mapping[str, float]) -> dict[str, float]:
+    size = math.sqrt(sum(v * v for v in x.values())) or 1.0
+    return {w: v / size for w, v in x.items()}
+
+
+def _dot(a: Mapping[str, float], b: Mapping[str, float]) -> float:
+    return sum(x * b[w] for w, x in a.items() if w in b)
+
+
+def place(now: str | None = None) -> Row:
+    """Put the videos added since the last time into the groups they belong in: `{new, placed, memberships}`. Only those the watching side
+    shows, and none known to be a clip or a promo. The first time, with no time kept, only notes the time."""
+    at = now or cache.stamp()
+    ok, args = library.shown(now)
+    with db.connect() as con:
+        row = con.execute("SELECT value FROM meta WHERE key = ?", (PLACED,)).fetchone()
+        new = (
+            db.rows(
+                con.execute(
+                    f"""SELECT v.id, v.title, v.description FROM videos v LEFT JOIN channels c ON c.id = v.channel_id
+                        LEFT JOIN copies k ON k.video_id = v.id
+                        WHERE {ok} AND v.added >= ? AND v.id NOT IN (SELECT m.video_id FROM video_group_members m)
+                        AND v.id NOT IN (SELECT e.video_id FROM video_extents e WHERE e.extent IN ('clip', 'promo')) ORDER BY v.id""",
+                    [*args, row[0]],
+                )
+            )
+            if row
+            else []
+        )
+        members: dict[int, dict[str, float]] = {}
+        names: dict[int, str] = {}
+        videos: dict[str, tuple[str, str | None]] = {}
+        if new:
+            names = {r[0]: r[1] for r in con.execute("SELECT id, name FROM video_groups")}
+            for gid, vid, score in con.execute("SELECT group_id, video_id, score FROM video_group_members"):
+                members.setdefault(gid, {})[vid] = score
+            for vid, title, description in con.execute(
+                "SELECT v.id, v.title, v.description FROM videos v WHERE v.id IN (SELECT m.video_id FROM video_group_members m)"
+            ):
+                videos[vid] = (title, description)
+    places = Places(names, members, videos)
+    into = {v["id"]: places.of(v["title"], v["description"]) for v in new}
+    rows = [dict(g=gid, v=vid, s=score) for vid, where in into.items() for gid, score in where.items()]
+    with db.connect() as con:
+        con.executemany(
+            "INSERT INTO video_group_members (group_id, video_id, score) VALUES (:g, :v, :s) ON CONFLICT DO NOTHING",
+            rows,
+        )
+        _placed(con, at)
+    return dict(new=len(new), placed=sum(1 for w in into.values() if w), memberships=len(rows))
