@@ -32,6 +32,7 @@ export const sources: Record<PlaySource, string> = {
   rail: 'The side rail',
   chips: 'Home’s channel chips',
   channels: 'Channels',
+  group: 'A group’s page',
   link: 'A link or the address bar',
   other: 'Somewhere else',
 }
@@ -42,7 +43,7 @@ const MISSING = '–'
 const sourceWord = (s: string) => sources[s as PlaySource] ?? sources.other
 
 /** The sources a play can start from, for the filter (channel visits have their own). */
-const playSources: PlaySource[] = ['home', 'continue', 'channel', 'search', 'up_next', 'link']
+const playSources: PlaySource[] = ['home', 'continue', 'channel', 'group', 'search', 'up_next', 'link']
 
 /** Seconds as hours and minutes: "8 h 44 min", "12 min", "40 s". */
 export function timeSpent(seconds: number): string {

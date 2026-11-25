@@ -16,7 +16,7 @@ import { defineVisualConfig } from 'strata-react/visual'
 import { http, HttpResponse } from 'msw'
 import type { Segment } from './src/api'
 import { defaultSettings, episodes, kindsFor, programme } from './src/mocks/fixtures'
-import { channelsEmpty, channelsError, channelsLoading, handlers, playFails, playLoading, shuffleError, streamIn, videoLoading, videosError, videosLaterPageError, videosLaterPageLoading, videosLoading, videosNone, withProgramme } from './src/mocks/handlers'
+import { channelsEmpty, channelsError, channelsLoading, groupsEmpty, groupsError, groupsLoading, handlers, playFails, playLoading, shuffleError, streamIn, videoLoading, videosError, videosLaterPageError, videosLaterPageLoading, videosLoading, videosNone, withProgramme } from './src/mocks/handlers'
 
 /** Waits for the player's first frame, then holds it there: paused at 0:00. */
 const firstFrame = async (page: Page) => {
@@ -93,6 +93,13 @@ export default defineVisualConfig({
         },
       },
       { name: 'channel-programme', path: `/channels/${programme.id}`, states: { ready: withProgramme } },
+      {
+        name: 'groups',
+        path: '/groups',
+        states: { ready: [], empty: [groupsEmpty], loading: [groupsLoading], error: { handlers: [groupsError], waitFor: 'role=alert' } },
+      },
+      { name: 'group', path: '/groups/3', states: { ready: [], 'no-videos': [videosNone], 'videos-loading': [videosLoading] } },
+      { name: 'group-missing', path: '/groups/99', waitFor: 'role=alert' },
       { name: 'channel-missing', path: '/channels/UCnosuchchannel000000000', waitFor: 'role=alert' },
       // The waiting frames, and the player itself: every copy is the two-second test card (src/mocks/testcard.ts), held paused on a
       // frame so the picture, the time and the controls are the same in every run.

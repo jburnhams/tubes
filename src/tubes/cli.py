@@ -16,6 +16,7 @@ from tubes import (
     cache,
     catalogue,
     fetcher,
+    groups,
     history,
     iplayer,
     iplayer_suggest,
@@ -157,6 +158,31 @@ def cmd_channels(args: argparse.Namespace) -> int:
         args,
         items,
         "\n".join(f"  {c['id']:26} {c['videos']:>6} videos  {state(c):12} {c['title'][:50]}" for c in items),
+    )
+
+
+def cmd_groups(args: argparse.Namespace) -> int:
+    if args.action == "load":
+        if not args.file:
+            print("  Name the file of groups to load.", file=sys.stderr)
+            return 2
+        try:
+            with open(args.file, encoding="utf8") as f:
+                r = groups.load(f.read())
+        except (OSError, UnicodeDecodeError, groups.BadFile) as e:
+            print(f"  {e}", file=sys.stderr)
+            return 1
+        return out(
+            args,
+            r,
+            f"  {r['groups']} group(s) of {r['videos']} video(s) loaded, {r['kept']} in place of an earlier one",
+        )
+    items = groups.listing()
+    return out(
+        args,
+        items,
+        "\n".join(f"  {g['id']:>5} {g['videos']:>6} videos  {(g['kind'] or ''):20} {g['name'][:50]}" for g in items)
+        or "  (no groups yet: ./tubes groups load <file>)",
     )
 
 
@@ -381,6 +407,11 @@ def main(argv: list[str] | None = None) -> int:
     h = sub.add_parser("channels", help="list the channels in the library")
     h.add_argument("--json", action="store_true")
     h.set_defaults(fn=cmd_channels)
+    v = sub.add_parser("groups", help="list the groups of videos, or load them from a file in place of those there")
+    v.add_argument("action", nargs="?", choices=("list", "load"), default="list")
+    v.add_argument("file", nargs="?")
+    v.add_argument("--json", action="store_true")
+    v.set_defaults(fn=cmd_groups)
     w = sub.add_parser(
         "history",
         help="import a Google Takeout watch history (suggestions are made from it), sync the one in the history database (history_url, history_table), list them, remove one, or refresh the suggestions",

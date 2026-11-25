@@ -2,16 +2,18 @@ import { describe, expect, it } from 'vitest'
 import { openApp, screen, waitFor, within } from '../utils/render'
 
 describe('the watching frame', () => {
-  it('marks the current page in the rail, lists every channel and moves between pages by link', async () => {
+  it('marks the current page in the rail, with one link to the channels and one to the groups, and moves between pages by link', async () => {
     const { user, router } = openApp('/')
     const rail = screen.getByRole('navigation', { name: 'Main' })
     expect(within(rail).getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page')
-    const listed = await within(rail).findByRole('region', { name: 'Channels' })
-    expect(within(listed).getAllByRole('link').map(l => l.lastElementChild?.textContent)).toEqual(['Kitchen Science', 'Night Sky', 'Rivers and Coasts', 'Workshop Notes'])
+    expect(within(rail).getAllByRole('link').map(l => l.textContent)).toEqual(['Home', 'Channels', 'Groups', 'Admin'])
 
     await user.click(within(rail).getByRole('link', { name: 'Channels' }))
     expect(await screen.findByRole('heading', { level: 1, name: 'Channels' })).toBeInTheDocument()
     expect(router.state.location.pathname).toBe('/channels')
+    await user.click(within(rail).getByRole('link', { name: 'Groups' }))
+    expect(await screen.findByRole('heading', { level: 1, name: 'Groups' })).toBeInTheDocument()
+    expect(within(rail).getByRole('link', { name: 'Groups' })).toHaveAttribute('aria-current', 'page')
     await user.click(screen.getByRole('link', { name: 'Tubes home' }))
     expect(router.state.location.pathname).toBe('/')
   })
@@ -22,10 +24,10 @@ describe('the watching frame', () => {
     expect(fold).toHaveAttribute('aria-expanded', 'true')
     await user.click(fold)
     const rail = screen.getByRole('navigation', { name: 'Main' })
-    expect(within(rail).queryByRole('region', { name: 'Channels' })).toBeNull()
+    expect(screen.getByRole('button', { name: 'Open the menu' })).toHaveAttribute('aria-expanded', 'false')
     expect(within(rail).getByRole('link', { name: 'Home' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Open the menu' }))
-    expect(await within(rail).findByRole('region', { name: 'Channels' })).toBeInTheDocument()
+    expect(fold).toHaveAttribute('aria-expanded', 'true')
   })
 
   it('starts folded on a phone', () => {

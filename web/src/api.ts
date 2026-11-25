@@ -70,13 +70,16 @@ export type Video = Schema<'Video'> & Partial<Pick<ContinueVideo, 'resume' | 'pr
 /** A Continue watching row: a video with where its last play stopped and how far through that is. */
 export type ContinueVideo = Schema<'ContinueVideo'>
 
-/** Where a play or a channel visit was started from (src/tubes/viewing.py): the list, which one (a channel's id, the search words, the
+/** Where a play or a channel visit was started from (src/tubes/viewing.py): the list, which one (a channel's or group's id, the search words, the
  *  video Up next was beside) and the item's place in it from 0. None at all is a typed, reloaded or shared address. */
 export interface From {
-  source: 'home' | 'continue' | 'channel' | 'search' | 'up_next' | 'watch' | 'rail' | 'chips' | 'channels'
+  source: 'home' | 'continue' | 'channel' | 'search' | 'up_next' | 'watch' | 'rail' | 'chips' | 'channels' | 'group'     // rail: the side rail's channel list, gone since 2026-11-25; kept for the visits it started
   detail?: string
   rank?: number
 }
+
+/** `GET /api/groups`: a group of videos, with a picture picked anew each time it is asked for. */
+export type VideoGroup = Schema<'VideoGroup'>
 
 /** `POST /api/videos/{id}/play`: the stream status, the play's id (its progress is reported against it) and where it picks up. */
 export type Started = Schema<'Started'>
@@ -202,7 +205,7 @@ export const withBase = (u: string) => (u.startsWith('/') ? BASE + u : u)
 export const PAGE_SIZE = 24
 
 /** What a list of videos is filtered by: a channel, words in the title, or neither. */
-export interface VideoFilter { channel?: string; q?: string }
+export interface VideoFilter { channel?: string; group?: string; q?: string }
 
 /** The cursor that asks for the videos after this one (the server orders by date, then id). */
 export const cursorOf = (v: Pick<Video, 'published' | 'id'>) => `${v.published}|${v.id}`
@@ -211,6 +214,7 @@ export const cursorOf = (v: Pick<Video, 'published' | 'id'>) => `${v.published}|
 export function videosUrl(filter: VideoFilter, after: string | undefined, limit = PAGE_SIZE): string {
   const q = new URLSearchParams()
   if (filter.channel) q.set('channel', filter.channel)
+  if (filter.group) q.set('group', filter.group)
   if (filter.q?.trim()) q.set('q', filter.q.trim())
   if (after) q.set('after', after)
   q.set('limit', String(limit))
@@ -260,6 +264,8 @@ export const paths = {
   channel: (id: string) => `/api/channels/${encodeURIComponent(id)}`,
   overview: (id: string) => `/api/channels/${encodeURIComponent(id)}/overview`,
   restart: (id: string) => `/api/channels/${encodeURIComponent(id)}/restart`,
+  groups: '/api/groups',
+  group: (id: string) => `/api/groups/${encodeURIComponent(id)}`,
   videos: '/api/videos',
   shuffle: '/api/videos/shuffle',
   continueWatching: '/api/videos/continue',
@@ -304,8 +310,10 @@ export const keys = {
   quota: ['quota'],
   shown: ['library', 'shown'],
   channel: (id: string) => ['channels', id],
+  groups: ['groups'],
+  group: (id: string) => ['groups', id],
   videos: ['videos'],
-  list: (filter: VideoFilter) => ['videos', 'list', filter.channel ?? '', filter.q?.trim() ?? ''],
+  list: (filter: VideoFilter) => ['videos', 'list', filter.channel ?? '', filter.group ?? '', filter.q?.trim() ?? ''],
   shuffle: ['videos', 'shuffle'],
   continueWatching: ['videos', 'continue'],
   plays: (f: PlayFilter) => ['viewing', 'plays', f.outcome ?? '', f.source ?? ''],
@@ -374,6 +382,8 @@ export const api = {
   restartChannel: (id: string) => callJson<{ channel: string; videos: number; sync: SyncJob }>(withBase(paths.restart(id)), { method: 'POST' }),
   channels: () => fetchJson<Channel[]>(withBase(paths.channels)),
   channel: (id: string) => fetchJson<Channel>(withBase(paths.channel(id))),
+  groups: () => fetchJson<VideoGroup[]>(withBase(paths.groups)),
+  group: (id: string) => fetchJson<VideoGroup>(withBase(paths.group(id))),
   videos: (filter: VideoFilter, after: string | undefined, signal?: AbortSignal) => fetchJson<VideoPage>(withBase(videosUrl(filter, after)), { signal }),
   shuffle: (count: number) => fetchJson<Video[]>(withBase(`${paths.shuffle}?count=${count}`)),
   video: (id: string) => fetchJson<VideoDetail>(withBase(paths.video(id))),

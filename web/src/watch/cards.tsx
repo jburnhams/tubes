@@ -15,14 +15,14 @@ import { fallbackThumbnail, isPlaceholder, reportMissing, useHidden } from './mi
 import { fromState, useHere } from './from'
 import { Pill } from './Shown'
 
-/** The channels, by id, from the one shared read (the rail reads the same query). */
+/** The channels, by id, from the one shared read. */
 export function useChannelsById(): Map<string, Channel> {
   const load = useLoad({ queryKey: keys.channels, queryFn: api.channels })
   return new Map(load.status === 'ready' ? load.data.map(c => [c.id, c]) : [])
 }
 
 /** A channel's round picture, or its first letter on grey when it has none (or it cannot be loaded): Strata's `Thumbnail`, square and round,
- *  with the letter as its fallback. It loads at once: a channel's picture is small and on screen where it is drawn (the rail, a card). */
+ *  with the letter as its fallback. It loads at once: a channel's picture is small and on screen where it is drawn (a card, the Channels page). */
 export function Avatar({ channel, name, size = 'size-9' }: { channel?: Channel; name?: string | null; size?: string }) {
   const title = channel?.title ?? name ?? '?'
   return (

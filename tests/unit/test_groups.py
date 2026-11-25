@@ -1,0 +1,198 @@
+import json
+
+import pytest
+from fastapi.testclient import TestClient
+from hypothesis import given
+from hypothesis import strategies as st
+from library import VIDEOS, seed, video
+
+from tubes import cli, db, groups, library, viewing
+from tubes.server.app import create_app
+
+A, B, C, D = "aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc", "ddddddddddd"
+
+
+def text(*gs):
+    return json.dumps(dict(groups=[dict(name=n, kind=k, videos=v) for n, k, v in gs]))
+
+
+def load(*gs):
+    return groups.load(text(*gs))
+
+
+def first(monkeypatch):
+    """The picture is always the first video that could picture the group."""
+    monkeypatch.setattr(groups.random, "choice", lambda seq: seq[0])
+
+
+def test_a_load_lists_groups_largest_first_with_the_best_video_as_picture(monkeypatch):
+    seed()
+    first(monkeypatch)
+    assert load(("Stars", "topic", [[C, 0.4]]), ("Shelves", None, [[A, 0.2], [B, 0.9]])) == dict(
+        groups=2, videos=3, kept=0
+    )
+    assert groups.listing() == [
+        dict(id=2, name="Shelves", kind=None, videos=2, thumbnail=f"https://img.test/{B}.jpg", thumbnail_video=B),
+        dict(id=1, name="Stars", kind="topic", videos=1, thumbnail=f"https://img.test/{C}.jpg", thumbnail_video=C),
+    ]
+
+
+def test_the_picture_is_one_of_the_ten_or_five_percent_that_represent_the_group_best(monkeypatch):
+    many = [video(f"v{n:010d}", 0) for n in range(300)]
+    seed(videos=many)
+    load(
+        ("Small", None, [[v["id"], n] for n, v in enumerate(many[:30])]),
+        ("Big", None, [[v["id"], n] for n, v in enumerate(many)]),
+        ("Tiny", None, [[v["id"], n] for n, v in enumerate(many[:4])]),
+    )
+    asked = []
+    monkeypatch.setattr(groups.random, "choice", lambda seq: (asked.append([r["video_id"] for r in seq]), seq[0])[1])
+    assert [g["name"] for g in groups.listing()] == ["Big", "Small", "Tiny"]
+    best = lambda n, k: [many[i]["id"] for i in range(n - 1, n - 1 - k, -1)]
+    assert asked == [best(300, 15), best(30, 10), best(4, 4)]
+
+
+def test_five_percent_rounds_up():
+    many = [video(f"v{n:010d}", 0) for n in range(221)]
+    seed(videos=many)
+    load(("Big", None, [[v["id"], n] for n, v in enumerate(many)]))
+    assert len(groups._rows(None)) == 12
+
+
+def test_the_picture_changes_between_reads():
+    seed()
+    load(("All", None, [[v["id"], 1] for v in VIDEOS]))
+    assert {groups.listing()[0]["thumbnail_video"] for _ in range(200)} == {A, B, C, D}
+
+
+def test_only_videos_that_are_shown_count_or_picture_a_group(monkeypatch):
+    seed()
+    first(monkeypatch)
+    load(("Mixed", None, [[A, 3], [C, 2], ["gone0000000", 9]]), ("Hidden", None, [[D, 1]]))
+    with db.connect() as con:
+        con.execute("UPDATE videos SET gone = ? WHERE id IN (?, ?)", ("2026-11-01T00:00:00+00:00", A, D))
+    assert [(g["name"], g["videos"], g["thumbnail_video"]) for g in groups.listing()] == [("Mixed", 1, C)]
+    assert groups.group(2) == dict(id=2, name="Hidden", kind=None, videos=0, thumbnail=None, thumbnail_video=None)
+    assert groups.group(99) is None
+
+
+def test_a_group_whose_best_videos_have_no_picture_has_none():
+    seed(videos=[dict(v, thumbnail=None) for v in VIDEOS])
+    load(("All", None, [[A, 1]]))
+    g = groups.group(1)
+    assert (g["videos"], g["thumbnail"], g["thumbnail_video"]) == (1, None, None)
+
+
+def test_a_load_keeps_the_id_and_the_given_name_of_the_group_it_is():
+    seed()
+    load(("Shelves", None, [[A, 1], [B, 1]]), ("Sky", None, [[C, 1], [D, 1]]))
+    with db.connect() as con:
+        con.execute("UPDATE video_groups SET name = ?, named = ? WHERE id = 2", ("Night sky", True))
+    assert load(("Stars", "topic", [[C, 1], [D, 1]]), ("Wood", None, [[A, 1]]), ("New", None, [["x", 1]])) == dict(
+        groups=3, videos=4, kept=2
+    )
+    with db.connect() as con:
+        got = con.execute("SELECT id, name, kind, named FROM video_groups ORDER BY id").fetchall()
+    assert [(r[0], r[1], r[2], bool(r[3])) for r in got] == [
+        (1, "Wood", None, False),
+        (2, "Night sky", "topic", True),
+        (3, "New", None, False),
+    ]
+
+
+def test_an_id_is_never_used_again():
+    seed()
+    load(("One", None, [[A, 1]]), ("Two", None, [[C, 1]]))
+    load(("One", None, [[A, 1]]))
+    load(("One", None, [[A, 1]]), ("Three", None, [[D, 1]]))
+    assert sorted(g["id"] for g in groups.listing()) == [1, 3]
+
+
+def test_same_gives_each_old_group_to_the_one_that_shares_most():
+    old = {7: {"a", "b", "c", "d"}, 8: {"x"}}
+    assert groups.same([{"a": 1, "b": 1}, {"a": 1, "b": 1, "c": 1}, {"y": 1}], old) == [None, 7, None]
+    assert groups.same([{"a": 1, "q": 1, "r": 1, "s": 1}], old) == [None]  # one of seven shared: too few
+    assert groups.same([{"a": 1, "b": 1, "q": 1}], old) == [7]
+
+
+@given(
+    st.lists(st.sets(st.sampled_from("abcdefgh"), min_size=1), max_size=5),
+    st.lists(st.sets(st.sampled_from("abcdefgh"), min_size=1), max_size=5),
+)
+def test_same_never_gives_an_id_twice(new, old):
+    got = [i for i in groups.same([dict.fromkeys(n, 1.0) for n in new], dict(enumerate(old))) if i is not None]
+    assert len(got) == len(set(got))
+
+
+def test_a_video_listed_twice_keeps_its_best_score_and_an_empty_group_is_left_out():
+    got = groups.read(text((" Shelves ", "x" * 50, [[A, 1], [A, 3], [B, 2]]), ("Empty", None, [])))
+    assert got == [dict(name="Shelves", kind="x" * 32, videos={A: 3.0, B: 2.0})]
+
+
+@pytest.mark.parametrize(
+    ("content", "why"),
+    [
+        ("no", "not JSON"),
+        ("{}", "no list of groups"),
+        ('{"groups": [{"videos": []}]}', "Group 1 has no name"),
+        ('{"groups": [{"name": "X"}]}', r"Group 1 \(X\) has no list of videos"),
+        ('{"groups": [{"name": "X", "videos": ["a"]}]}', "not \\[id, score\\]"),
+        ('{"groups": [{"name": "X", "videos": [["a", "high"]]}]}', "not \\[id, score\\]"),
+        ('{"groups": [{"name": "X", "videos": [3]}]}', "not \\[id, score\\]"),
+    ],
+)
+def test_a_file_that_is_not_groups_is_refused_and_changes_nothing(content, why):
+    seed()
+    load(("Shelves", None, [[A, 1]]))
+    with pytest.raises(groups.BadFile, match=why):
+        groups.load(content)
+    assert [g["name"] for g in groups.listing()] == ["Shelves"]
+
+
+def test_a_groups_videos_are_a_page_at_a_time_newest_first():
+    seed()
+    load(("Mixed", None, [[A, 1], [C, 1], [D, 1]]))
+    page = library.videos(group_id=1, limit=2)
+    assert ([v["id"] for v in page["videos"]], page["has_more"]) == ([A, C], True)
+    rest = library.videos(group_id=1, limit=2, after=library.cursor(page["videos"][-1]))
+    assert ([v["id"] for v in rest["videos"]], rest["has_more"]) == ([D], False)
+    assert library.videos(group_id=9)["videos"] == []
+
+
+def test_the_api_lists_groups_and_their_videos():
+    seed()
+    load(("Shelves", "topic", [[A, 1], [B, 1]]))
+    client = TestClient(create_app())
+    (g,) = client.get("/api/groups").json()
+    assert (g["id"], g["name"], g["videos"]) == (1, "Shelves", 2) and g["thumbnail_video"] in (A, B)
+    assert client.get("/api/groups/1").json()["name"] == "Shelves"
+    assert client.get("/api/groups/2").status_code == 404
+    assert [v["id"] for v in client.get("/api/videos?group=1").json()["videos"]] == [A, B]
+
+
+def test_a_play_from_a_group_says_which_group():
+    seed()
+    load(("Shelves", None, [[A, 1]]))
+    viewing.start(A, "2026-11-10T10:00:00+00:00", source="group", detail="1", rank=0)
+    (p,) = viewing.recent()["items"]
+    assert (p["source"], p["detail"], p["detail_title"]) == ("group", "1", "Shelves")
+
+
+def test_the_command_loads_and_lists_groups(tmp_path, capsys):
+    seed()
+    assert cli.main(["groups"]) == 0 and "no groups yet" in capsys.readouterr().out
+    f = tmp_path / "g.json"
+    f.write_text(text(("Shelves", "topic", [[A, 1], [B, 1]])), encoding="utf8")
+    assert cli.main(["groups", "load", str(f)]) == 0
+    assert "1 group(s) of 2 video(s) loaded, 0 in place" in capsys.readouterr().out
+    assert cli.main(["groups"]) == 0 and "Shelves" in capsys.readouterr().out
+    assert cli.main(["groups", "--json"]) == 0 and json.loads(capsys.readouterr().out)[0]["videos"] == 2
+
+
+def test_the_command_says_what_is_wrong_with_a_file(tmp_path, capsys):
+    assert cli.main(["groups", "load"]) == 2 and "Name the file" in capsys.readouterr().err
+    assert cli.main(["groups", "load", str(tmp_path / "none.json")]) == 1 and "none.json" in capsys.readouterr().err
+    (tmp_path / "bad.json").write_text("{}", encoding="utf8")
+    assert (
+        cli.main(["groups", "load", str(tmp_path / "bad.json")]) == 1 and "no list of groups" in capsys.readouterr().err
+    )

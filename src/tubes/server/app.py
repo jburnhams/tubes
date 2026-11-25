@@ -19,6 +19,7 @@ API (JSON):
   GET  /api/quota                         the YouTube Data API quota: today's units used of the limit, what remains, when it resets, today by
                                            purpose, endpoint and hour, and the last 30 days (quota.py; Google has no call that says this)
   GET  /api/channels, GET /api/channels/{id}   channels with their video counts and sync state
+  GET  /api/groups, GET /api/groups/{id}   groups of videos with their counts and a picture picked anew each time (groups.py)
   GET  /api/channels/{id}/overview         a channel's library state, watch history (per month, per account, videos watched most) and suggestion
   DELETE /api/channels/{id}                remove a channel and its videos
   POST /api/channels/{id}/restart          forget a channel's videos and sync state, then sync it again from the start
@@ -81,6 +82,7 @@ from tubes import (
     catalogue,
     db,
     fetcher,
+    groups,
     history,
     iplayer,
     library,
@@ -303,17 +305,32 @@ def create_app(recover: bool = True) -> FastAPI:
             raise HTTPException(404, f"There is no channel {channel_id} in the library.")
         return c
 
+    @app.get("/api/groups", responses=answer(list[A.VideoGroup]))
+    def get_groups():
+        return groups.listing()
+
+    @app.get("/api/groups/{group_id}", responses=answer(A.VideoGroup))
+    def get_group(group_id: int):
+        g = groups.group(group_id)
+        if g is None:
+            raise HTTPException(404, f"There is no group {group_id}.")
+        return g
+
     @app.get("/api/videos", responses=answer(A.VideoPage))
     def get_videos(
-        channel: str | None = None, q: str | None = None, after: str | None = None, limit: int = Query(24, ge=1, le=200)
+        channel: str | None = None,
+        q: str | None = None,
+        after: str | None = None,
+        limit: int = Query(24, ge=1, le=200),
+        group: int | None = None,
     ):
         while True:  # a past stream whose recording went is left out at once
-            r = library.videos(channel, q, after, limit)
+            r = library.videos(channel, q, after, limit, group_id=group)
             gone = catalogue.recheck_past(r["videos"])
-            if channel and not q and not after:
+            if (channel or group is not None) and not q and not after:
                 ahead.want(
                     [v["id"] for v in r["videos"] if v["id"] not in gone][:12]
-                )  # a channel's newest: prefetch their starts (Home's are anyway)
+                )  # a channel's or group's newest: prefetch their starts (Home's are anyway)
             if not gone:
                 return r
             shown = [v for v in r["videos"] if v["id"] not in gone]

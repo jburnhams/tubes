@@ -3,8 +3,8 @@ Continue watching is made from, and kept so that later work can learn what is wo
 something different from one watched to the end).
 
 A play starts when the watch page opens (`start`, from POST /api/videos/{id}/play): the row says where the click came from (`source`, one of
-SOURCES: the home grid, Continue watching, a channel's page, a search, Up next, or `link` for an address typed, reloaded or shared), which
-one (`detail`: the channel's id, the search words, the video Up next was beside) and the video's place in that list (`rank`, from 0). While
+SOURCES: the home grid, Continue watching, a channel's page, a group's page, a search, Up next, or `link` for an address typed, reloaded or shared), which
+one (`detail`: the channel's or group's id, the search words, the video Up next was beside) and the video's place in that list (`rank`, from 0). While
 it plays the page reports how it is going (`report`, from POST /api/plays/{id}): the running time, where the player is, and how many
 seconds have been seen, each second counted once (going back over a part does not add to it; a part skipped as a sponsor read or an intro
 counts as seen, so a video whose skipped parts make up a tenth of it can still be watched in full). From those, `outcome`:
@@ -39,7 +39,7 @@ PARTIAL = 0.1
 SHORT_SECONDS = 60
 CONTINUE_DAYS = 30
 CONTINUE_LIMIT = 12
-SOURCES = ("home", "continue", "channel", "search", "up_next", "watch", "rail", "chips", "channels", "link")
+SOURCES = ("home", "continue", "channel", "search", "up_next", "watch", "rail", "chips", "channels", "group", "link")
 OUTCOMES = ("none", "short", "partial", "full")
 DETAIL_MAX = 200
 RESUME_MIN = 10  # seconds: a play stopped before this starts again from the beginning
@@ -221,8 +221,8 @@ def _after(after: str | None, where: list[str], args: list[Any], t: str) -> None
 def recent(limit: int = PAGE, after: str | None = None, outcome: str | None = None, source: str | None = None) -> Row:
     """One page of plays, newest first: `{items, has_more}`. Each item: `{id, video_id, title, channel_id, channel, thumbnail, at, updated,
     source, detail, detail_title, rank, length, watched, position, outcome}`; the title and channel come from the library, or from the
-    cached copy once the video has left it; `detail_title` names what `detail` points at (the channel a channel page was, the video Up next
-    was beside). `outcome` none also finds plays from before outcomes were kept; `source` link also finds those with none. `after` is a cursor."""
+    cached copy once the video has left it; `detail_title` names what `detail` points at (the channel a channel page was, the group a
+    group page was, the video Up next was beside). `outcome` none also finds plays from before outcomes were kept; `source` link also finds those with none. `after` is a cursor."""
     where: list[str] = ["1 = 1"]
     args: list[Any] = []
     if outcome == "none":
@@ -242,12 +242,13 @@ def recent(limit: int = PAGE, after: str | None = None, outcome: str | None = No
         rows = db.rows(
             con.execute(
                 f"""SELECT p.id, p.video_id, COALESCE(v.title, k.title) AS title, v.channel_id, COALESCE(c.title, k.channel) AS channel, v.thumbnail,
-                                              p.at, p.updated, COALESCE(p.source, ?) AS source, p.detail, COALESCE(dc.title, dv.title) AS detail_title, p.rank,
+                                              p.at, p.updated, COALESCE(p.source, ?) AS source, p.detail, COALESCE(dc.title, dv.title, dg.name) AS detail_title, p.rank,
                                               COALESCE(p.length, v.duration) AS length, p.watched, p.position, COALESCE(p.outcome, ?) AS outcome
                                        FROM plays p LEFT JOIN videos v ON v.id = p.video_id LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = p.video_id
                                        LEFT JOIN channels dc ON p.source = ? AND dc.id = p.detail LEFT JOIN videos dv ON p.source = ? AND dv.id = p.detail
+                                       LEFT JOIN video_groups dg ON p.source = ? AND CAST(dg.id AS TEXT) = p.detail
                                        WHERE {" AND ".join(where)} ORDER BY p.at DESC, p.id DESC LIMIT ?""",
-                ["link", "none", "channel", "up_next", *args, limit + 1],
+                ["link", "none", "channel", "up_next", "group", *args, limit + 1],
             )
         )
     return dict(items=rows[:limit], has_more=len(rows) > limit)

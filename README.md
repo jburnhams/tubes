@@ -5,7 +5,7 @@ A home video server: it keeps a video library (YouTube channels and videos, adde
 - **Library**: channels and single videos are added in Admin > Library (or `tubes add`) by link, id or @handle, and their details come from the YouTube Data API. A followed channel's uploads are read back to its first video once, and each sync (every few hours, or Sync in Admin) picks up the new ones. The app browses and searches the library from Tubes' own database.
 - **Fetch on play**: yt-dlp downloads the best format up to the chosen height (AV1, then VP9, then H.264, original audio) and ffmpeg writes it as an HLS playlist as it arrives, so playback starts after the first few seconds are on disk (about 2 s on a home connection).
 - **Cache**: one folder with a size limit (default 1 TB). Above 95% of it, copies go lowest score first until it is under 90%; the score is every play, each worth half as much per half-life (default 30 days). Pinned copies, copies being fetched and recent unplayed fetches are kept.
-- **Web app**: the watching side (Home, Search, Channels, Watch) in the old Tubes look, a video site's layout with Tubes' own mark; the admin area under `/admin` (Library, Suggestions, Viewing, History, Cache, YouTube quota, System, Settings) in [strata-react](https://github.com/jburnhams/strata-react)'s look. Latest Chrome is the target.
+- **Web app**: the watching side (Home, Search, Channels, Groups, Watch) in the old Tubes look, a video site's layout with Tubes' own mark; the admin area under `/admin` (Library, Suggestions, Viewing, History, Cache, YouTube quota, System, Settings) in [strata-react](https://github.com/jburnhams/strata-react)'s look. Latest Chrome is the target.
 
 ## Quick start
 
@@ -31,6 +31,7 @@ Tubes keeps its own tables (the library, cache copies, plays) in a database thro
 | `tubes history [import, sync, refresh, remove]` | brings in a watch history that channels are suggested from (Admin > Suggestions) |
 | `tubes related [--all] [-v]` | asks YouTube which channels the followed and most watched ones point at (watch pages' next column, featured channels), each again after a week, and suggests them |
 | Admin > Suggestions: Paste channels to follow | YouTube links, @handles, iPlayer programme or episode links, or names (looked up on both), one a line, become suggestions to follow |
+| `tubes groups [load FILE]` | lists the groups of videos the Groups page shows, or loads them from a JSON file in place of those there |
 | `tubes fetch <id>` | fetches one video into the cache now |
 | `tubes cache` / `tubes evict [--dry-run]` | shows the cache with each copy's score / trims it |
 | `tubes set [key [value]]` | shows or changes a setting (`default` resets one) |

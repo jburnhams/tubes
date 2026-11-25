@@ -11,6 +11,8 @@ import { HomeScreen } from './watch/HomeScreen'
 import { SearchScreen } from './watch/SearchScreen'
 import { ChannelsScreen } from './watch/ChannelsScreen'
 import { ChannelScreen } from './watch/ChannelScreen'
+import { GroupsScreen } from './watch/GroupsScreen'
+import { GroupScreen } from './watch/GroupScreen'
 import { WatchScreen } from './watch/WatchScreen'
 import { NotFoundScreen } from './watch/NotFoundScreen'
 import { Layout } from './screens/Layout'
@@ -48,6 +50,8 @@ export const routes: RouteObject[] = [
       { path: 'search', element: <SearchScreen /> },
       { path: 'channels', element: <ChannelsScreen /> },
       { path: 'channels/:id', element: <ChannelScreen /> },
+      { path: 'groups', element: <GroupsScreen /> },
+      { path: 'groups/:id', element: <GroupScreen /> },
       { path: 'watch/:id', element: <WatchScreen /> },
       { path: '*', element: <NotFoundScreen /> },
     ],

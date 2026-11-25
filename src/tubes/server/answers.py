@@ -111,6 +111,17 @@ class Video(Answer):
     episode: int | None
 
 
+class VideoGroup(Answer):
+    id: int
+    name: str
+    kind: str | None = Field(description="What it is of, such as a show or a topic, in the words of whoever made it.")
+    videos: int = Field(description="Its videos that can be watched.")
+    thumbnail: str | None = Field(
+        description="The picture of one of the videos that represent it best, picked anew each time it is asked for."
+    )
+    thumbnail_video: str | None = Field(description="The video whose picture that is.")
+
+
 class ContinueVideo(Video):
     resume: float | None = Field(description="Where the last play stopped, in seconds.")
     progress: float | None = Field(

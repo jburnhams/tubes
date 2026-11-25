@@ -4526,6 +4526,69 @@
     "title": "VideoDetail",
     "type": "object"
    },
+   "VideoGroup": {
+    "properties": {
+     "id": {
+      "title": "Id",
+      "type": "integer"
+     },
+     "kind": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "What it is of, such as a show or a topic, in the words of whoever made it.",
+      "title": "Kind"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "thumbnail": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "The picture of one of the videos that represent it best, picked anew each time it is asked for.",
+      "title": "Thumbnail"
+     },
+     "thumbnail_video": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "The video whose picture that is.",
+      "title": "Thumbnail Video"
+     },
+     "videos": {
+      "description": "Its videos that can be watched.",
+      "title": "Videos",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "name",
+     "kind",
+     "videos",
+     "thumbnail",
+     "thumbnail_video"
+    ],
+    "title": "VideoGroup",
+    "type": "object"
+   },
    "VideoPage": {
     "properties": {
      "has_more": {
@@ -5018,6 +5081,67 @@
      }
     },
     "summary": "Post Channel View"
+   }
+  },
+  "/api/groups": {
+   "get": {
+    "operationId": "get_groups_api_groups_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "items": {
+          "$ref": "#/components/schemas/VideoGroup"
+         },
+         "title": "Response 200 Get Groups Api Groups Get",
+         "type": "array"
+        }
+       }
+      },
+      "description": "OK"
+     }
+    },
+    "summary": "Get Groups"
+   }
+  },
+  "/api/groups/{group_id}": {
+   "get": {
+    "operationId": "get_group_api_groups__group_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "group_id",
+      "required": true,
+      "schema": {
+       "title": "Group Id",
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/VideoGroup"
+        }
+       }
+      },
+      "description": "OK"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Group"
    }
   },
   "/api/health": {
@@ -6476,6 +6600,22 @@
        "minimum": 1,
        "title": "Limit",
        "type": "integer"
+      }
+     },
+     {
+      "in": "query",
+      "name": "group",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Group"
       }
      }
     ],

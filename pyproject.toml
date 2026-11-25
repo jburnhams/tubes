@@ -44,7 +44,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 # SQL is built only from names in the code (columns, tables, `?` lists) and the owner's own history_table setting; every value is a bound parameter.
-"src/tubes/{catalogue,history,iplayer_suggest,library,metadata,paste,related,viewing}.py" = ["S608"]
+"src/tubes/{catalogue,groups,history,iplayer_suggest,library,metadata,paste,related,viewing}.py" = ["S608"]
 "src/tubes/server/app.py" = ["S608"]
 # yt-dlp and ffmpeg are the programs the settings name, run with arguments built here (never through a shell).
 "src/tubes/{fetcher,plex,ytdlp}.py" = ["S603"]
