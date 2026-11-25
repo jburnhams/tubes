@@ -1,5 +1,9 @@
 # Progress log
 
+## 2026-11-25: strata-python 0.2.22 for strata-models' bulk endpoint
+
+- strata-models now takes a normal or low priority job only on its bulk endpoint (`POST /api/jobs` is for one high priority job). The sort's `priority="low"` call goes through `strata_python.clients.models.run`, which sends it there from 0.2.22 on, so `requirements.txt` and `requirements-test.txt` now ask for `>=0.2.22`. The sort stays one call at a time, since it learns from each answer.
+
 ## 2026-11-25: groups made again every week
 
 - Asked for: a weekly job that makes the groups again, so a new programme gets one by itself.
