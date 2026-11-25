@@ -31,7 +31,7 @@ Tubes keeps its own tables (the library, cache copies, plays) in a database thro
 | `tubes history [import, sync, refresh, remove]` | brings in a watch history that channels are suggested from (Admin > Suggestions) |
 | `tubes related [--all] [-v]` | asks YouTube which channels the followed and most watched ones point at (watch pages' next column, featured channels), each again after a week, and suggests them |
 | Admin > Suggestions: Paste channels to follow | YouTube links, @handles, iPlayer programme or episode links, or names (looked up on both), one a line, become suggestions to follow |
-| `tubes groups [load FILE]` | lists the groups of videos the Groups page shows, or loads them from a JSON file in place of those there |
+| `tubes groups [load, renew, dump FILE]` | lists the groups of videos the Groups page shows; loads them from a JSON file in place of those there (`renew`: careful with those there, for groups made again by `scripts/regroup.py`); or writes them to one |
 | `tubes extents [load FILE]` | counts the videos known to be a full episode, a clip, a promo..., or loads answers from a JSON file |
 | `tubes sort` | works out whether new videos are whole or a clip or promo (a small model, and a language model through strata-models: `sort_model`, `sort_usd`), and puts them in their groups; run after a sync |
 | `tubes fetch <id>` | fetches one video into the cache now |

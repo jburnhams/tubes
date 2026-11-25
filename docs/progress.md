@@ -1,5 +1,12 @@
 # Progress log
 
+## 2026-11-25: groups made again every week
+
+- Asked for: a weekly job that makes the groups again, so a new programme gets one by itself.
+- `scripts/regroup.py` (run by `uv run`, with its own libraries: NumPy, scikit-learn, igraph, Leiden) reads the library and writes a file of groups; `tubes groups renew` puts them in place of those there. It is the clustering the first groups came from, rewritten to be exact (no approximate neighbours) and so repeatable: 77,791 videos in about 2 minutes, then the language model names the new groups (27 questions, waiting behind other work; a few cents, against `sort_usd`).
+- A group that matches one there keeps its id, name and kind and is not asked about. `renew` refuses new groups that hold fewer than half of those there, and carries over as it is any group of 30 videos or more that no new one holds 60% of (a rerun once cut a programme of 4,000 videos in two): measured with the newest 600 videos left out and put back, 273 of the 285 groups of 60 videos or more were held by one new group and the rest would be carried over.
+- `tubes groups dump FILE` writes the groups as a file that loads back, kept before each renew on the server.
+
 ## 2026-11-25: a channel's own page shows everything
 
 - Asked for: viewing a channel's page should still show everything. Some channels publish mostly segments, and lost over half their videos to the clips filter.

@@ -358,3 +358,67 @@ def test_a_group_whose_videos_have_gone_is_no_place():
     places = groups.Places({1: "Gone", 2: "!"}, {1: {"x": 1.0}, 2: {"y": 1.0}}, {"y": ("A shelf of oak", None)})
     assert set(places.centres) == {2} and places.named == {}  # a name with no words is in no title
     assert places.of("Nothing alike", None) == {}
+
+
+# --- groups made again --------------------------------------------------------------------------------------------------------------
+
+
+def big(name, first, n=80, kind="show"):
+    return (name, kind, [[f"v{i:010d}", 1 - i / 1000] for i in range(first, first + n)])
+
+
+def listed():
+    with db.connect() as con:
+        return [tuple(r) for r in con.execute("SELECT id, name FROM video_groups ORDER BY id").fetchall()]
+
+
+def test_renew_is_a_load_when_the_new_groups_hold_the_old_ones():
+    load(big("One", 0), big("Two", 200))
+    r = groups.renew(text(big("One", 0, 90), big("Two", 200), big("Three", 400)))
+    assert r == dict(groups=3, videos=250, kept=2, carried=[])
+    assert listed() == [(1, "One"), (2, "Two"), (3, "Three")]
+
+
+def test_a_group_cut_in_pieces_is_carried_over_and_a_piece_of_its_name_goes_back_into_it():
+    load(big("One", 0), big("Two", 200), ("Small", None, [[f"v{i:010d}", 1] for i in range(300, 325)]))
+    pieces = [big("One", 0, 30), ("One toys", "topic", [[f"v{i:010d}", 1] for i in range(30, 60)])]
+    fresh = ("ONE", None, [[f"v{i:010d}", 0.5] for i in range(60, 95)])
+    r = groups.renew(text(big("Two", 200), *pieces, fresh))
+    assert r["carried"] == ["One"] and r["groups"] == 3  # Small is too small to carry
+    got = groups.members()
+    assert listed() == [(1, "One"), (2, "Two"), (4, "One toys")]
+    assert len(got[1]) == 95 and len(got[4]) == 30
+
+
+def test_groups_that_share_too_little_with_those_there_are_refused():
+    load(big("One", 0), big("Two", 200), big("Three", 400))
+    with pytest.raises(groups.TooDifferent, match="Only 1 of the 3"):
+        groups.renew(text(big("One", 0), big("Other", 600), big("Another", 800)))
+    assert [n for _, n in listed()] == ["One", "Two", "Three"]
+
+
+def test_renew_where_there_are_none_is_a_load():
+    assert groups.renew(text(big("One", 0))) == dict(groups=1, videos=80, kept=0, carried=[])
+
+
+def test_a_dump_loads_back_to_the_same_groups():
+    load(big("One", 0), ("Two", None, [["a", 0.25], ["b", 0.75]]))
+    before, kept = groups.dump(), groups.members()
+    load(big("Other", 500))
+    groups.load(before)
+    assert groups.dump() == before and list(groups.members().values()) == list(kept.values())
+    assert [(g["name"], g["kind"]) for g in groups.every()] == [("One", "show"), ("Two", None)]
+
+
+def test_the_command_renews_and_dumps(tmp_path, capsys):
+    load(big("One", 0), big("Two", 200))
+    f = tmp_path / "g.json"
+    assert cli.main(["groups", "dump", str(f)]) == 0 and f.read_text(encoding="utf8") == groups.dump()
+    f.write_text(text(big("Two", 200), big("New", 400)), encoding="utf8")
+    assert cli.main(["groups", "renew", str(f)]) == 0
+    said = capsys.readouterr().out
+    assert "3 group(s)" in said and "1 carried over as they were: One" in said
+    f.write_text(text(big("Elsewhere", 5000)), encoding="utf8")
+    assert cli.main(["groups", "renew", str(f)]) == 1 and "nothing is changed" in capsys.readouterr().err
+    assert cli.main(["groups", "dump"]) == 2
+    assert cli.main(["groups", "dump", str(tmp_path / "no" / "g.json")]) == 1

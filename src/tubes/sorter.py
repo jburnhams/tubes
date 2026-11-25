@@ -246,7 +246,8 @@ def spent(now: str | None = None) -> float:
     return float(usd) if month == (now or cache.stamp())[:7] and usd else 0.0
 
 
-def _spend(usd: float, now: str | None = None) -> None:
+def spend(usd: float, now: str | None = None) -> None:
+    """Count what a call to the LLM cost."""
     total = spent(now) + usd
     with db.connect() as con:
         con.execute(
@@ -278,7 +279,7 @@ def ask(videos: Sequence[Row], typical: Mapping[str, float]) -> dict[str, str]:
         model=settings.get("sort_model"),
         timeout=1800,
     )
-    _spend(float(r.get("cost_usd") or 0))
+    spend(float(r.get("cost_usd") or 0))
     out: dict[str, str] = {}
     for item in arr(obj(r.get("json")).get("videos")):
         x = obj(item)
