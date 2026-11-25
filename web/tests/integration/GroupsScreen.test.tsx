@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { fireEvent } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
-import { groups, videos } from '../../src/mocks/fixtures'
+import { groupMembers, groups, videos } from '../../src/mocks/fixtures'
 import { groupsEmpty, groupsError, mock, videosNone } from '../../src/mocks/handlers'
 import { flush } from '../../src/watch/missing'
 import { act, openApp, screen, waitFor, within } from '../utils/render'
@@ -64,7 +64,8 @@ describe('A group', () => {
     const { user } = openApp(`/groups/${sky.id}`)
     const grid = await screen.findByRole('list', { name: `Videos in ${sky.name}` })
     expect(screen.getByText(`${sky.videos} videos`)).toBeInTheDocument()
-    expect(within(grid).getAllByRole('listitem')).toHaveLength(sky.videos)
+    const titles = groupMembers[sky.id].map(id => videos.find(v => v.id === id)!.title)     // best first, not newest
+    expect(within(grid).getAllByRole('listitem').map(li => within(li).getAllByRole('link')[0].textContent)).toEqual(titles)
     expect(within(grid).getAllByRole('link', { name: 'Night Sky' }).length).toBeGreaterThan(0)
     await user.click(within(grid).getAllByRole('link', { name: videos.find(v => v.title.includes('Moon'))!.title })[0])
     await waitFor(() => expect(mock.playsFrom.at(-1)).toMatchObject({ source: 'group', detail: String(sky.id) }))

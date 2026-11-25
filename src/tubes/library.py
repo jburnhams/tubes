@@ -221,25 +221,33 @@ def videos(
     now: str | None = None,
     group_id: int | None = None,
 ) -> Row:
-    """One page of videos, newest first: `{videos, has_more}`. `search` matches words in the title, in any order; `after` is a cursor; `group_id`
-    keeps to a group's videos (groups.py)."""
+    """One page of videos, newest first: `{videos, has_more}`. `search` matches words in the title, in any order; `after` is a cursor. `group_id`
+    keeps to a group's videos (groups.py), those that represent it best first, so the ones that may picture it are at the top; a cursor then
+    says which video to read on from (its place is its score), and one that has left the group ends the list."""
     ok, args = shown(now)
     where = [ok]
     if channel_id:
         where.append("v.channel_id = ?")
         args.append(channel_id)
     if group_id is not None:
-        where.append("v.id IN (SELECT m.video_id FROM video_group_members m WHERE m.group_id = ?)")
+        where.append("m.group_id = ?")
         args.append(group_id)
     for word in (search or "").split():
         where.append("LOWER(v.title) LIKE LOWER(?) ESCAPE '\\'")
         args.append("%" + word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%")
     if after:
         published, _, vid = after.rpartition("|")
-        where.append("(v.published < ? OR (v.published = ? AND v.id < ?))")
-        args += [published, published, vid]
-    sql = f"""SELECT {VIDEO_COLUMNS} FROM videos v LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = v.id
-              WHERE {" AND ".join(where)} ORDER BY v.published DESC, v.id DESC LIMIT ?"""
+        if group_id is not None:
+            place = "(SELECT a.score FROM video_group_members a WHERE a.group_id = ? AND a.video_id = ?)"
+            where.append(f"(m.score < {place} OR (m.score = {place} AND v.id > ?))")
+            args += [group_id, vid, group_id, vid, vid]
+        else:
+            where.append("(v.published < ? OR (v.published = ? AND v.id < ?))")
+            args += [published, published, vid]
+    grouped = "JOIN video_group_members m ON m.video_id = v.id" if group_id is not None else ""
+    order = "m.score DESC, v.id" if group_id is not None else "v.published DESC, v.id DESC"  # as groups.py ranks them
+    sql = f"""SELECT {VIDEO_COLUMNS} FROM videos v {grouped} LEFT JOIN channels c ON c.id = v.channel_id LEFT JOIN copies k ON k.video_id = v.id
+              WHERE {" AND ".join(where)} ORDER BY {order} LIMIT ?"""
     with db.connect() as con:
         rows = [api_row(r) for r in db.rows(con.execute(sql, [*args, limit + 1]))]
     return dict(videos=rows[:limit], has_more=len(rows) > limit)

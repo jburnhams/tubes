@@ -1,5 +1,5 @@
-// The one question: "What is in this group?" Its name and how many videos it has, over a grid of them, newest
-// first, a page at a time, each with its channel (a group gathers videos from many). A group that went (the
+// The one question: "What is in this group?" Its name and how many videos it has, over a grid of them, those that
+// represent it best first (so the videos that picture it on the Groups page are at the top), a page at a time, each with its channel (a group gathers videos from many). A group that went (the
 // groups were loaded again without it) says so.
 import { useParams } from 'react-router'
 import { DataView, HttpError, describeHttpError, useLoad } from 'strata-react'

@@ -156,9 +156,14 @@ export function videoPage(url: string, list: Video[]): VideoPage {
   const words = (p.get('q') ?? '').toLowerCase().split(/\s+/).filter(Boolean)
   const after = p.get('after')
   const limit = Number(p.get('limit') ?? 24)
+  const members = p.get('group') ? groupMembers[Number(p.get('group'))] ?? [] : null     // a group's videos in its own order, best first
+  if (members) {
+    const own = members.map(id => list.find(v => v.id === id)).filter((v): v is Video => !!v)
+    const from = after ? own.findIndex(v => cursorOf(v) === after) + 1 : 0
+    return { videos: own.slice(from, from + limit), has_more: own.length > from + limit }
+  }
   const rest = list
     .filter(v => !p.get('channel') || v.channel_id === p.get('channel'))
-    .filter(v => !p.get('group') || (groupMembers[Number(p.get('group'))] ?? []).includes(v.id))
     .filter(v => words.every(w => v.title.toLowerCase().includes(w)))
     .filter(v => !after || cursorOf(v) < after)
   return { videos: rest.slice(0, limit), has_more: rest.length > limit }
