@@ -161,7 +161,7 @@ describe('the findings', () => {
   })
 
   it('Shown videos checks its lengths and country and says what the filters leave out', () => {
-    const rest = { region: '', languages: [] as string[], unknown: 'show' as const, captions: 'any' as const }
+    const rest = { region: '', languages: [] as string[], unknown: 'show' as const, captions: 'any' as const, clips: 'show' as const, promos: 'show' as const }
     expect(shownProblems({ ...rest, min: '', max: '', streams: 'current' })).toEqual({ min: undefined, max: undefined })
     expect(shownProblems({ ...rest, min: '0', max: '90.5', streams: 'all', region: ' gb ' })).toEqual({ min: undefined, max: undefined })
     expect(shownProblems({ ...rest, min: '', max: '', streams: 'all', region: 'GBR' })).toEqual({ min: undefined, max: undefined, region: 'Enter the country as two letters, such as GB, or leave it empty.' })

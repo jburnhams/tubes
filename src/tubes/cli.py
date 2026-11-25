@@ -15,6 +15,7 @@ from tubes import (
     __version__,
     cache,
     catalogue,
+    extents,
     fetcher,
     groups,
     history,
@@ -184,6 +185,22 @@ def cmd_groups(args: argparse.Namespace) -> int:
         "\n".join(f"  {g['id']:>5} {g['videos']:>6} videos  {(g['kind'] or ''):20} {g['name'][:50]}" for g in items)
         or "  (no groups yet: ./tubes groups load <file>)",
     )
+
+
+def cmd_extents(args: argparse.Namespace) -> int:
+    if args.action == "load":
+        if not args.file:
+            print("  Name the file to load.", file=sys.stderr)
+            return 2
+        try:
+            with open(args.file, encoding="utf8") as f:
+                r = extents.load(f.read())
+        except (OSError, UnicodeDecodeError, extents.BadFile) as e:
+            print(f"  {e}", file=sys.stderr)
+            return 1
+        return out(args, r, f"  {r['videos']} video(s) read, {r['kept']} kept (the rest have a stronger answer)")
+    n = extents.counts()
+    return out(args, n, "\n".join(f"  {k.replace('_', ' '):18} {v:>7}" for k, v in n.items()))
 
 
 def cmd_quota(args: argparse.Namespace) -> int:
@@ -412,6 +429,13 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("file", nargs="?")
     v.add_argument("--json", action="store_true")
     v.set_defaults(fn=cmd_groups)
+    x = sub.add_parser(
+        "extents", help="count the videos known to be a full episode, a clip, a promo..., or load answers from a file"
+    )
+    x.add_argument("action", nargs="?", choices=("list", "load"), default="list")
+    x.add_argument("file", nargs="?")
+    x.add_argument("--json", action="store_true")
+    x.set_defaults(fn=cmd_extents)
     w = sub.add_parser(
         "history",
         help="import a Google Takeout watch history (suggestions are made from it), sync the one in the history database (history_url, history_table), list them, remove one, or refresh the suggestions",

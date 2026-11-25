@@ -116,6 +116,8 @@ def test_filters_hide_by_length_and_streams_and_come_back():
         languages=[],
         unknown_language="show",
         captions="any",
+        clips="show",
+        promos="show",
     )
     assert catalogue.save_filters(dict(min_seconds=60, max_seconds=3600)) == dict(
         min_seconds=60,
@@ -125,6 +127,8 @@ def test_filters_hide_by_length_and_streams_and_come_back():
         languages=[],
         unknown_language="show",
         captions="any",
+        clips="show",
+        promos="show",
     )
     assert [v["id"] for v in library.videos()["videos"]] == ["ccccccccccc"] and [
         v["id"] for v in library.shuffle(10)
@@ -160,6 +164,7 @@ def test_filters_refuse_what_cannot_be_used_and_save_nothing():
         (dict(languages=["English"]), "Languages must be a list of two- or three-letter codes, such as en."),
         (dict(unknown_language="maybe"), "unknown_language must be one of show, hide."),
         (dict(captions="some"), "captions must be one of any, only."),
+        (dict(clips="some"), "clips must be one of show, hide."),
     ]:
         with pytest.raises(catalogue.FilterError) as e:
             catalogue.save_filters(bad)

@@ -170,6 +170,10 @@ class ShownFilters(Answer):
     )
     unknown_language: Literal["show", "hide"]
     captions: Literal["any", "only"]
+    clips: Literal["show", "hide"]
+    promos: Literal["show", "hide"]
+    known_clips: int = Field(description="Videos known to be a clip: part of something longer.")
+    known_promos: int = Field(description="Videos known to be a trailer, an advert or an announcement.")
     filtered: int = Field(description="How many videos these leave out now.")
     language_counts: list[LanguageCount]
 

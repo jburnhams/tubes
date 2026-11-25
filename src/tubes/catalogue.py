@@ -751,7 +751,7 @@ class FilterError(ValueError):
 def save_filters(changes: Mapping[str, Any]) -> Row:
     """Merge `changes` into which videos the watching side shows (library.filters: `min_seconds`, `max_seconds`, None for no limit;
     `streams`, 'current' or 'all'; `region`, a country code or None; `languages`, language codes, empty for every one; `unknown_language`,
-    'show' or 'hide'; `captions`, 'any' or 'only'), after checking every value (nothing is saved if one is wrong); returns the filters now in force."""
+    'show' or 'hide'; `captions`, 'any' or 'only'; `clips` and `promos`, 'show' or 'hide'), after checking every value (nothing is saved if one is wrong); returns the filters now in force."""
     f = library.filters()
     for k, v in changes.items():
         if k not in library.FILTERS:

@@ -207,7 +207,7 @@ export const streamChoices: { value: StreamFilter; label: string }[] = [
   { value: 'all', label: 'Leave out every stream, past ones and premieres too' },
 ]
 
-type ShownFields = { min: string; max: string; streams: StreamFilter; region: string; languages: string[]; unknown: 'show' | 'hide'; captions: 'any' | 'only' }
+type ShownFields = { min: string; max: string; streams: StreamFilter; region: string; languages: string[]; unknown: 'show' | 'hide'; captions: 'any' | 'only'; clips: 'show' | 'hide'; promos: 'show' | 'hide' }
 
 /** A language's name in English (`fr` is French), else its code. */
 export function languageName(code: string): string {
@@ -239,7 +239,7 @@ export function ShownForm({ current }: { current: ShownFilters }) {
   const queryClient = useQueryClient()
   const [f, setF] = useState<ShownFields>({
     min: minutes(current.min_seconds), max: minutes(current.max_seconds), streams: current.streams, region: current.region ?? '',
-    languages: current.languages, unknown: current.unknown_language, captions: current.captions,
+    languages: current.languages, unknown: current.unknown_language, captions: current.captions, clips: current.clips, promos: current.promos,
   })
   const counts = current.language_counts
   const known = counts.filter((c): c is { code: string; videos: number } => c.code != null)
@@ -253,7 +253,7 @@ export function ShownForm({ current }: { current: ShownFilters }) {
   const save = useAsyncAction(async () => {
     await api.saveShown({
       min_seconds: seconds(f.min), max_seconds: seconds(f.max), streams: f.streams, region: f.region.trim().toUpperCase() || null,
-      languages: f.languages, unknown_language: f.unknown, captions: f.captions,
+      languages: f.languages, unknown_language: f.unknown, captions: f.captions, clips: f.clips, promos: f.promos,
     })
     // Every list and count on both sides reads through the filters.
     await Promise.all([keys.shown, keys.library, keys.channels, keys.videos, keys.system].map(queryKey => queryClient.invalidateQueries({ queryKey })))
@@ -283,6 +283,21 @@ export function ShownForm({ current }: { current: ShownFilters }) {
         <Field label="Live streams" hint="A stream live now or scheduled cannot be played, so it is always left out until it ends. A past stream is checked daily in case its recording goes.">
           <NativeSelect value={f.streams} onChange={set('streams')}>
             {streamChoices.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+          </NativeSelect>
+        </Field>
+      </fieldset>
+      <fieldset className="grid gap-5">
+        <legend className="mb-4 type-heading">Clips and promos</legend>
+        <Field label="Clips" hint={`Part of something longer: a scene, a moment, a short cut from an episode. ${format.count(current.known_clips, 'video is', 'videos are')} known to be one. Several episodes joined are not clips, and a video nothing is known of is always shown.`}>
+          <NativeSelect value={f.clips} onChange={set('clips')}>
+            <option value="show">Show them</option>
+            <option value="hide">Leave them out</option>
+          </NativeSelect>
+        </Field>
+        <Field label="Promos" hint={`Trailers, adverts and announcements. ${format.count(current.known_promos, 'video is', 'videos are')} known to be one.`}>
+          <NativeSelect value={f.promos} onChange={set('promos')}>
+            <option value="show">Show them</option>
+            <option value="hide">Leave them out</option>
           </NativeSelect>
         </Field>
       </fieldset>

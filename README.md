@@ -32,6 +32,7 @@ Tubes keeps its own tables (the library, cache copies, plays) in a database thro
 | `tubes related [--all] [-v]` | asks YouTube which channels the followed and most watched ones point at (watch pages' next column, featured channels), each again after a week, and suggests them |
 | Admin > Suggestions: Paste channels to follow | YouTube links, @handles, iPlayer programme or episode links, or names (looked up on both), one a line, become suggestions to follow |
 | `tubes groups [load FILE]` | lists the groups of videos the Groups page shows, or loads them from a JSON file in place of those there |
+| `tubes extents [load FILE]` | counts the videos known to be a full episode, a clip, a promo..., or loads answers from a JSON file |
 | `tubes fetch <id>` | fetches one video into the cache now |
 | `tubes cache` / `tubes evict [--dry-run]` | shows the cache with each copy's score / trims it |
 | `tubes set [key [value]]` | shows or changes a setting (`default` resets one) |

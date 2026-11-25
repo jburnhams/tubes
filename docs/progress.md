@@ -1,5 +1,12 @@
 # Progress log
 
+## 2026-11-25: clips and promos can be left out
+
+- Asked for: a setting in Shown videos that hides clips and promos. Several episodes joined in one long video are fine; only clips and incomplete episodes are bad.
+- `video_extents` (migration `d0b6a1f4c953`) keeps how much of a thing a video is (`extents.py`: full episode, several episodes, clip, promo, standalone) and what said so, weakest first: a local model, a language model, a rule, a person. A later answer replaces an equal or weaker one only.
+- Two choices in `library.FILTERS`, `clips` and `promos`, both `show` until set. They go through `library.shown()`, so every list, count, group and picture follows. `v.id NOT IN (…)` rather than a join: every query that uses `shown()` would need the join, and Postgres reads the set once (hashed) even inside the CASE counts.
+- Answers come from outside for now: `tubes extents load FILE`. Not done: working them out for new videos at each sync.
+
 ## 2026-11-25: groups of videos, and a rail of pages
 
 - Asked for: the side rail's channel list replaced by one link to the Channels page, and a Groups link to a page of groups, each with a title and a thumbnail that changes on each load, picked from the videos that most represent the group (the top 5%, or 10 if that is more).

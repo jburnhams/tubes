@@ -117,6 +117,20 @@ describe('Settings', () => {
     expect(mock.shown).toMatchObject({ region: 'GB', languages: ['en', 'fr'], unknown_language: 'hide', captions: 'only', min_seconds: null })
   })
 
+  it('leaves clips and promos out when chosen, saying how many are known', async () => {
+    const { user } = openApp('/admin/settings?tab=shown')
+    const clips = await screen.findByRole('combobox', { name: 'Clips' })
+    expect(clips).toHaveValue('show')
+    expect(clips).toHaveAccessibleDescription(/1,840\svideos are known to be one/)
+    await user.selectOptions(clips, 'Leave them out')
+    const promos = screen.getByRole('combobox', { name: 'Promos' })
+    expect(promos).toHaveAccessibleDescription(/126\svideos are known to be one/)
+    await user.selectOptions(promos, 'Leave them out')
+    await user.click(screen.getByRole('button', { name: 'Save filters' }))
+    await waitFor(() => expect(mock.shown).toMatchObject({ clips: 'hide', promos: 'hide' }))
+    expect(await screen.findByText(/^1,966\svideos are left out by these now\./)).toBeInTheDocument()
+  })
+
   it('starts the country, languages and subtitles from the server, and clearing them saves no limit', async () => {
     server.use(shownSet)
     const { user } = openApp('/admin/settings?tab=shown')

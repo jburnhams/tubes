@@ -2914,9 +2914,27 @@
       "title": "Captions",
       "type": "string"
      },
+     "clips": {
+      "enum": [
+       "show",
+       "hide"
+      ],
+      "title": "Clips",
+      "type": "string"
+     },
      "filtered": {
       "description": "How many videos these leave out now.",
       "title": "Filtered",
+      "type": "integer"
+     },
+     "known_clips": {
+      "description": "Videos known to be a clip: part of something longer.",
+      "title": "Known Clips",
+      "type": "integer"
+     },
+     "known_promos": {
+      "description": "Videos known to be a trailer, an advert or an announcement.",
+      "title": "Known Promos",
       "type": "integer"
      },
      "language_counts": {
@@ -2956,6 +2974,14 @@
       ],
       "title": "Min Seconds"
      },
+     "promos": {
+      "enum": [
+       "show",
+       "hide"
+      ],
+      "title": "Promos",
+      "type": "string"
+     },
      "region": {
       "anyOf": [
        {
@@ -2993,6 +3019,10 @@
      "languages",
      "unknown_language",
      "captions",
+     "clips",
+     "promos",
+     "known_clips",
+     "known_promos",
      "filtered",
      "language_counts"
     ],
