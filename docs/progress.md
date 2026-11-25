@@ -1,5 +1,10 @@
 # Progress log
 
+## 2026-11-25: the page no longer scrolls sideways
+
+- Asked for: a horizontal scroll bar showed by default, with blank space to the right.
+- Home with a dozen videos in Continue watching was about 3,800 px wide at 1440: each card's "watched" words for screen readers are `sr-only` (absolutely placed), and with no positioned ancestor they were laid out against the page at the far end of the row, where the row's own scroll box could not clip them. The sample library has three such videos, so the screenshots never showed it. Card titles and the two sideways rows on Home are now `relative`; checked every watching and admin page at seven widths, with scroll bars shown, against the sample library and a long Continue watching row.
+
 ## 2026-11-25: a channel's own page shows everything
 
 - Asked for: viewing a channel's page should still show everything. Some channels publish mostly segments, and lost over half their videos to the clips filter.

@@ -71,8 +71,10 @@ export function VideoCard({ v, channel, showChannel = true, rank, className = ''
       <Link to={watchPath(v)} state={to} tabIndex={-1} aria-hidden><Picture v={v} /></Link>
       <div className="flex gap-3">
         {showChannel && <Link to={`/channels/${encodeURIComponent(v.channel_id)}`} state={toChannel} tabIndex={-1} aria-hidden><Avatar channel={channel} name={v.channel} /></Link>}
+        {/* The title is `relative` so its sr-only words are placed inside it: placed against the page instead, they escape a row
+            that scrolls sideways (Continue watching) and widen the whole page by the row's length. */}
         <div className="grid min-w-0 content-start gap-1">
-          <Link to={watchPath(v)} state={to} className="line-clamp-2 text-tube-base font-medium text-tube-ink">{v.title}{watchedText(v) && <span className="sr-only">{watchedText(v)}</span>}</Link>
+          <Link to={watchPath(v)} state={to} className="relative line-clamp-2 text-tube-base font-medium text-tube-ink">{v.title}{watchedText(v) && <span className="sr-only">{watchedText(v)}</span>}</Link>
           {showChannel && <Link to={`/channels/${encodeURIComponent(v.channel_id)}`} state={toChannel} className="text-tube-sm text-tube-quiet hover:text-tube-ink">{v.channel ?? channel?.title ?? 'Channel'}</Link>}
           <span className="text-tube-sm text-tube-quiet">{viewsAndAge(v)}</span>
         </div>
@@ -113,7 +115,7 @@ export function VideoRow({ v, channel, size = 'large', rank }: { v: Video; chann
       <Link to={watchPath(v)} state={fromState(here, rank)} className={`flex items-start ${large ? 'flex-col gap-3 sm:flex-row sm:gap-4' : 'gap-2'}`}>
         <Picture v={v} className={large ? 'w-full shrink-0 sm:w-80 lg:w-96' : 'w-40 shrink-0'} />
         <span className={`grid min-w-0 content-start ${large ? 'gap-2 pt-1' : 'gap-1'}`}>
-          <span className={`line-clamp-2 font-medium text-tube-ink ${large ? 'text-tube-lg' : 'text-tube-sm'}`}>{v.title}{watchedText(v) && <span className="sr-only">{watchedText(v)}</span>}</span>
+          <span className={`relative line-clamp-2 font-medium text-tube-ink ${large ? 'text-tube-lg' : 'text-tube-sm'}`}>{v.title}{watchedText(v) && <span className="sr-only">{watchedText(v)}</span>}</span>
           {large && <span className="text-tube-xs text-tube-quiet">{viewsAndAge(v)}</span>}
           <span className="flex items-center gap-2 text-tube-xs text-tube-quiet">{large && <Avatar channel={channel} name={v.channel} size="size-6" />}{v.channel ?? channel?.title}</span>
           {!large && <span className="text-tube-xs text-tube-quiet">{viewsAndAge(v)}</span>}
