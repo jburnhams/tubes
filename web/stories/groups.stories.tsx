@@ -20,7 +20,7 @@ export const Loading: Story = { beforeEach: ({ msw }) => msw.use(groupsLoading) 
 export const ServerError: Story = { beforeEach: ({ msw }) => msw.use(groupsError) }
 export const Phone: Story = { tags: ['visual-phone'] }
 
-/** One group's videos, newest first, each with its channel. */
+/** One group's videos, those that represent it best first, each with its channel. */
 export const Group: Story = { render: () => <AppAt route={group} /> }
 export const GroupVideosLoading: Story = { render: () => <AppAt route={group} />, beforeEach: ({ msw }) => msw.use(videosLoading) }
 export const NoSuchGroup: Story = { render: () => <AppAt route="/groups/99" /> }

@@ -100,9 +100,10 @@ export const unfinished: ContinueVideo[] = (['ri000000002', 'wo000000003', 'ni00
   return { ...v, resume, progress: Math.round((resume / v.duration!) * 1e4) / 1e4 }
 })
 
-/** Groups of videos, which may overlap, largest first as the server lists them: one across three channels, one within one, one without a picture. */
+/** Groups of videos, which may overlap, largest first as the server lists them: one across two channels, one within one, one without a picture.
+ *  Each group's videos are in order of how well they represent it, not of date. */
 export const groupMembers: Record<number, string[]> = {
-  3: videos.filter(v => /star|moon|space|wave|sea|tide/i.test(v.title)).map(v => v.id),
+  3: videos.filter(v => /star|moon|space|wave|sea|tide/i.test(v.title)).map(v => v.id).reverse(),
   1: videos.filter(v => v.id.startsWith('wo')).map(v => v.id).slice(0, 4),
   2: videos.filter(v => /bird|bread/i.test(v.title)).map(v => v.id),
 }

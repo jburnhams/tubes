@@ -149,25 +149,53 @@ def test_a_file_that_is_not_groups_is_refused_and_changes_nothing(content, why):
     assert [g["name"] for g in groups.listing()] == ["Shelves"]
 
 
-def test_a_groups_videos_are_a_page_at_a_time_newest_first():
+def test_a_groups_videos_are_a_page_at_a_time_those_that_represent_it_best_first():
     seed()
-    load(("Mixed", None, [[A, 1], [C, 1], [D, 1]]))
+    load(("Mixed", None, [[A, 0.2], [B, 0.5], [C, 0.9], [D, 0.5]]), ("Other", None, [[A, 9], [B, 0.1]]))
     page = library.videos(group_id=1, limit=2)
-    assert ([v["id"] for v in page["videos"]], page["has_more"]) == ([A, C], True)
+    assert ([v["id"] for v in page["videos"]], page["has_more"]) == ([C, B], True)  # B and D score the same: by id
     rest = library.videos(group_id=1, limit=2, after=library.cursor(page["videos"][-1]))
-    assert ([v["id"] for v in rest["videos"]], rest["has_more"]) == ([D], False)
+    assert ([v["id"] for v in rest["videos"]], rest["has_more"]) == ([D, A], False)
     assert library.videos(group_id=9)["videos"] == []
+
+
+def test_every_video_of_a_group_comes_once_however_it_is_paged_even_when_scores_are_equal():
+    many = [video(f"v{n:010d}", 0) for n in range(23)]
+    seed(videos=many)
+    load(("Same", None, [[v["id"], 1 / 3 if n % 2 else 0.1 + 0.2] for n, v in enumerate(many)]))
+    got, after = [], None
+    while True:
+        page = library.videos(group_id=1, limit=4, after=after)
+        got += [v["id"] for v in page["videos"]]
+        if not page["has_more"]:
+            break
+        after = library.cursor(page["videos"][-1])
+    assert len(got) == 23 and set(got) == {v["id"] for v in many}
+
+
+def test_a_cursor_whose_video_has_left_the_group_ends_the_list():
+    seed()
+    load(("Mixed", None, [[A, 1], [C, 2]]))
+    assert library.videos(group_id=1, after="2026-01-01T00:00:00Z|gone0000000") == dict(videos=[], has_more=False)
+
+
+def test_the_videos_that_may_picture_a_group_come_first_on_its_page():
+    many = [video(f"v{n:010d}", 0) for n in range(60)]
+    seed(videos=many)
+    load(("Big", None, [[v["id"], (n * 7) % 60] for n, v in enumerate(many)]))
+    pictures = [r["video_id"] for r in groups._rows(None)]
+    assert [v["id"] for v in library.videos(group_id=1, limit=10)["videos"]] == pictures
 
 
 def test_the_api_lists_groups_and_their_videos():
     seed()
-    load(("Shelves", "topic", [[A, 1], [B, 1]]))
+    load(("Shelves", "topic", [[A, 1], [B, 2]]))
     client = TestClient(create_app())
     (g,) = client.get("/api/groups").json()
     assert (g["id"], g["name"], g["videos"]) == (1, "Shelves", 2) and g["thumbnail_video"] in (A, B)
     assert client.get("/api/groups/1").json()["name"] == "Shelves"
     assert client.get("/api/groups/2").status_code == 404
-    assert [v["id"] for v in client.get("/api/videos?group=1").json()["videos"]] == [A, B]
+    assert [v["id"] for v in client.get("/api/videos?group=1").json()["videos"]] == [B, A]
 
 
 def test_a_play_from_a_group_says_which_group():

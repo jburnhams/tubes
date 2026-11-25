@@ -330,7 +330,7 @@ def create_app(recover: bool = True) -> FastAPI:
             if (channel or group is not None) and not q and not after:
                 ahead.want(
                     [v["id"] for v in r["videos"] if v["id"] not in gone][:12]
-                )  # a channel's or group's newest: prefetch their starts (Home's are anyway)
+                )  # the first a channel's or group's page offers: prefetch their starts (Home's are anyway)
             if not gone:
                 return r
             shown = [v for v in r["videos"] if v["id"] not in gone]
