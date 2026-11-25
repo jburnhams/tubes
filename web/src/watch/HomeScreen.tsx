@@ -16,14 +16,15 @@ function Chips() {
   const channels = useLoad({ queryKey: keys.channels, queryFn: api.channels })
   const chip = 'shrink-0 rounded-tube-sm px-3 py-1.5 text-tube-sm font-medium'
   return (
-    <nav aria-label="Channels" className="-mt-2 mb-6 flex gap-3 overflow-x-auto pb-1">
+    <nav aria-label="Channels" className="relative -mt-2 mb-6 flex gap-3 overflow-x-auto pb-1">
       <span aria-current="page" className={`${chip} bg-tube-ink text-tube-page`}>All</span>
       {channels.status === 'ready' && channels.data.map((c, i) => <Link key={c.id} to={`/channels/${encodeURIComponent(c.id)}`} state={fromState({ source: 'chips' }, i)} className={`${chip} bg-tube-chip text-tube-ink hover:bg-tube-chip-hover`}>{c.title}</Link>)}
     </nav>
   )
 }
 
-/** The part-watched videos as one row that scrolls sideways, so it never pushes the newest far down. */
+/** The part-watched videos as one row that scrolls sideways, so it never pushes the newest far down. The row is `relative`
+ *  so anything absolutely placed in it is clipped by its scroll box, not laid out against the page (which then scrolls sideways). */
 export function ContinueWatching() {
   const load = useLoad({ queryKey: keys.continueWatching, queryFn: () => api.continueWatching() })
   const byId = useChannelsById()
@@ -33,7 +34,7 @@ export function ContinueWatching() {
         <section aria-labelledby="continue" className="mb-10 grid gap-4">
           <h2 id="continue" className="text-tube-lg font-bold">Continue watching</h2>
           <FromHere source="continue">
-            <ul aria-label="Continue watching" className="flex gap-4 overflow-x-auto pb-2">
+            <ul aria-label="Continue watching" className="relative flex gap-4 overflow-x-auto pb-2">
               {vs.map((v, i) => <VideoCard key={v.id} v={v} channel={byId.get(v.channel_id)} rank={i} className="w-72 shrink-0" />)}
             </ul>
           </FromHere>
