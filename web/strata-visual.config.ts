@@ -102,7 +102,9 @@ export default defineVisualConfig({
         states: {
           playing: { setup: firstFrame },
           // Still being fetched: the player says so with the copy's progress.
-          growing: { handlers: streamIn('playable'), setup: firstFrame },
+          // The two-second test card can run to its end (the player then says it waits for more) before it is held, and how far it got
+          // depends on the machine: hold it, wait until the player stops waiting, and hold it again.
+          growing: { handlers: streamIn('playable'), setup: async page => { await firstFrame(page); await page.getByText('Waiting for more to be made', { exact: false }).waitFor({ state: 'hidden' }); await firstFrame(page) } },
           // An automatic part reached while playing (the player acts only then): skipped, with Undo over the picture.
           skipped: { handlers: [partsAt([{ category: 'sponsor', start: 0.5, end: 1.5, action: 'skip' }])], setup: async page => { await firstFrame(page); await seekTo(page, 0.3); await page.getByRole('button', { name: 'Play', exact: true }).click(); await page.getByText('Skipped sponsor').waitFor(); await page.getByRole('button', { name: 'Pause', exact: true }).click(); await page.mouse.move(0, 0); await seekTo(page, 1.5) } },
           // The parts to skip could not be read: the video plays as it is, with Try again.
