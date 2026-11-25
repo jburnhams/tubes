@@ -38,6 +38,9 @@ describe('Groups', () => {
   it('reports a picture that cannot be loaded as a missing video', async () => {
     openApp('/groups')
     const img = (await screen.findByRole('list', { name: 'Groups' })).querySelector('img')!
+    fireEvent.load(img)        // a picture that loads is not reported
+    await act(flush)
+    expect(mock.checks).toEqual([])
     fireEvent.error(img)
     await act(flush)
     expect(mock.checks).toEqual([[sky.thumbnail_video]])

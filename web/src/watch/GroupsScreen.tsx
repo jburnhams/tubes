@@ -15,7 +15,7 @@ export function GroupPicture({ g, className = '' }: { g: VideoGroup; className?:
   const src = g.thumbnail ? [g.thumbnail, fallbackThumbnail(g.thumbnail)].filter((s): s is string => !!s) : null
   return (
     <Thumbnail src={src} alt="" aspect="16/9" eager className={`block rounded-tube ${className}`} fallback={<span className="block size-full bg-tube-chip" />}
-      onLoad={img => !isPlaceholder(img)} onMissing={() => { if (g.thumbnail_video) reportMissing(g.thumbnail_video) }} />
+      onLoad={img => !isPlaceholder(img)} onMissing={g.thumbnail_video === null ? undefined : () => reportMissing(g.thumbnail_video!)} />
   )
 }
 
