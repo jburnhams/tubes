@@ -6,6 +6,10 @@
 - `scripts/regroup.py` (run by `uv run`, with its own libraries: NumPy, scikit-learn, igraph, Leiden) reads the library and writes a file of groups; `tubes groups renew` puts them in place of those there. It is the clustering the first groups came from, rewritten to be exact (no approximate neighbours) and so repeatable: 77,791 videos in about 2 minutes, then the language model names the new groups (27 questions, waiting behind other work; a few cents, against `sort_usd`).
 - A group that matches one there keeps its id, name and kind and is not asked about. `renew` refuses new groups that hold fewer than half of those there, and carries over as it is any group of 30 videos or more that no new one holds 60% of (a rerun once cut a programme of 4,000 videos in two): measured with the newest 600 videos left out and put back, 273 of the 285 groups of 60 videos or more were held by one new group and the rest would be carried over.
 - `tubes groups dump FILE` writes the groups as a file that loads back, kept before each renew on the server.
+## 2026-11-25: the page no longer scrolls sideways
+
+- Asked for: a horizontal scroll bar showed by default, with blank space to the right.
+- Home with a dozen videos in Continue watching was about 3,800 px wide at 1440: each card's "watched" words for screen readers are `sr-only` (absolutely placed), and with no positioned ancestor they were laid out against the page at the far end of the row, where the row's own scroll box could not clip them. The sample library has three such videos, so the screenshots never showed it. Card titles and the two sideways rows on Home are now `relative`; checked every watching and admin page at seven widths, with scroll bars shown, against the sample library and a long Continue watching row.
 
 ## 2026-11-25: a channel's own page shows everything
 
