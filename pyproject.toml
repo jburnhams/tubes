@@ -1,5 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tubes"
+version = "0.1.0"        # the single source of truth: `tubes.__version__` reads it back with importlib.metadata
+description = "Home video server: a library of YouTube channels, iPlayer programmes and Plex films, fetched on first play and streamed while they download"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # strata-python brings FastAPI, uvicorn and pydantic, and with [db] SQLAlchemy, Alembic and psycopg (strata_python.db, the shared database);
+    # while it is 0.x a minor release may break, so the cap is the next minor (read its CHANGELOG before raising it). uv.lock pins the release.
+    "strata-python[db]>=0.2.22,<0.3",
+    "networkx",                          # suggestions: groups channels watched in the same sittings (Louvain communities, history.py)
+    "tzdata; sys_platform == 'win32'",   # IANA timezone database, needed on Windows for zoneinfo
+]
+
+[project.scripts]
+tubes = "tubes.cli:main"
+
+[dependency-groups]
+dev = [
+    "strata-python[dev]",   # ruff, pyright, ty, httpx and the pytest plugins (cov, randomly, timeout, xdist) at the versions strata-check expects
+    "hypothesis>=6",
+    "diff-cover>=9",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tubes"]
+# The React build is gitignored but must ship in a wheel: `cd web && npm run build` before `uv build`.
+artifacts = ["src/tubes/server/static/**"]
+
 [tool.pytest.ini_options]
-pythonpath = ["src", "tests/utils"]
+pythonpath = ["tests/utils"]          # tubes itself is installed (editable) by `uv sync`
 testpaths = ["tests/unit"]
 addopts = "-ra --timeout=300"
 filterwarnings = ["ignore:Using `httpx` with `starlette.testclient`"]       # TestClient noise from the installed starlette; remove when the dependency moves on

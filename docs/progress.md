@@ -1,5 +1,12 @@
 # Progress log
 
+## 2026-11-26: uv, as the other apps
+
+- Asked for: use uv if the other apps and the template do. They do: python-app-template, flashtap, strata-listory, strata-stills, bright-horizons, strata-scan, strata-voice and reels all build `.venv` from a committed `uv.lock`, and the server's nightly refresh runs `uv sync --inexact --locked --no-dev` for them; Tubes was the one app still on pip and `requirements.txt`.
+- `pyproject.toml` now has the template's `[project]` (dependencies, the `tubes` script, the version, read back by `tubes.__version__`), a `dev` dependency group in place of `requirements-test.txt`, and hatchling to install the package (editable) into `.venv`. `uv.lock` is new; `requirements*.txt` and `scripts/setup_env.*` are gone (`uv sync` and `npm ci && npm run build` do what they did). `./tubes`, `tubes.cmd` and `scripts/check` are the template's `uv run` wrappers; CI uses `astral-sh/setup-uv` and `uv sync --locked`; Dependabot watches uv instead of pip.
+- pytest no longer puts `src` on `sys.path` (the package is installed): with it there, `src/tubes.egg-info` (committed by mistake long ago, version 0.0.0) shadowed the installed metadata and the version read as 0.0.0. It is removed and ignored.
+- `./tubes serve` stopped by SIGTERM now exits 143 (uv run reports the signal its child died of), where Python alone died of the signal, which systemd counts as clean. A unit with `OnFailure=` needs `SuccessExitStatus=143` (docs/deploy.md), as flashtap's does.
+
 ## 2026-11-25: strata-python 0.2.22 for strata-models' bulk endpoint
 
 - strata-models now takes a normal or low priority job only on its bulk endpoint (`POST /api/jobs` is for one high priority job). The sort's `priority="low"` call goes through `strata_python.clients.models.run`, which sends it there from 0.2.22 on, so `requirements.txt` and `requirements-test.txt` now ask for `>=0.2.22`. The sort stays one call at a time, since it learns from each answer.

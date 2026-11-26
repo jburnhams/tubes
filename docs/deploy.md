@@ -6,8 +6,9 @@ A Linux or macOS machine with a large disk and a residential connection (fetchin
 
 ```bash
 git clone https://github.com/jburnhams/tubes && cd tubes
-./scripts/setup_env.sh                     # .venv, dependencies, web build
-strata-db new-app tubes                    # its own role and schema in the shared Postgres (strata_python.db)
+uv sync --locked --no-dev                  # .venv from uv.lock (uv: https://docs.astral.sh/uv/)
+(cd web && npm ci && npm run build)        # the web app
+uv run strata-db new-app tubes                    # its own role and schema in the shared Postgres (strata_python.db)
 ./tubes set cache_dir /srv/tubes/cache     # on the big disk
 ./tubes set cache_limit_gb 1000
 ```
@@ -43,14 +44,18 @@ After=network-online.target postgresql.service
 [Service]
 WorkingDirectory=%h/src/tubes
 EnvironmentFile=%h/.config/<somewhere>/env
-ExecStart=%h/src/tubes/tubes serve --host 127.0.0.1 --port 8367
+# `--locked` refuses to start if uv.lock and pyproject.toml disagree, instead of silently changing the environment. systemd does not
+# search ~/.local/bin, so give uv's full path (`command -v uv` shows it) or put its folder on the unit's PATH.
+ExecStart=%h/.local/bin/uv run --locked --no-dev tubes serve --host 127.0.0.1 --port 8367
+# uv run exits 143 when systemd stops it with SIGTERM (the app itself dies of the signal, which systemd counts as clean): a planned stop is not a failure.
+SuccessExitStatus=143
 Restart=on-failure
 
 [Install]
 WantedBy=default.target
 ```
 
-`tubes-sync.service` (`Type=oneshot`, same `WorkingDirectory` and `EnvironmentFile`, `ExecStart=/bin/sh -c './tubes sync; ./tubes related; ./tubes evict'`) and `tubes-sync.timer` (`OnCalendar=*-*-* 00/4:00:00`, `Persistent=true`). Then `systemctl --user daemon-reload && systemctl --user enable --now tubes.service tubes-sync.timer`, and `loginctl enable-linger` so they run without a login.
+`tubes-sync.service` (`Type=oneshot`, same `WorkingDirectory` and `EnvironmentFile`, `ExecStart=/bin/sh -c './tubes sync; ./tubes related; ./tubes evict'`; `./tubes` is `uv run tubes`, so uv must be on the unit's `PATH`) and `tubes-sync.timer` (`OnCalendar=*-*-* 00/4:00:00`, `Persistent=true`). Then `systemctl --user daemon-reload && systemctl --user enable --now tubes.service tubes-sync.timer`, and `loginctl enable-linger` so they run without a login.
 
 ## 4. Reverse proxy
 
