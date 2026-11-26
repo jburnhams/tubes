@@ -10,7 +10,8 @@ A home video server: it keeps a video library (YouTube channels and videos, adde
 ## Quick start
 
 ```bash
-./scripts/setup_env.sh              # .venv, Python and web dependencies, web build (Windows: scripts\setup_env.ps1)
+uv sync                             # .venv from uv.lock (https://docs.astral.sh/uv/); ./tubes runs `uv run tubes`
+(cd web && npm ci && npm run build) # the web app, built into src/tubes/server/static
 export YOUTUBE_API_KEY=...          # a YouTube Data API v3 key (YOUTUBE_API_REFERER too if the key is restricted to a site)
 ./tubes doctor                      # yt-dlp, ffmpeg, the database, the YouTube key
 ./tubes add https://www.youtube.com/@somechannel   # follow a channel and fetch its videos' details

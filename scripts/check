@@ -1,9 +1,4 @@
 #!/bin/bash
 # The one gate, from strata-python (see its README): scripts/check [--fast|--fix]. CI runs the same.
-# Tubes installs with pip, not uv: strata-check runs from .venv when there is one, else from the environment that is active.
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$DIR/.." || exit 1
-for bin in .venv/bin/strata-check .venv/Scripts/strata-check.exe; do
-  [ -x "$bin" ] && exec "$bin" "$@"
-done
-exec strata-check "$@"
+cd "$DIR/.." && exec uv run --locked strata-check "$@"

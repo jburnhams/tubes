@@ -36,7 +36,7 @@ if TYPE_CHECKING:
     from fastapi import FastAPI
 
 IMPORTS = ("fastapi", "uvicorn", "pydantic", "sqlalchemy", ("networkx (suggestion groups)", "networkx"))
-HINT = "pip install -r requirements.txt"
+HINT = "uv sync"
 
 
 def _tool(version: Callable[[], str | None], fix: str) -> Callable[[], tuple[strata_cli.Status, str]]:
