@@ -15,7 +15,8 @@
 //   be one tap from skipped; the time limit ends a break whose page never says so (it failed to load, the
 //   server it is on is down), so a broken page cannot hold the video for good.
 // - Break now (under the player while breaks are on) brings the next break forward: it starts at once, and
-//   ending it starts the clock again from 0 as any break does.
+//   ending it starts the clock again from 0 as any break does. It counts down the playing time left to the
+//   next break (`left`), which stands still while the video is paused, as the clock does.
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { Break } from '../api'
 import { MAX_STEP } from './progress'
@@ -66,10 +67,11 @@ export class PlayClock {
   }
 }
 
-/** The break for the video in `ref`: whether one is up, `start` to take it now, and `end` to finish it (the clock starts again and the
- *  video plays on). */
-export function useBreak(ref: RefObject<HTMLVideoElement | null>, b: Break | undefined): { due: boolean; start: () => void; end: () => void } {
+/** The break for the video in `ref`: whether one is up, the seconds of playing `left` before the next, `start` to take it now, and `end`
+ *  to finish it (the clock starts again and the video plays on). */
+export function useBreak(ref: RefObject<HTMLVideoElement | null>, b: Break | undefined): { due: boolean; left: number; start: () => void; end: () => void } {
   const [due, setDue] = useState(false)
+  const [played, setPlayed] = useState(0)                         // whole seconds, for the countdown: the clock itself keeps fractions
   const dueRef = useRef(false)
   const clock = useRef<PlayClock | null>(null)
   const url = b?.url, seconds = (b?.minutes ?? 0) * 60
@@ -79,7 +81,8 @@ export function useBreak(ref: RefObject<HTMLVideoElement | null>, b: Break | und
     const c = (clock.current = new PlayClock(readPlayed()))
     c.jump(video.currentTime)
     let kept = Math.round(c.played)
-    const keep = () => { if (Math.round(c.played) !== kept) writePlayed((kept = Math.round(c.played))) }
+    setPlayed(kept)
+    const keep = () => { if (Math.round(c.played) !== kept) { writePlayed((kept = Math.round(c.played))); setPlayed(kept) } }
     const onTime = () => {
       if (dueRef.current) return
       if (video.paused || video.seeking) return c.jump(video.currentTime)
@@ -111,9 +114,10 @@ export function useBreak(ref: RefObject<HTMLVideoElement | null>, b: Break | und
     setDue(false)
     clock.current!.played = 0                        // a break is only due once the clock runs
     writePlayed(0)
+    setPlayed(0)
     void ref.current!.play().catch(() => undefined)   // a browser that refuses leaves the video paused, with its play button
   }, [ref])
-  return { due, start, end }
+  return { due, left: Math.max(0, seconds - played), start, end }
 }
 
 /** The break's page, filling the picture, until it says it is done or `limitMinutes` pass. */

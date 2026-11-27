@@ -1,5 +1,9 @@
 # Progress log
 
+## 2026-11-27: Break now counts down
+
+- Asked for: the Break now button shows a countdown to the next break. It reads "Break now · next in 12:34": the playing time left (`useBreak().left`), which stands still while the video is paused, as the clock does, and is back to the full interval after a break.
+
 ## 2026-11-27: Break now
 
 - Asked for: a button on the Watch page to take the next break at once, which also starts the count to the following one again. Break now sits in the player's `status` row (under the controls, hidden with them in idle full screen) while breaks are on and none is up; it pauses the video and shows the page as a due break does, and ending it resets the count (`useBreak().start`).
