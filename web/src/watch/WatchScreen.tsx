@@ -18,7 +18,7 @@
 // already on the server, with Start over beside the picture for a few seconds. Up next offers the part
 // watched videos first, then a shuffle of the library. Every so many minutes of playing, a break may pause it
 // and show another page over the picture until that page says it is done (break.tsx, Admin > Settings > Breaks);
-// Break now under the player takes the next one at once.
+// Break now under the player takes the next one at once, and counts down the playing time to it.
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
@@ -96,7 +96,7 @@ export function Player({ src, title, heading, segments, kinds, length, growing, 
     <div ref={box}>
       <MediaPlayer kind="video" label={title} sources={[{ src, title, duration: length ?? undefined }]} attach={attach} autoPlay growing={growing !== undefined ? { status: growing } : undefined}
         spans={spans} spanKinds={spanKinds} onSpan={onSpan} warning={warning} heading={pause.due && breakNow?.url ? undefined : heading}
-        status={breakNow?.url && !pause.due ? <Button variant="ghost" size="sm" onClick={pause.start}>Break now</Button> : undefined}
+        status={breakNow?.url && !pause.due ? <Button variant="ghost" size="sm" onClick={pause.start}>Break now · next in <span className="tabular-nums">{runningTime(pause.left)}</span></Button> : undefined}
         overlay={media => pause.due && breakNow?.url ? <BreakFrame url={breakNow.url} limitMinutes={breakNow.limit_minutes} onDone={pause.end} /> : picked && (
           <p role="status" className="absolute bottom-3 left-3 flex items-center gap-2 rounded-overlay border border-border bg-background px-3 py-1 type-body-sm text-foreground shadow-overlay">
             Picked up at {runningTime(from)}
