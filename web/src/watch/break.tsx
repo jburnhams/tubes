@@ -14,6 +14,8 @@
 //   frame itself, from the origin of the configured link, counts. There is no close button, or a break would
 //   be one tap from skipped; the time limit ends a break whose page never says so (it failed to load, the
 //   server it is on is down), so a broken page cannot hold the video for good.
+// - Break now (under the player while breaks are on) brings the next break forward: it starts at once, and
+//   ending it starts the clock again from 0 as any break does.
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import type { Break } from '../api'
 import { MAX_STEP } from './progress'
@@ -64,8 +66,9 @@ export class PlayClock {
   }
 }
 
-/** The break for the video in `ref`: whether one is up, and `end` to finish it (the clock starts again and the video plays on). */
-export function useBreak(ref: RefObject<HTMLVideoElement | null>, b: Break | undefined): { due: boolean; end: () => void } {
+/** The break for the video in `ref`: whether one is up, `start` to take it now, and `end` to finish it (the clock starts again and the
+ *  video plays on). */
+export function useBreak(ref: RefObject<HTMLVideoElement | null>, b: Break | undefined): { due: boolean; start: () => void; end: () => void } {
   const [due, setDue] = useState(false)
   const dueRef = useRef(false)
   const clock = useRef<PlayClock | null>(null)
@@ -98,6 +101,11 @@ export function useBreak(ref: RefObject<HTMLVideoElement | null>, b: Break | und
       keep()
     }
   }, [ref, url, seconds])
+  const start = useCallback(() => {
+    dueRef.current = true
+    setDue(true)
+    ref.current!.pause()
+  }, [ref])
   const end = useCallback(() => {
     dueRef.current = false
     setDue(false)
@@ -105,7 +113,7 @@ export function useBreak(ref: RefObject<HTMLVideoElement | null>, b: Break | und
     writePlayed(0)
     void ref.current!.play().catch(() => undefined)   // a browser that refuses leaves the video paused, with its play button
   }, [ref])
-  return { due, end }
+  return { due, start, end }
 }
 
 /** The break's page, filling the picture, until it says it is done or `limitMinutes` pass. */
