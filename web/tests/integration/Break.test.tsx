@@ -65,6 +65,20 @@ describe('Breaks', () => {
     expect(frame()).not.toBeNull()
   })
 
+  it('comes at once on Break now, and the count starts again after it', async () => {
+    localStorage.setItem(PLAYED_KEY, '30')
+    const { user } = openApp(`/watch/${id}`)
+    await ready()
+    await user.click(await screen.findByRole('button', { name: 'Break now' }))
+    expect(frame()).toHaveAttribute('src', '/games/play?embed=1')
+    expect(pause).toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Break now' })).not.toBeInTheDocument()
+    done()
+    expect(frame()).toBeNull()
+    expect(localStorage.getItem(PLAYED_KEY)).toBe('0')
+    expect(screen.getByRole('button', { name: 'Break now' })).toBeInTheDocument()
+  })
+
   it('never comes while breaks are off', async () => {
     mock.settings = { ...mock.settings, break_on: 'false' }
     openApp(`/watch/${id}`)
@@ -72,6 +86,7 @@ describe('Breaks', () => {
     playFor(0, 120)
     expect(frame()).toBeNull()
     expect(localStorage.getItem(PLAYED_KEY)).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Break now' })).not.toBeInTheDocument()
   })
 
   it('says how a page ends a break, and saves the settings', async () => {

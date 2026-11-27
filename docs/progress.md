@@ -1,5 +1,9 @@
 # Progress log
 
+## 2026-11-27: Break now
+
+- Asked for: a button on the Watch page to take the next break at once, which also starts the count to the following one again. Break now sits in the player's `status` row (under the controls, hidden with them in idle full screen) while breaks are on and none is up; it pauses the video and shows the page as a due break does, and ending it resets the count (`useBreak().start`).
+
 ## 2026-11-26: uv, as the other apps
 
 - Asked for: use uv if the other apps and the template do. They do: python-app-template, flashtap, strata-listory, strata-stills, bright-horizons, strata-scan, strata-voice and reels all build `.venv` from a committed `uv.lock`, and the server's nightly refresh runs `uv sync --inexact --locked --no-dev` for them; Tubes was the one app still on pip and `requirements.txt`.
