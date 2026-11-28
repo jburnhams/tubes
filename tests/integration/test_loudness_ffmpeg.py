@@ -60,7 +60,8 @@ def test_a_whole_copy_is_measured_and_its_gain_given(monkeypatch):
     assert r["integrated"] == pytest.approx(
         -29.7, abs=1.0
     )  # a 440 Hz tone peaking at 0.05 (lavfi's sine is 1/8, times 0.4)
-    assert r["peak"] == pytest.approx(-25.0, abs=1.5)  # AAC overshoots the tone a little
+    # The tone peaks at -26 dBFS; how far the decoded AAC overshoots it depends on the ffmpeg build (-25 here, -21 on CI's Ubuntu).
+    assert -27 < r["peak"] < -15
     s = loudness.status(VID, 12)
     assert s["final"] is True and s["gain"] == loudness.factor(loudness.gain_db(r, 12, TARGET))
     assert 3 < s["gain"] < 4.5  # raised about 12 dB, short of the ceiling
