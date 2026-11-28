@@ -25,7 +25,7 @@ def database(db_env):
 @pytest.fixture(autouse=True)
 def loudness_waits(monkeypatch):
     """Reading a stream's status starts measuring its copy's loudness in a thread (loudness.ensure), which would run ffmpeg over every test's
-    stand-in segments while the test goes on. Here it is only noted (`loudness.START.started`); tests/unit/test_loudness.py runs it."""
+    stand-in segments while the test goes on. Here it is only noted (`loudness.START.started`); the loudness tests run it."""
     from tubes import loudness
 
     started: list[object] = []
