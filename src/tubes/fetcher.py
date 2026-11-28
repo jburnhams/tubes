@@ -49,7 +49,7 @@ from typing import Any
 from strata_python import oslib
 from strata_python.files import write_json_atomic
 
-from tubes import cache, catalogue, db, iplayer, plex, settings, ytdlp
+from tubes import cache, catalogue, db, iplayer, loudness, plex, settings, ytdlp
 from tubes.db import Row
 from tubes.shape import Json, arr
 
@@ -515,6 +515,8 @@ def _run(job: Job, url: str) -> None:
         with _lock:
             _running.pop(job.video_id, None)
         job.ended.set()
+    if not error:
+        loudness.ensure(job.video_id)  # whole or a prefetched start: measured now, so its next play starts at its level
     if ytdlp.says_blocked(error):
         catalogue.mark_blocked(job.video_id)  # not offered in this country: hidden until a fetch succeeds
     elif ytdlp.says_gone(error):
@@ -579,6 +581,8 @@ def _run_iplayer(job: Job, url: str) -> None:
             _running.pop(job.video_id, None)
         job.ended.set()
     if not error:
+        loudness.ensure(job.video_id)  # whole or a prefetched start: measured now, so its next play starts at its level
+    if not error:
         catalogue.mark_found(job.video_id)
         cache.evict(cache.utcnow())
     whole_after(job)
@@ -619,6 +623,7 @@ def _run_plex(job: Job, url: str) -> None:
             _running.pop(job.video_id, None)
         job.ended.set()
     if not error:
+        loudness.ensure(job.video_id)
         cache.evict(cache.utcnow())
 
 

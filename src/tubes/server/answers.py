@@ -230,6 +230,18 @@ class Checked(Answer):
 # --- playing ---------------------------------------------------------------------------------------------------------------------
 
 
+class Loudness(Answer):
+    gain: float | None = Field(
+        description="The factor the player plays the copy at, so every video is as loud (loudness.py); null: as it is (not measured, or not enough of it yet, or normalising is off)."
+    )
+    measured: float = Field(description="Seconds of the copy the figures are from.")
+    integrated: float | None = Field(description="Integrated loudness, LUFS; null when silent or not measured.")
+    peak: float | None = Field(description="Sample peak, dBFS; null when silent or not measured.")
+    final: bool = Field(
+        description="The whole copy has been measured (or normalising is off): the gain will not change again."
+    )
+
+
 class Stream(Answer):
     state: CacheState | Literal["none"] = Field(description="none: there is no copy and no fetch.")
     segments: int
@@ -240,6 +252,7 @@ class Stream(Answer):
     formats: str | None
     plays: int
     last_played: str | None
+    loudness: Loudness
 
 
 class Started(Stream):

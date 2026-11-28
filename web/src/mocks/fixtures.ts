@@ -22,6 +22,7 @@ export const defaultSettings: Settings = {
   history_url: '',
   history_table: '',
   sort_model: '', sort_usd: 2,
+  loudness_on: 'true', loudness_target: -16,
   break_on: 'false', break_url: '', break_minutes: 20, break_limit_minutes: 10,
   skip_sponsor: 'auto', skip_selfpromo: 'ask', skip_interaction: 'ask', skip_intro: 'ask', skip_outro: 'ask', skip_preview: 'ask', skip_hook: 'off', skip_filler: 'off', skip_music_offtopic: 'off',
 }
@@ -152,14 +153,16 @@ export const libraryEmpty: LibraryStatus = { synced: null, channels: 0, videos: 
 /** A key, but no channels yet. */
 export const libraryNew: LibraryStatus = { ...libraryEmpty, configured: true }
 
-const none: Stream = { state: 'none', segments: 0, seconds: 0, complete: false, playable: false, error: null, formats: null, plays: 0, last_played: null }
+/** Nothing measured yet: the player plays it as it is. */
+const unmeasured: Stream['loudness'] = { gain: null, measured: 0, integrated: null, peak: null, final: false }
+const none: Stream = { state: 'none', segments: 0, seconds: 0, complete: false, playable: false, error: null, formats: null, plays: 0, last_played: null, loudness: unmeasured }
 
 /** What `/stream` answers for a video in each sample state. */
 export const streams = {
   none,
   fetching: { ...none, state: 'fetching', formats: '1080p AV1 + AAC', plays: 1, last_played: '2026-11-09T09:00:00+00:00' } as Stream,
-  playable: { ...none, state: 'fetching', segments: 3, seconds: 12, playable: true, formats: '1080p AV1 + AAC', plays: 1, last_played: '2026-11-09T09:00:00+00:00' } as Stream,
-  ready: { ...none, state: 'ready', segments: 152, seconds: 606, complete: true, playable: true, formats: '1080p VP9 + AAC', plays: 4, last_played: '2026-11-09T09:00:00+00:00' } as Stream,
+  playable: { ...none, state: 'fetching', segments: 3, seconds: 12, playable: true, formats: '1080p AV1 + AAC', plays: 1, last_played: '2026-11-09T09:00:00+00:00', loudness: { gain: 1.413, measured: 12, integrated: -25.2, peak: -9.1, final: false } } as Stream,
+  ready: { ...none, state: 'ready', segments: 152, seconds: 606, complete: true, playable: true, formats: '1080p VP9 + AAC', plays: 4, last_played: '2026-11-09T09:00:00+00:00', loudness: { gain: 0.708, measured: 606, integrated: -13, peak: -0.4, final: true } } as Stream,
   failed: { ...none, state: 'failed', error: 'Video unavailable. This video is private.', formats: null, plays: 1, last_played: '2026-11-09T09:00:00+00:00' } as Stream,
 }
 

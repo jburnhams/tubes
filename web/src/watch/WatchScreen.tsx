@@ -19,6 +19,9 @@
 // watched videos first, then a shuffle of the library. Every so many minutes of playing, a break may pause it
 // and show another page over the picture until that page says it is done (break.tsx, Admin > Settings > Breaks);
 // Break now under the player takes the next one at once, and counts down the playing time to it.
+// Every video plays at the same loudness: the server measures each copy (src/tubes/loudness.py, again as a copy being fetched doubles)
+// and the stream status carries the gain, which the player applies so 100% is that level; the status is polled until the measurement is
+// final, so a copy that has just arrived whole still gets its last gain. Louder beside the volume goes on to 200%.
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Link, useParams } from 'react-router'
@@ -40,8 +43,20 @@ export const POLL_MS = 1000
 /** How many videos Up next offers. */
 export const UP_NEXT = 12
 
-/** Polling stops once the copy is whole or the fetch has failed. */
-export const settled = (s: Stream | undefined) => !!s && (s.complete || s.state === 'failed')
+/** Polling stops once the copy is whole and its loudness measured (the last measurement sets the final gain), or the fetch has failed. */
+export const settled = (s: Stream | undefined) => !!s && ((s.complete && s.loudness.final) || s.state === 'failed')
+
+/** How far past 100% the volume goes, behind the player's Louder toggle. */
+export const BOOST = 200
+
+/** What was done to the sound so every video plays as loud, in words. */
+export function soundText(l: Stream['loudness']): string {
+  if (l.gain === null) return l.final ? 'As it is' : 'Being measured'
+  const db = Math.round(20 * Math.log10(l.gain) * 10) / 10
+  const so = l.final ? '' : ' so far'
+  if (Math.abs(db) < 0.5) return `As it is: already at the usual level${so}`
+  return `${db > 0 ? 'Raised' : 'Lowered'} ${Math.abs(db).toFixed(1)}\u00a0dB to the usual level${so}`
+}
 
 /** What the frame says while the first seconds are on their way. */
 export function waitingText(s: Stream): string {
@@ -72,8 +87,10 @@ export const RESUME_MARGIN = 10
  *  Skip over the picture, an "auto" part is skipped (or muted) as it starts with Undo; a part skipped counts as seen. It reports how much
  *  is seen against `playId` (progress.ts), from the <video> inside it (MediaPlayer hands out its state, not its element). `start` is where
  *  it picks up, with "Picked up at" and Start over over the picture for a few seconds. `heading` is the title and channel the player draws
- *  across the top of the picture while it is paused or the pointer moves (strata-react #329). */
-export function Player({ src, title, heading, segments, kinds, length, growing, playId, start, warning }: { src: string; title: string; heading?: MediaHeading; segments: Segment[]; kinds: SegmentKind[]; length: number | null; growing?: string; playId: number; start: number; warning?: PlayerWarningEvent }) {
+ *  across the top of the picture while it is paused or the pointer moves (strata-react #329). `gain` is the copy's loudness normalisation
+ *  (src/tubes/loudness.py): 100% on the player's volume is the same loudness for every video, the player glides to each new gain as a
+ *  copy being fetched is measured again, and Louder takes it on to BOOST percent. */
+export function Player({ src, title, heading, segments, kinds, length, growing, playId, start, warning, gain }: { src: string; title: string; heading?: MediaHeading; segments: Segment[]; kinds: SegmentKind[]; length: number | null; growing?: string; playId: number; start: number; warning?: PlayerWarningEvent; gain?: number | null }) {
   const box = useRef<HTMLDivElement>(null)
   // The <video> as a ref for the progress report, read when its effect runs (the player is in the page by then).
   const element = useMemo(() => ({ get current() { return box.current!.querySelector('video')! } }), [])
@@ -95,7 +112,7 @@ export function Player({ src, title, heading, segments, kinds, length, growing, 
   return (
     <div ref={box}>
       <MediaPlayer kind="video" label={title} sources={[{ src, title, duration: length ?? undefined }]} attach={attach} autoPlay growing={growing !== undefined ? { status: growing } : undefined}
-        spans={spans} spanKinds={spanKinds} onSpan={onSpan} warning={warning} heading={pause.due && breakNow?.url ? undefined : heading}
+        spans={spans} spanKinds={spanKinds} onSpan={onSpan} warning={warning} gain={gain} boost={BOOST} heading={pause.due && breakNow?.url ? undefined : heading}
         status={breakNow?.url && !pause.due ? <Button variant="ghost" size="sm" onClick={pause.start}>Break now · next in <span className="tabular-nums">{runningTime(pause.left)}</span></Button> : undefined}
         overlay={media => pause.due && breakNow?.url ? <BreakFrame url={breakNow.url} limitMinutes={breakNow.limit_minutes} onDone={pause.end} /> : picked && (
           <p role="status" className="absolute bottom-3 left-3 flex items-center gap-2 rounded-overlay border border-border bg-background px-3 py-1 type-body-sm text-foreground shadow-overlay">
@@ -187,7 +204,7 @@ function Stage({ v }: { v: VideoDetail }) {
       ) : s.playable ? (
         <Player src={withBase(paths.playlist(copy))} title={v.title} heading={headingOf(v, channel)} segments={skips.status === 'ready' ? skips.data.segments : NONE} kinds={skips.status === 'ready' ? skips.data.categories : NO_KINDS} length={v.duration}
           growing={s.complete ? undefined : savedText(s, v.duration)} playId={started!.play_id} start={startAt(started!.resume, s)}
-          warning={warning} />
+          warning={warning} gain={s.loudness.gain} />
       ) : (
         <Frame><p role="status" className="text-tube-base opacity-80">{waitingText(s)}</p></Frame>
       )}
@@ -209,6 +226,7 @@ function Stage({ v }: { v: VideoDetail }) {
           <>
             <div className="flex gap-2"><dt className="text-tube-quiet">Copy</dt><dd className="tabular-nums">{savedText(s, v.duration)}</dd></div>
             <div className="flex gap-2"><dt className="text-tube-quiet">Quality</dt><dd>{s.formats ?? 'Chosen when the fetch starts'}</dd></div>
+            <div className="flex gap-2"><dt className="text-tube-quiet">Sound</dt><dd>{soundText(s.loudness)}</dd></div>
             <div className="flex gap-2"><dt className="text-tube-quiet">Played here</dt><dd className="tabular-nums">{s.plays === 1 ? 'once' : `${s.plays} times`}</dd></div>
           </>
         )}

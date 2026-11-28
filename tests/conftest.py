@@ -23,6 +23,22 @@ def database(db_env):
 
 
 @pytest.fixture(autouse=True)
+def loudness_waits(monkeypatch):
+    """Reading a stream's status starts measuring its copy's loudness in a thread (loudness.ensure), which would run ffmpeg over every test's
+    stand-in segments while the test goes on. Here it is only noted (`loudness.START.started`); tests/unit/test_loudness.py runs it."""
+    from tubes import loudness
+
+    started: list[object] = []
+
+    def note(work):
+        started.append(work)
+
+    note.started = started  # type: ignore[attr-defined]
+    monkeypatch.setattr(loudness, "START", note)
+    monkeypatch.setattr(loudness, "_measuring", set())
+
+
+@pytest.fixture(autouse=True)
 def checked_answers(monkeypatch):
     """Every 200 answer of a route that declares its model (server/answers.py) is validated against it, so the schema the web app's types
     come from cannot drift from what the server sends."""

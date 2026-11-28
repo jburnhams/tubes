@@ -17,7 +17,7 @@ import { modesOf, shown, spanKindsOf, spansOf } from '../../src/watch/skip'
 import { defaultSettings, defaultShown, kindsFor, sampleSegments } from '../../src/mocks/fixtures'
 import { episodes } from '../../src/mocks/fixtures'
 import { fallbackThumbnail, isPlaceholder } from '../../src/watch/missing'
-import { savedText, settled, startAt, upNext, waitingText } from '../../src/watch/WatchScreen'
+import { savedText, settled, soundText, startAt, upNext, waitingText } from '../../src/watch/WatchScreen'
 import { MAX_STEP, Seen } from '../../src/watch/progress'
 import { fromState } from '../../src/watch/from'
 import { describePasted, describeRelated, describeSuggestedBy, describeSuggestions, describeWatched, filterOf, groupChoices, placeOf } from '../../src/screens/SuggestionsScreen'
@@ -202,6 +202,8 @@ describe('the findings', () => {
     expect(settled(streams.ready)).toBe(true)
     expect(settled(streams.failed)).toBe(true)
     expect(settled(streams.playable)).toBe(false)
+    // Whole, but its loudness not measured to the end yet: asked again until the gain is final.
+    expect(settled({ ...streams.ready, loudness: { ...streams.ready.loudness, final: false } })).toBe(false)
     expect(waitingText(streams.none)).toBe('Asking for the video…')
     expect(waitingText({ ...streams.fetching, formats: null })).toBe('Finding the best copy to fetch…')
     expect(waitingText(streams.fetching)).toBe('Fetching 1080p AV1 + AAC. It starts in a moment.')
@@ -210,6 +212,14 @@ describe('the findings', () => {
     expect(savedText(streams.none, 606)).toBe('Not saved')
     expect(savedText(streams.playable, 606)).toBe('Fetching: 0:12 of 10:06 so far')
     expect(savedText(streams.playable, null)).toBe('Fetching: 0:12 so far')
+  })
+
+  it('Watch says what was done to the sound', () => {
+    expect(soundText(streams.ready.loudness)).toBe('Lowered 3.0\u00a0dB to the usual level')
+    expect(soundText(streams.playable.loudness)).toBe('Raised 3.0\u00a0dB to the usual level so far')
+    expect(soundText(streams.none.loudness)).toBe('Being measured')
+    expect(soundText({ ...streams.none.loudness, final: true })).toBe('As it is')
+    expect(soundText({ ...streams.ready.loudness, gain: 1.02 })).toBe('As it is: already at the usual level')
   })
 
   it('Settings checks every field before sending', () => {

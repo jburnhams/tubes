@@ -1460,6 +1460,65 @@
     "title": "LibraryStatus",
     "type": "object"
    },
+   "Loudness": {
+    "properties": {
+     "final": {
+      "description": "The whole copy has been measured (or normalising is off): the gain will not change again.",
+      "title": "Final",
+      "type": "boolean"
+     },
+     "gain": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "The factor the player plays the copy at, so every video is as loud (loudness.py); null: as it is (not measured, or not enough of it yet, or normalising is off).",
+      "title": "Gain"
+     },
+     "integrated": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Integrated loudness, LUFS; null when silent or not measured.",
+      "title": "Integrated"
+     },
+     "measured": {
+      "description": "Seconds of the copy the figures are from.",
+      "title": "Measured",
+      "type": "number"
+     },
+     "peak": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Sample peak, dBFS; null when silent or not measured.",
+      "title": "Peak"
+     }
+    },
+    "required": [
+     "gain",
+     "measured",
+     "integrated",
+     "peak",
+     "final"
+    ],
+    "title": "Loudness",
+    "type": "object"
+   },
    "NameIn": {
     "properties": {
      "name": {
@@ -3108,6 +3167,9 @@
       ],
       "title": "Last Played"
      },
+     "loudness": {
+      "$ref": "#/components/schemas/Loudness"
+     },
      "play_id": {
       "title": "Play Id",
       "type": "integer"
@@ -3170,6 +3232,7 @@
      "formats",
      "plays",
      "last_played",
+     "loudness",
      "play_id",
      "copy",
      "resume"
@@ -3216,6 +3279,9 @@
       ],
       "title": "Last Played"
      },
+     "loudness": {
+      "$ref": "#/components/schemas/Loudness"
+     },
      "playable": {
       "title": "Playable",
       "type": "boolean"
@@ -3261,7 +3327,8 @@
      "error",
      "formats",
      "plays",
-     "last_played"
+     "last_played",
+     "loudness"
     ],
     "title": "Stream",
     "type": "object"
@@ -4021,6 +4088,16 @@
       "title": "History Url",
       "type": "string"
      },
+     "loudness_on": {
+      "title": "Loudness On",
+      "type": "string"
+     },
+     "loudness_target": {
+      "maximum": -5.0,
+      "minimum": -40.0,
+      "title": "Loudness Target",
+      "type": "number"
+     },
      "max_height": {
       "maximum": 10000.0,
       "minimum": 1.0,
@@ -4162,6 +4239,8 @@
      "history_table",
      "sort_model",
      "sort_usd",
+     "loudness_on",
+     "loudness_target",
      "break_on",
      "break_url",
      "break_minutes",

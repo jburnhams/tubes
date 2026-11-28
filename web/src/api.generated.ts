@@ -1371,6 +1371,34 @@ export interface components {
              */
             videos: number;
         };
+        /** Loudness */
+        Loudness: {
+            /**
+             * Final
+             * @description The whole copy has been measured (or normalising is off): the gain will not change again.
+             */
+            final: boolean;
+            /**
+             * Gain
+             * @description The factor the player plays the copy at, so every video is as loud (loudness.py); null: as it is (not measured, or not enough of it yet, or normalising is off).
+             */
+            gain: number | null;
+            /**
+             * Integrated
+             * @description Integrated loudness, LUFS; null when silent or not measured.
+             */
+            integrated: number | null;
+            /**
+             * Measured
+             * @description Seconds of the copy the figures are from.
+             */
+            measured: number;
+            /**
+             * Peak
+             * @description Sample peak, dBFS; null when silent or not measured.
+             */
+            peak: number | null;
+        };
         /** NameIn */
         NameIn: {
             /** Name */
@@ -1961,6 +1989,7 @@ export interface components {
             formats: string | null;
             /** Last Played */
             last_played: string | null;
+            loudness: components["schemas"]["Loudness"];
             /** Play Id */
             play_id: number;
             /** Playable */
@@ -1992,6 +2021,7 @@ export interface components {
             formats: string | null;
             /** Last Played */
             last_played: string | null;
+            loudness: components["schemas"]["Loudness"];
             /** Playable */
             playable: boolean;
             /** Plays */
@@ -2241,6 +2271,10 @@ export interface components {
             history_table: string;
             /** History Url */
             history_url: string;
+            /** Loudness On */
+            loudness_on: string;
+            /** Loudness Target */
+            loudness_target: number;
             /** Max Height */
             max_height: number;
             /** Player Client */

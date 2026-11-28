@@ -21,6 +21,9 @@
   skip_<category>  what the player does in each kind of segment (segments.py: SponsorBlock's categories, which iPlayer's intro and
                    credits are mapped onto): `off` (nothing, not even drawn), `ask` (a Skip button while it plays) or `auto` (skipped, with
                    Undo). Defaults: sponsor auto; self-promotion, subscribe reminders, intros, credits and previews ask; the rest off.
+  loudness_on, loudness_target   whether each video plays at the same loudness (loudness.py: measured from the copy, then raised or
+                   brought down by the player, never raised past where it would clip; default on), and that loudness in LUFS (default
+                   -16; -5 to -40). 100% on the player's volume is that level; Louder takes it on to 200%.
   break_on, break_url, break_minutes, break_limit_minutes   a break (GET /api/break, the Watch page's break.ts): with `break_on` true and a page at `break_url` (an
                    http(s) link, or a path on this server such as `/other-app/page`), the watching side pauses the video after every
                    `break_minutes` of playing (default 20, counted in each browser across videos) and shows the page over it, until the
@@ -118,6 +121,8 @@ SETTINGS = Settings(
         Setting("history_table", default="", normalise=trimmed, env="TUBES_HISTORY_TABLE"),
         Setting("sort_model", default="", normalise=trimmed),
         Setting("sort_usd", default="2", normalise=number_between(0, 1000)),
+        Setting("loudness_on", default="true", normalise=boolean),
+        Setting("loudness_target", default="-16", normalise=number_between(-40, -5)),
         Setting("break_on", default="false", normalise=boolean),
         Setting("break_url", default="", normalise=page_url),
         Setting("break_minutes", default="20", normalise=number_between(1, 1440)),
