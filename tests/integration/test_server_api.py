@@ -82,7 +82,9 @@ def test_play_streams_while_it_fetches_then_plays_from_the_cache(client, fake_yt
     for work in list(loudness.START.started):  # type: ignore[attr-defined]
         work()
     sound = client.get(f"/api/videos/{V}/stream").json()["loudness"]
-    assert sound["final"] is True and sound["measured"] == 20.0 and sound["gain"] is not None and sound["integrated"] < -16
+    assert (
+        sound["final"] is True and sound["measured"] == 20.0 and sound["gain"] is not None and sound["integrated"] < -16
+    )
     playlist = client.get(f"/api/media/{V}/index.m3u8").text
     assert '#EXT-X-MAP:URI="init.mp4"' in playlist and "#EXT-X-ENDLIST" in playlist
     for name in ["init.mp4", *re.findall(r"^seg_\d{5}\.m4s$", playlist, re.M)]:
