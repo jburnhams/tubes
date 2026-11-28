@@ -160,6 +160,15 @@ def status(video_id: str) -> Row:
     return dict(state=e["state"], **p, playable=p["segments"] > 0, error=e["error"], formats=e["formats"])
 
 
+def ready_ids() -> list[str]:
+    """The ids of the whole copies in the cache."""
+    with db.connect() as con:
+        return [
+            str(r["video_id"])
+            for r in db.rows(con.execute("SELECT video_id FROM copies WHERE state = 'ready' ORDER BY video_id"))
+        ]
+
+
 def begin(video_id: str, now: str, title: str | None = None, channel: str | None = None) -> None:
     """Mark a fetch as started, with an empty folder (a failed copy's files are cleared first). A title or channel already known is kept when none is given."""
     shutil.rmtree(folder(video_id), ignore_errors=True)

@@ -47,6 +47,9 @@ carry them, so they sort and compare as text on both engines.
   members            that shares most videos with it. No foreign keys: a video that left the library is not counted or shown.
   video_extents      how much of a thing each video is (extents.py): a full episode, several joined, a clip, a promo, or complete on its own, and
                      what said so. No foreign key: a video that left the library is not counted.
+  loudness           how loud each copy is (loudness.py): integrated loudness and sample peak, from how many seconds of it, and whether
+                     that was the whole copy. Kept by video, not with the copy, so it outlives eviction: a copy fetched again plays at its
+                     final level from the start, and a prefetched start has its first figures before anyone presses Play.
   segments           parts of a video the player can skip (segments.py): from SponsorBlock for YouTube, from iPlayer's own intro and credits
                      points for an episode, under SponsorBlock's categories; `segment_checks` says when each video's source was last asked."""
 
@@ -449,6 +452,20 @@ class Track(Base):
     )  # how the source finds it again: a stream index, a version id
     is_default: Mapped[bool] = mapped_column(server_default=false(), default=False)
     forced: Mapped[bool] = mapped_column(server_default=false(), default=False)
+
+
+class Loudness(Base):
+    __tablename__ = "loudness"
+    video_id: Mapped[str] = mapped_column(
+        String(64), primary_key=True
+    )  # the copy's id: a video's own, or `<id>~native`
+    seconds: Mapped[float] = mapped_column(Float)  # how much of the copy was measured
+    segments: Mapped[int]
+    complete: Mapped[bool]  # the whole copy: final, kept when the copy is evicted and fetched again
+    measured: Mapped[str] = mapped_column(String(40))
+    integrated: Mapped[float | None] = mapped_column(Float, default=None)  # LUFS; null when silent
+    peak: Mapped[float | None] = mapped_column(Float, default=None)  # sample peak, dBFS; null when silent
+    error: Mapped[str | None] = mapped_column(Text, default=None)  # why ffmpeg could not measure it
 
 
 class SegmentCheck(Base):

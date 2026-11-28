@@ -122,6 +122,21 @@ describe('Watch', () => {
     expect(screen.getByText('3 videos are already being fetched; try again when one finishes.')).toBeInTheDocument()
   })
 
+  it('says what was done to the sound, and plays at the server’s gain with Louder past 100%', async () => {
+    openApp(`/watch/${id}`)
+    expect(await screen.findByText(/^Lowered 3\.0\sdB to the usual level$/)).toBeInTheDocument()
+    // jsdom has no Web Audio, so the player cannot go past 100% here and offers no Louder (strata-react's own tests cover it).
+    expect(screen.queryByRole('button', { name: /Louder/ })).toBeNull()
+  })
+
+  it('keeps asking while the loudness of a whole copy is measured, and says so', async () => {
+    mock.streams[id] = { ...streams.ready, loudness: { gain: null, measured: 0, integrated: null, peak: null, final: false } }
+    openApp(`/watch/${id}`)
+    expect(await screen.findByText('Being measured')).toBeInTheDocument()
+    mock.streams[id] = streams.ready
+    expect(await screen.findByText(/^Lowered 3\.0\sdB to the usual level$/, {}, { timeout: 3000 })).toBeInTheDocument()
+  })
+
   it('counts plays here in words', async () => {
     mock.streams[id] = { ...streams.ready, plays: 1 }
     openApp(`/watch/${id}`)

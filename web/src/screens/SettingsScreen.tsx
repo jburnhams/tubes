@@ -1,6 +1,6 @@
 // The one question: "How is the server set up, and how do I change it?" Five tabs whose choice
 // lives in the URL (?tab=skipping, ?tab=shown, ?tab=breaks, ?tab=appearance). General is one form over the server's settings, grouped by
-// what they decide (the cache, what is fetched, the tools); the fields start
+// what they decide (the cache, what is fetched, the tools, the sound: whether every video plays at one loudness, and which); the fields start
 // from what the server holds (rendered inside DataView's ready state, so never blank while
 // loading), problems are said under their field, and saving is one AsyncButton. The server checks
 // again and says why it refused, under the button. Skipping is one ChoiceGroup per kind of segment
@@ -64,10 +64,19 @@ function FormSkeleton() {
   )
 }
 
-type Fields = Record<'cache_dir' | 'cache_limit_gb' | 'half_life_days' | 'protect_days' | 'max_height' | 'player_client' | 'cookies_from_browser' | 'ytdlp' | 'ffmpeg', string>
+type Fields = Record<'cache_dir' | 'cache_limit_gb' | 'half_life_days' | 'protect_days' | 'max_height' | 'player_client' | 'cookies_from_browser' | 'ytdlp' | 'ffmpeg' | 'loudness_target', string>
+
+/** The loudness every video can be brought to (LUFS), with what each is like. */
+export const loudnessTargets = [
+  { value: '-14', label: '-14 LUFS: as loud as YouTube plays music' },
+  { value: '-16', label: '-16 LUFS: the usual streaming level' },
+  { value: '-18', label: '-18 LUFS' },
+  { value: '-20', label: '-20 LUFS' },
+  { value: '-23', label: '-23 LUFS: broadcast television' },
+]
 
 /** Every problem the form can see before sending, by field. */
-export function settingsProblems(f: Fields): Partial<Record<keyof Fields, string>> {
+export function settingsProblems(f: Omit<Fields, 'loudness_target'>): Partial<Record<keyof Fields, string>> {
   return {
     cache_dir: folderProblem(f.cache_dir),
     cache_limit_gb: numberProblem(f.cache_limit_gb, 'the limit'),
@@ -83,7 +92,9 @@ export function SettingsForm({ current }: { current: Settings }) {
   const [f, setF] = useState<Fields>({
     cache_dir: current.cache_dir, cache_limit_gb: String(current.cache_limit_gb), half_life_days: String(current.half_life_days), protect_days: String(current.protect_days),
     max_height: String(current.max_height), player_client: current.player_client, cookies_from_browser: current.cookies_from_browser, ytdlp: current.ytdlp, ffmpeg: current.ffmpeg,
+    loudness_target: String(current.loudness_target),
   })
+  const [even, setEven] = useState(current.loudness_on === 'true')
   const [problems, setProblems] = useState<ReturnType<typeof settingsProblems>>({})
   const set = (k: keyof Fields) => (e: { target: { value: string } }) => setF(old => ({ ...old, [k]: e.target.value }))
 
@@ -91,6 +102,7 @@ export function SettingsForm({ current }: { current: Settings }) {
     await api.saveSettings({
       cache_dir: f.cache_dir.trim(), cache_limit_gb: Number(f.cache_limit_gb), half_life_days: Number(f.half_life_days), protect_days: Number(f.protect_days),
       max_height: Number(f.max_height), player_client: f.player_client.trim(), cookies_from_browser: f.cookies_from_browser.trim(), ytdlp: f.ytdlp.trim(), ffmpeg: f.ffmpeg.trim(),
+      loudness_on: even ? 'true' : 'false', loudness_target: Number(f.loudness_target),
     })
     await Promise.all([keys.settings, keys.system, keys.cache].map(queryKey => queryClient.invalidateQueries({ queryKey })))
   }, { describeError })
@@ -138,6 +150,17 @@ export function SettingsForm({ current }: { current: Settings }) {
         </Field>
         <Field label="ffmpeg" hint="The command, or its full path." error={problems.ffmpeg}>
           <Input value={f.ffmpeg} onChange={set('ffmpeg')} autoComplete="off" spellCheck={false} />
+        </Field>
+      </fieldset>
+
+      <fieldset className="grid gap-5">
+        <legend className="mb-4 type-heading">Sound</legend>
+        <Checkbox label="Play every video at the same loudness" detail="Each copy is measured on this server. A quiet video is raised only as far as its loudest moment allows, so nothing clips; 100% on the player is this level, and Louder goes on to 200%." checked={even} onCheckedChange={setEven} />
+        <Field label="Loudness" hint="Lower leaves more room to raise quiet videos without reaching their peaks.">
+          <NativeSelect value={f.loudness_target} onChange={set('loudness_target')} disabled={!even}>
+            {/* A level set another way (`tubes set loudness_target -17`) is offered too, so the form never changes it unasked. */}
+            {(loudnessTargets.some(t => t.value === f.loudness_target) ? loudnessTargets : [...loudnessTargets, { value: f.loudness_target, label: `${f.loudness_target} LUFS` }]).map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </NativeSelect>
         </Field>
       </fieldset>
 

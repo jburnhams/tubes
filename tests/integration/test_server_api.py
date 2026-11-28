@@ -74,6 +74,16 @@ def test_play_streams_while_it_fetches_then_plays_from_the_cache(client, fake_yt
         formats="180p H.264 + AAC",
         plays=1,
         last_played=done["last_played"],
+        loudness=done["loudness"],
+    )
+    # Reading the status asked for its loudness to be measured (the conftest only notes it): measured now, the gain is final.
+    from tubes import loudness
+
+    for work in list(loudness.START.started):  # type: ignore[attr-defined]
+        work()
+    sound = client.get(f"/api/videos/{V}/stream").json()["loudness"]
+    assert (
+        sound["final"] is True and sound["measured"] == 20.0 and sound["gain"] is not None and sound["integrated"] < -16
     )
     playlist = client.get(f"/api/media/{V}/index.m3u8").text
     assert '#EXT-X-MAP:URI="init.mp4"' in playlist and "#EXT-X-ENDLIST" in playlist

@@ -21,3 +21,4 @@ Not gated. `pytest tests/integration -n auto --cov --cov-fail-under=0 --cov-repo
 | --- | --- |
 | `cli.py` | `test_cli.py`: doctor, add and sync from YouTube (a later sync reads only the newest pages; out of quota), remove, a library left by the old copy read back by the first sync, channels, fetch, cache, evict, settings, real subprocess |
 | `server/app.py` | `test_server_api.py`: add a channel and its background sync, browse and search, play to a complete copy and its playlist, cache pin and evict, settings updates, validation errors |
+| `loudness.py` | `test_loudness_ffmpeg.py`: the real ffmpeg's ebur128 over HLS copies ffmpeg makes (a tone, a silent copy): measured whole, as they double, prefetched, after eviction; the stream status and `tubes loudness` (skipped without ffmpeg on PATH; CI installs it on Linux) |

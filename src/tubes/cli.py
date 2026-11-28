@@ -22,6 +22,7 @@ from tubes import (
     iplayer,
     iplayer_suggest,
     library,
+    loudness,
     quota,
     related,
     settings,
@@ -384,6 +385,12 @@ def cmd_evict(args: argparse.Namespace) -> int:
     )
 
 
+def cmd_loudness(args: argparse.Namespace) -> int:
+    """Measures the loudness of every whole copy not measured yet (loudness.py), so each plays at the right level from its first second."""
+    n = loudness.measure_all(say=(lambda line: None) if args.json else (lambda line: print(f"  {line}", flush=True)))
+    return out(args, dict(measured=n), f"  measured {n} cop{'y' if n == 1 else 'ies'}")
+
+
 def cmd_plays(args: argparse.Namespace) -> int:
     """The latest plays (where each was started from, how much was seen, how it went), then the last 30 days in numbers."""
     items, s = viewing.recent(args.limit)["items"], viewing.summary(args.days)
@@ -507,6 +514,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     q.add_argument("--json", action="store_true")
     q.set_defaults(fn=cmd_quota)
+    n = sub.add_parser(
+        "loudness",
+        help="measure how loud every cached copy is, for the ones not measured yet (the player evens them out)",
+    )
+    n.add_argument("--json", action="store_true")
+    n.set_defaults(fn=cmd_loudness)
     g = sub.add_parser("plays", help="show the latest plays here, where each was started from and how much was watched")
     g.add_argument("--limit", type=int, default=20)
     g.add_argument("--days", type=int, default=30, help="the summary covers this many days")

@@ -87,6 +87,7 @@ from tubes import (
     history,
     iplayer,
     library,
+    loudness,
     paste,
     plex,
     prefetch,
@@ -222,7 +223,11 @@ def create_app(recover: bool = True) -> FastAPI:
     )  # its thread is started by main(), so tests and other hosts of the app start none
 
     def stream(video_id: str) -> Row:
-        return dict(cache.status(video_id), **cache.plays(video_id))
+        # Reading the status is what measures a copy's loudness as it grows (loudness.ensure: in the background, when there is enough new).
+        loudness.ensure(video_id)
+        v = library.video(fetcher.base_id(video_id))
+        duration = float(v["duration"]) if v and v.get("duration") else None
+        return dict(cache.status(video_id), **cache.plays(video_id), loudness=loudness.status(video_id, duration))
 
     @app.get("/api/system", responses=answer(A.SystemStatus))
     def get_system():

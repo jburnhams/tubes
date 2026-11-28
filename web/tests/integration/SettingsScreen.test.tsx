@@ -23,6 +23,29 @@ describe('Settings', () => {
     expect(mock.settings).toMatchObject({ cache_limit_gb: 800, max_height: 2160, protect_days: 0, player_client: '', cookies_from_browser: 'chrome+gnomekeyring' })
   })
 
+  it('turns the same loudness for every video off and on, and sets that level', async () => {
+    const { user } = openApp('/admin/settings')
+    const even = await screen.findByRole('checkbox', { name: /Play every video at the same loudness/ })
+    expect(even).toBeChecked()
+    const level = screen.getByRole('combobox', { name: 'Loudness' })
+    expect(level).toHaveValue('-16')
+    await user.selectOptions(level, '-23 LUFS: broadcast television')
+    await user.click(screen.getByRole('button', { name: 'Save settings' }))
+    expect(await screen.findByText('Saved', { selector: '[role=status]' })).toBeInTheDocument()
+    expect(mock.settings).toMatchObject({ loudness_on: 'true', loudness_target: -23 })
+    await user.click(even)
+    expect(level).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: /^(Save settings|Saved)$/ }))
+    await waitFor(() => expect(mock.settings).toMatchObject({ loudness_on: 'false' }))
+  })
+
+  it('keeps a loudness set another way', async () => {
+    mock.settings = { ...mock.settings, loudness_target: -17 }
+    openApp('/admin/settings')
+    expect(await screen.findByRole('combobox', { name: 'Loudness' })).toHaveValue('-17')
+    expect(screen.getByRole('option', { name: '-17 LUFS' })).toBeInTheDocument()
+  })
+
   it('says under each field what is wrong, and saves nothing', async () => {
     const { user } = openApp('/admin/settings')
     const folder = await screen.findByRole('textbox', { name: 'Cache folder' })
